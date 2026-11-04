@@ -14,13 +14,14 @@
  * no checkout, nothing a `git status` or a `git branch` can see, and the working
  * tree the developer is looking at is never touched. Its ROOT is the BRAND
  * FOLDER, never the enclosing repo's, so the mirror is a brand checkout and not
- * a copy of whatever tree the brand happens to live in, and it is PARENTLESS:
- * a mirror carries no history, which is also what keeps a public brand repo
- * from receiving the private tree it was cut from. That promise is the whole
- * module's ([#915](https://github.com/Omega-JS-Stack/omega/issues/915)): the
- * sync that used to run first, committing and pushing the developer's own
- * branch with `git add -A`, is gone, and nothing here commits anything a
- * developer did not.
+ * a copy of whatever tree the brand happens to live in. Its PARENT is the deploy
+ * ref's current tip on the mirror, fetched by ref name into FETCH_HEAD alone, so
+ * the ref's history is snapshots only and the push carries just what the mirror
+ * lacks; the first snapshot on a mirror is parentless. The brand's own history
+ * never rides, which is what keeps a public brand repo from receiving the
+ * private tree it was cut from, and nothing here commits anything a developer
+ * did not. The push is a fast-forward, never forced, so a ref another deploy
+ * moved meanwhile fails the push loudly.
  *
  * ONE write ever reaches a repo's DEFAULT branch, and it is `pushWorkflowFiles`
  * below: GitHub registers a workflow from the default branch (the listing and
@@ -61,7 +62,7 @@ const { execFileSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 const jetpack = require('fs-jetpack');
 const { resolveCompany, COMPANY_RESOLVED_FILE, mintBridgeSources } = require('@omega.js/config');
-const { gitAuthEnv, scrubToken } = require('./git-auth.js');
+const { gitAuthEnv, scrubbedFailure } = require('./git-auth.js');
 const { composedWorkflowOwner } = require('./ci-workflows.js');
 const { formatJson } = require('./write-json.js');
 
@@ -93,13 +94,14 @@ function shortSha(sha) {
 }
 
 /**
- * Push the brand folder to `<owner>/<repo>` at `ref` as a force-pushed mirror.
+ * Push the brand folder to `<owner>/<repo>` at `ref` as a mirror snapshot,
+ * parented on that ref's current remote tip.
  *
  * @param {object} options - Options.
  * @param {string} options.brandRoot - The brand folder to snapshot.
  * @param {string} options.owner - The mirror repo's owner.
  * @param {string} options.repo - The mirror repo's bare name.
- * @param {string} options.ref - The branch to overwrite (`main` for a mirror).
+ * @param {string} options.ref - The deploy ref the snapshot chain lands on (`omega-deploy`).
  * @param {string} options.token - The GitHub token, carried in the env.
  * @param {string} [options.message] - The snapshot commit's message.
  * @param {string[]} [options.require] - Brand-relative paths force-added when
@@ -127,6 +129,10 @@ function pushSnapshot(options) {
   }
 
   const git = (...args) => execFn('git', args, { cwd: brandRoot, env: { ...process.env, GIT_INDEX_FILE: indexFile } });
+  // The network calls run on the real index: a fetch can start git's auto
+  // maintenance, which must never see the temporary one.
+  const remote = (...args) => execFn('git', args, { cwd: brandRoot, env: { ...process.env, ...gitAuthEnv(token) } });
+  const url = `https://github.com/${owner}/${repo}.git`;
 
   // Resolved HERE, received THERE (#677): generated before the tree is staged,
   // removed the moment the push is done.
@@ -157,27 +163,17 @@ function pushSnapshot(options) {
 
     const tree = git('write-tree').trim();
     const brandTree = prefix ? subtreeOf(git, tree, prefix) : tree;
-    // Parentless: a mirror is a snapshot, not a history, and the tree it was
-    // cut from is nobody's business on the brand's own repo.
-    const sha = git('commit-tree', brandTree, '-m', message).trim();
+    // Chained on the previous snapshot, never on HEAD: the ref's history is
+    // snapshots only, and the tree it was cut from stays off the brand's repo.
+    const parent = remoteTip({ git, remote, url, owner, repo, ref, token });
+    const sha = git('commit-tree', brandTree, ...(parent ? ['-p', parent] : []), '-m', message).trim();
 
-    // Pushed BY SHA, so no local branch is ever created here. Force: two
-    // snapshots are siblings, never a fast-forward.
+    // Pushed BY SHA, so no local branch is ever created here. Not forced: a
+    // chained snapshot fast-forwards, and a ref moved since the read refuses.
     try {
-      execFn('git', ['push', '--force', `https://github.com/${owner}/${repo}.git`, `${sha}:refs/heads/${ref}`], {
-        cwd: brandRoot,
-        env: {
-          ...process.env,
-          GIT_INDEX_FILE: indexFile,
-          ...gitAuthEnv(token),
-        },
-      });
+      remote('push', url, `${sha}:refs/heads/${ref}`);
     } catch (error) {
-      // git's own message quotes what it was given, and a caller's message is
-      // never trusted with the credential this lane was careful not to pass.
-      const failure = new Error(`Pushing the snapshot to ${owner}/${repo} failed: ${scrubToken(error && error.message, token)}`);
-      failure.status = error && error.status;
-      throw failure;
+      throw scrubbedFailure(`Pushing the snapshot to ${owner}/${repo}`, error, token);
     }
 
     return sha;
@@ -185,6 +181,40 @@ function pushSnapshot(options) {
     if (companyLayer) jetpack.remove(companyLayer);
     jetpack.remove(indexFile);
   }
+}
+
+/**
+ * The deploy ref's tip on the mirror, fetched by ref name so its commit and
+ * objects exist locally: FETCH_HEAD only, no local ref and no branch.
+ *
+ * @param {object} options - Options.
+ * @param {Function} options.git - The bound git runner for local calls.
+ * @param {Function} options.remote - The bound git runner carrying the auth env.
+ * @param {string} options.url - The mirror's url.
+ * @param {string} options.owner - The mirror repo's owner.
+ * @param {string} options.repo - The mirror repo's bare name.
+ * @param {string} options.ref - The deploy branch.
+ * @param {string} options.token - The GitHub token, scrubbed from a failure.
+ * @returns {string|null} The tip's sha, or null when the mirror has no such ref.
+ */
+function remoteTip({ git, remote, url, owner, repo, ref, token }) {
+  const what = `Reading ${owner}/${repo}#${ref}`;
+
+  try {
+    remote('ls-remote', '--exit-code', url, `refs/heads/${ref}`);
+  } catch (error) {
+    // `--exit-code` answers 2 for a ref the mirror does not have: a first snapshot.
+    if (error && error.status === 2) return null;
+    throw scrubbedFailure(what, error, token);
+  }
+
+  try {
+    remote('fetch', url, `refs/heads/${ref}`);
+  } catch (error) {
+    throw scrubbedFailure(what, error, token);
+  }
+
+  return git('rev-parse', 'FETCH_HEAD').trim();
 }
 
 /**
@@ -599,7 +629,7 @@ async function waitForWorkflow(options) {
  * Wait for a ref to RESOLVE to the sha this run just pushed
  * ([#902](https://github.com/Omega-JS-Stack/omega/issues/902)).
  *
- * A force-push returns as soon as GitHub accepts it, but GitHub resolves the
+ * A push returns as soon as GitHub accepts it, but GitHub resolves the
  * branch on its own side: a dispatch sent in the same second can still resolve
  * `main` to the PREVIOUS commit, and the run then builds a tree this deploy
  * never pushed, green, with nothing in its log saying so. So the push is

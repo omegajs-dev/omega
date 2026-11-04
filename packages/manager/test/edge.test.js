@@ -61,6 +61,10 @@ async function captureLogAsync(fn) {
   return lines.join('\n');
 }
 
+// A brand served from its GitHub Pages address owns no domain for the edge to manage.
+const PAGES_URL = 'https://dreamr-design.github.io/dreamr-web';
+const PAGES_REASON = 'brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage';
+
 // The DashQR case (#466): printed QR codes point at /c/<id> forever, so the
 // destination is COMPUTED from the request path. That is the whole reason
 // templated redirects live at the edge rather than in web config — a static
@@ -102,6 +106,42 @@ module.exports = defineCases({
 
         const result = await runService(config, fakeApi());
         ctx.expect(result.status).toBe('skipped');
+      },
+    },
+
+    {
+      name: 'edge: a default Pages brand.url is no domain, so setup skips with the one reason before any zone lookup',
+      run: async (ctx) => {
+        const api = fakeApi();
+        const lookups = [];
+        api.getZoneByName = async (name) => { lookups.push(name); return null; };
+        api.getAllZones = async () => { lookups.push('*'); return []; };
+
+        const result = await runService(brandConfig(PAGES_URL), api);
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe(PAGES_REASON);
+        ctx.expect(lookups).toEqual([]);
+        ctx.expect(api.calls).toEqual([]);
+      },
+    },
+
+    {
+      name: 'edge: a default Pages brand.url skips with the one reason even with no token and no client, and asks nothing',
+      run: async (ctx) => {
+        const tty = openTtyPrompt();
+        try {
+          const run = runService(brandConfig(PAGES_URL), undefined);
+          // A prompt renders before the run could settle, so whichever comes first says whether it asked
+          const asked = await Promise.race([run.then(() => false), tty.waitFor('?').then(() => true)]);
+
+          ctx.expect(asked, 'no token ask, no setup ask: there is no domain to set up').toBe(false);
+          const result = await run;
+          ctx.expect(result.status).toBe('skipped');
+          ctx.expect(result.reason).toBe(PAGES_REASON);
+        } finally {
+          tty.close();
+        }
       },
     },
 

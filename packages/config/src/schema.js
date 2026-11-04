@@ -252,7 +252,7 @@ const SHARED_SCHEMA = [
     type:        'string',
     required:    false,
     match:       /^https?:\/\//,
-    description: 'Marketing site URL. Derives remote-config URLs, "Open Website" menu items, hosting boilerplate links.',
+    description: 'Marketing site URL. Derives remote-config URLs, "Open Website" menu items, hosting boilerplate links. Unset (or null) resolves to the GitHub Pages address of a GitHub-hosted `web` target, https://<owner>.github.io/<brand.id>-web.',
   },
   {
     path:        'brand.description',

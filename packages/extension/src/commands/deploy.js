@@ -8,7 +8,7 @@
  * ONE lane, the same one every target takes
  * ([#872](https://github.com/Omega-JS-Stack/omega/issues/872),
  * [#915](https://github.com/Omega-JS-Stack/omega/issues/915)): the executor
- * resolves it from the brand, packs any local frameworks and force-pushes a
+ * resolves it from the brand, packs any local frameworks and pushes a
  * SNAPSHOT of the brand folder to `omega-deploy`, the one branch CI ever
  * builds, and then it waits for the workflow and dispatches. A
  * linked tree no longer switches itself to the direct lane; `--direct` is how a

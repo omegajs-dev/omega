@@ -53,7 +53,11 @@ addresses, the BIMI logo, extra CSP hosts) belong in the company or brand layer.
 
 **Credential**: `CLOUDFLARE_TOKEN` in the brand `.env`, asked for through the shared setup
 contract, with Zone edit on the brand zone plus "Account Settings Write" (the `web-analytics`
-operation's RUM endpoints are account-level). No `brand.url` → the service skips.
+operation's RUM endpoints are account-level). No `brand.url` → the service skips. A `brand.url`
+on a default Pages host (`*.github.io`, the address an unset `brand.url` resolves to,
+[config.md](../shared/config.md)) skips it too, with `brand.url is the hosting provider's
+default address (<host>): no domain to manage`: an address the host owns is no zone to add.
+Both skip before the token ask.
 
 **The email asks.** The service's setup asks for the mailbox provider when none is picked
 (`domain.email.providers`, a choice from the registry's mailbox providers, landed as the

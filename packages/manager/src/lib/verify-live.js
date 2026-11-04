@@ -18,7 +18,7 @@
  */
 const dns = require('node:dns').promises;
 
-const { isDemoProject } = require('@omega.js/config');
+const { isDemoProject, defaultAddressReason } = require('@omega.js/config');
 const { getApexDomain } = require('./domain-utils.js');
 
 // deploy target → the checks that prove THAT target's surface is live. Only
@@ -52,6 +52,9 @@ function resolveVerifySurface(brandConfig) {
   if (!url) {
     return { url: null, hostnames: [], gated: 'no brand.url configured' };
   }
+
+  const pagesReason = defaultAddressReason(url);
+  if (pagesReason) return { url: null, hostnames: [], gated: pagesReason };
 
   const hostname = new URL(url).hostname;
   // www is a platform DNS record on the apex only — a subdomain brand's www

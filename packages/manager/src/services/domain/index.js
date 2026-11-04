@@ -14,7 +14,7 @@
  * Missing credentials → the service skips with guidance.
  */
 const chalk = require('chalk').default;
-const { serviceAskedKeys, envSchemaEntry, chosenProvider } = require('@omega.js/config');
+const { serviceAskedKeys, envSchemaEntry, chosenProvider, defaultAddressReason } = require('@omega.js/config');
 const { serviceInputSpec } = require('../../config.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
 const { requestServiceInput } = require('../../lib/service-input.js');
@@ -32,6 +32,15 @@ module.exports.run = createServiceRunner({
       return { skip: true, reason: 'domain.enabled = false' };
     }
 
+    // Read before the registrar ask: a brand with no domain has no registrar
+    const url = (context.brandConfig.brand?.url || '').replace(/^https?:\/\//, '');
+    if (!url) {
+      return { skip: true, reason: 'no brand.url configured' };
+    }
+
+    const pagesReason = defaultAddressReason(url);
+    if (pagesReason) return { skip: true, reason: pagesReason };
+
     await resolveConfigValue(context, {
       path: 'domain.providers',
       label: 'Domain registrar',
@@ -44,11 +53,6 @@ module.exports.run = createServiceRunner({
     const provider = resolveRegistrar(context.brandConfig);
     if (!provider) {
       return { skip: true, reason: 'no domain.providers.<registrar> configured' };
-    }
-
-    const url = (context.brandConfig.brand?.url || '').replace(/^https?:\/\//, '');
-    if (!url) {
-      return { skip: true, reason: 'no brand.url configured' };
     }
 
     // What this brand's domain service owes (the env schema's askedWhen) splits

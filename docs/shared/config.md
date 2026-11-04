@@ -198,6 +198,24 @@ targets: {
   'web' }` is a COMPLETE declaration. An explicit `url` overrides it for a custom host. The host
   is taken EXACTLY as `brand.url` states it (a `www.` brand derives `admin.www.acme.com`), and
   no usable `brand.url` derives nothing at all (null, never a half-built `https://admin.`).
+- **An unset `brand.url` is the Pages address**
+  ([#1145](https://github.com/Omega-JS-Stack/omega/issues/1145)). A brand with no domain of its
+  own writes no `brand.url` (or `url: null` in a layer that switches a declared domain off), and
+  when `targets.web` is a GitHub-hosted web target, `loadConfig` and `composeTargetConfig` alike
+  fill it right after the merge with `pagesAddress(config, 'web')`:
+  `https://<repo.owner lowercased>.github.io/<brand.id>-web`. No `web` target, no `repo.owner`,
+  no `brand.id`, or another `hosting.provider` leaves it unset, and every reader skips as before.
+  The filled value counts as the BRAND layer's, so a sibling target is never misread as an
+  override. On a default Pages host `targetUrl` itself gives a sibling WEB target its own Pages
+  address (`admin` → `https://<owner>.github.io/<brand.id>-admin`, since
+  `admin.<owner>.github.io` is no site), so the loader and every direct caller read one rule; a
+  non-web sibling keeps the name-as-subdomain derivation. Readers that manage a DOMAIN (the manager's
+  `edge`, `domain`, `search`, `cloud`, `account`, `campaigns` and `captcha` services, the verify
+  sweep's live gate, the web purge) each ask
+  `defaultAddressReason(url)` once and skip with its answer, `brand.url is the hosting
+  provider's default address (<host>): no domain to manage`, before any credential or registrar
+  ask; every other reader takes the address like any declared url. Buying a
+  domain later is one line: `brand.url` becomes it.
 - **Validator rules**: a key must be a dir-safe slug (`/^[a-z][a-z0-9-]*$/`, because it is a
   folder name), an entry must be a plain object, and its `type` must be one of the six. An ARRAY
   is the retired multi-instance form and names its replacement, a sibling key
@@ -1624,6 +1642,14 @@ that target's `targetUrl`, and an empty string when the url names a default Page
 The manage walk sets the domain on the repo from it and the web deploy writes its `CNAME`
 file from it, so the two can never claim different domains for one site.
 
+**The Pages address is ONE derivation too**, `pagesAddress(config, name)`:
+`https://<owner lowercased>.github.io/<websiteRepo name>` for a GitHub-hosted web target, null
+whenever `websiteRepo` is. The loader fills an unset `brand.url` from it and the web direct
+deploy's project-site plan falls back to it, so the two never spell the address apart.
+`isDefaultPagesHost(host)` is the one test for a default Pages host, read by `pagesHost` and by
+`defaultAddressReason(url)`, which answers the skip reason for a url on a default Pages host and
+null for anything else, so every domain-managing reader skips with one call.
+
 The by-hand steps for a brand still on the old shape are the register's
 [2026-09-11 section](breaking-changes.md#2026-09-11-one-repo-block-and-the-website-repo-883).
 
@@ -2180,9 +2206,13 @@ const {
   targetsOfType,       // (config, 'web') → the same entries, that type only
   targetPath,          // (config, 'community') → 'targets/community'; an undeclared name throws with the declared list
   targetNameFromDir,   // (projectDir) → the target root's basename inside a brand (functions//dist/ normalize up); null standalone
-  targetUrl,           // (config, name) → entry url → entry brand.url → brand.url when name IS the type → https://<name>.<brand host> | null
+  targetUrl,           // (config, name) → entry url → entry brand.url → brand.url when name IS the type → pagesAddress(config, name) for a web target on a *.github.io brand → https://<name>.<brand host> | null
   targetPortOffset,    // (config, name) → position among the SAME-type targets (dev-port offsets)
   brandHost,           // (url) → the host exactly as brand.url states it (www kept, path dropped, port kept)
+  // The GitHub Pages address (repo.js, #1145)
+  pagesAddress,        // (config, name) → https://<owner lowercased>.github.io/<brand.id>-<name> for a GitHub-hosted web target | null; an unset brand.url resolves to pagesAddress(config, 'web')
+  isDefaultPagesHost,  // (host) → whether it is a GitHub default Pages host (`*.github.io`): an address, never a domain
+  defaultAddressReason, // (url) → the ONE skip reason of every domain-managing reader (edge, domain, search, cloud, account, campaigns, captcha, verify live gate, web purge) for a default Pages host | null
   TARGET_NAME_PATTERN, TARGET_TYPES, // the name slug rule and [web, backend, desktop, extension, mobile, custom]
   // The browser subset (#894): what a browser surface may see, and the one wrapper it is baked in
   clientConfig,        // (resolved + this build's facts) → the blob every browser surface bakes as OMEGA_BUILD_JSON.config

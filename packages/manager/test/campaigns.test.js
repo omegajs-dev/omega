@@ -303,6 +303,21 @@ module.exports = defineCases({
     },
 
     {
+      name: 'campaigns: a default Pages brand.url is no domain, so setup skips with the one reason before any client call',
+      run: async (ctx) => {
+        const sendgrid = fakeSendgrid();
+        const cloudflare = fakeCf();
+
+        const result = await runService(brandConfig({ url: 'https://dreamr-design.github.io/dreamr-web' }), { sendgrid, cloudflare });
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(sendgrid.calls).toEqual([]);
+        ctx.expect(cloudflare.requests).toEqual([]);
+      },
+    },
+
+    {
       name: 'campaigns: the defaults carry no company parent URL',
       run: (ctx) => {
         // omega-manager defaulted parent to the company's brand URL — the manager

@@ -20,7 +20,7 @@
  */
 const { googleTokenStorePath } = require('../../lib/google-auth.js');
 const { ensureProjectAccess } = require('./lib/access-heal.js');
-const { isDemoProject } = require('@omega.js/config');
+const { isDemoProject, defaultAddressReason } = require('@omega.js/config');
 const chalk = require('chalk').default;
 const { serviceInputSpec } = require('../../config.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -42,6 +42,18 @@ module.exports.run = createServiceRunner({
     if (cloud.enabled === false) {
       return { skip: true, reason: 'cloud.enabled = false' };
     }
+
+    // Hostname-only (cp268): this value feeds authDomain + api.{domain}: a
+    // brand.url carrying a path or port must never leak them into either.
+    // Read before the credential ask: a brand with no domain has no use for one.
+    const brandUrl = context.brandConfig.brand?.url;
+    const domain = brandUrl ? new URL(brandUrl).hostname : '';
+    if (!domain) {
+      return { skip: true, reason: 'no brand.url configured' };
+    }
+
+    const pagesReason = defaultAddressReason(brandUrl);
+    if (pagesReason) return { skip: true, reason: pagesReason };
 
     // The shared setup contract (#608): an interactive run asks for the
     // Google OAuth client right here — provide, skip this run, or disable the
@@ -83,14 +95,6 @@ module.exports.run = createServiceRunner({
 
     if (!haveCreds) {
       return gate || { skip: true, reason: 'no GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET configured (set them in the brand .env)' };
-    }
-
-    // Hostname-only (cp268): this value feeds authDomain + api.{domain} — a
-    // brand.url carrying a path or port must never leak them into either.
-    const brandUrl = context.brandConfig.brand?.url;
-    const domain = brandUrl ? new URL(brandUrl).hostname : '';
-    if (!domain) {
-      return { skip: true, reason: 'no brand.url configured' };
     }
 
     const firebaseApi = makeApi();

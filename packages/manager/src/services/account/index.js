@@ -18,7 +18,7 @@
  */
 const { join } = require('node:path');
 const jetpack = require('fs-jetpack');
-const { hasTargetOfType } = require('@omega.js/config');
+const { hasTargetOfType, defaultAddressReason } = require('@omega.js/config');
 const { SERVICE_ACCOUNT_REL } = require('@omega.js/devkit/service-account');
 
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -49,6 +49,9 @@ module.exports.run = createServiceRunner({
     if (!domain) {
       return { skip: true, reason: 'no brand.url configured' };
     }
+
+    const pagesReason = defaultAddressReason(domain);
+    if (pagesReason) return { skip: true, reason: pagesReason };
 
     // Resolve {domain} templates in the configured admin list
     const admins = (config?.admins || []).map((entry) => ({

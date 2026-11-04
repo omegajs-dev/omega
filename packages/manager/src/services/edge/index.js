@@ -11,6 +11,7 @@
  * zone + dns-records; zone-level settings belong to the parent brand.
  */
 const chalk = require('chalk').default;
+const { defaultAddressReason } = require('@omega.js/config');
 const { serviceInputSpec } = require('../../config.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
 const { CloudflareAPI } = require('./lib/cloudflare-api.js');
@@ -30,14 +31,18 @@ module.exports.run = createServiceRunner({
       return { skip: true, reason: 'edge.providers.cloudflare.enabled = false' };
     }
 
-    if (!context.cloudflareApi) {
-      const gate = await requestServiceInput(context, serviceInputSpec('edge'));
-      if (gate) return gate;
-    }
-
+    // Read before the token ask: a brand with no domain has no use for one
     const domain = (context.brandConfig.brand?.url || '').replace(/^https?:\/\//, '');
     if (!domain) {
       return { skip: true, reason: 'no brand.url configured' };
+    }
+
+    const pagesReason = defaultAddressReason(domain);
+    if (pagesReason) return { skip: true, reason: pagesReason };
+
+    if (!context.cloudflareApi) {
+      const gate = await requestServiceInput(context, serviceInputSpec('edge'));
+      if (gate) return gate;
     }
 
     // Tests inject a fake client via context.cloudflareApi

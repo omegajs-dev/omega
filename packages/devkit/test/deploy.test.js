@@ -514,7 +514,7 @@ module.exports = defineCases({
             },
           }))()).rejects.toThrow((error) => {
             ctx.expect(error.message).toMatch(/behind origin\/main/);
-            ctx.expect(error.message, 'it says what would be lost').toMatch(/force-pushes it over omega-deploy/);
+            ctx.expect(error.message, 'it says what would be lost').toMatch(/pushes it as its snapshot over omega-deploy/);
             ctx.expect(error.message, 'and the fix').toMatch(/git pull/);
             return true;
           });
@@ -533,7 +533,7 @@ module.exports = defineCases({
         };
 
         // A token that cannot read the repo would otherwise deploy as "nothing to be
-        // behind", force-pushing a stale checkout over everything the branch carries.
+        // behind", pushing a stale checkout as the snapshot over everything the branch carries.
         ctx.expect(() => assertNotBehind({ cwd: '/brand', branch: 'main', execFn: fetchFailing('fatal: Authentication failed for \'https://github.com/acme/acme-omega.git/\'\n') })).toThrow((error) => {
             ctx.expect(error.message, 'git\'s own words ride the refusal').toMatch(/Authentication failed/);
             ctx.expect(error.message).toMatch(/origin\/main/);

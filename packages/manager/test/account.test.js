@@ -302,6 +302,23 @@ module.exports = defineCases({
     },
 
     {
+      name: 'account: a default Pages brand.url is no domain, so setup skips with the one reason before any client call',
+      run: async (ctx) => {
+        const auth = fakeAuth();
+        const firestore = fakeFirestore();
+        const backend = fakeBackend();
+
+        const result = await runService(brandConfig({ url: 'https://dreamr-design.github.io/dreamr-web' }), { auth, firestore, backend });
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(auth.calls).toEqual([]);
+        ctx.expect(firestore.calls).toEqual([]);
+        ctx.expect(backend.calls).toEqual([]);
+      },
+    },
+
+    {
       name: 'account: empty admins list skips the service',
       run: async (ctx) => {
         const result = await runService(brandConfig({ account: { enabled: true, admins: [] } }));

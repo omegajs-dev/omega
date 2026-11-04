@@ -24,6 +24,7 @@ One operation, `site-key`:
 | Key | Meaning |
 |---|---|
 | `captcha.providers.recaptcha.enabled: false` | Skip the service. |
+| `brand.url` | None skips the service, and so does one on a default Pages host (`*.github.io`, the address an unset `brand.url` resolves to, [config.md](../shared/config.md)), with `brand.url is the hosting provider's default address (<host>): no domain to manage`. |
 | `captcha.providers.recaptcha.siteKey` | The public site key, and its ONE home ([#893](https://github.com/Omega-JS-Stack/omega/issues/893)): every page carrying a form renders it, so it is public by definition. An interactive run ASKS for it here (the config flow, landed in omega.json5) instead of naming an env key. |
 | `captcha.providers.recaptcha.project` | Only for a key minted OUTSIDE the brand's own GCP project; otherwise the deep-link resolves from `cloud.config.projectId`. |
 | `captcha.providers.recaptcha.domainsConfirmed` | The one-time domain-list confirmation. |

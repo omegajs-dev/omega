@@ -4,9 +4,10 @@
 // REAL git against a REAL bare repo in a temp dir, because what is being pinned
 // is git's own behavior: a commit whose root is the BRAND FOLDER (never the
 // enclosing repo's root), the .gitignore rules that decide what rides, an
-// untracked tarball folder that must ride, and a force push that rewrites the
-// mirror. Only the network is injected (the fetch waitForWorkflow polls, and
-// the remote URL, rewritten to the bare repo by the injected exec).
+// untracked tarball folder that must ride, and a chain of snapshots that only
+// ever fast-forwards the mirror. Only the network is injected (the fetch
+// waitForWorkflow polls, and the remote URL, rewritten to the bare repo by the
+// injected exec).
 
 const defineCases = require('@omega.js/devkit/test/define-cases');
 const fs = require('node:fs');
@@ -75,6 +76,35 @@ function localRemote(bare, calls) {
     const rewritten = args.map((arg) => (String(arg).startsWith('https://github.com/') ? bare : arg));
     return execFileSync(file, rewritten, { encoding: 'utf8', ...options });
   };
+}
+
+/** A rev resolved in the bare repo: a ref, or `<ref>^` for its parent. */
+function revOf(bare, rev) {
+  return run('git', ['rev-parse', rev], bare).trim();
+}
+
+/** How many commits a ref's history holds. */
+function countOf(bare, ref) {
+  return run('git', ['rev-list', '--count', ref], bare).trim();
+}
+
+/** Whether any recorded push spelled a force, as a flag or a `+` refspec. */
+function forcedPush(calls) {
+  return calls
+    .filter((call) => call.args[0] === 'push')
+    .some((call) => call.args.some((arg) => /^(--force|-f$)/.test(String(arg)) || String(arg).startsWith('+')));
+}
+
+/** Expect the recorded `verb` call to carry the credential and never the temporary index. */
+function expectAuthed(ctx, calls, verb) {
+  const call = calls.find((each) => each.args[0] === verb);
+  ctx.expect(call.options.env.GIT_CONFIG_VALUE_0, `the ${verb} carries the credential`).toBe(`AUTHORIZATION: basic ${Buffer.from(`x-access-token:${TOKEN}`).toString('base64')}`);
+  ctx.expect('GIT_INDEX_FILE' in call.options.env, `the ${verb} carries the temporary index`).toBe(false);
+}
+
+/** Push the fixture brand to the bare mirror's `ref`, recording every exec call. */
+function pushTo(brandRoot, bare, ref, calls = []) {
+  return pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref, token: TOKEN, execFn: localRemote(bare, calls) });
 }
 
 /** The paths a ref's tree carries, sorted. */
@@ -271,6 +301,7 @@ module.exports = defineCases({
         }
         const push = calls.find((call) => call.args[0] === 'push');
         ctx.expect(push.options.env.GIT_CONFIG_VALUE_0, 'the basic form git over https accepts').toBe(`AUTHORIZATION: basic ${Buffer.from(`x-access-token:${TOKEN}`).toString('base64')}`);
+        expectAuthed(ctx, calls, 'ls-remote');
       },
     },
 
@@ -301,13 +332,14 @@ module.exports = defineCases({
     {
       name: 'a failed snapshot push is rethrown with the token scrubbed out of git\'s message',
       run: (ctx) => {
-        const { brandRoot } = buildFixture();
+        const { brandRoot, bare } = buildFixture();
+        const real = localRemote(bare, []);
 
         const failing = (file, args, options) => {
           if (args[0] === 'push') {
             throw new Error(`Command failed: git push (AUTHORIZATION: basic ${gitAuthValue(TOKEN)}) token=${TOKEN}`);
           }
-          return execFileSync(file, args, { encoding: 'utf8', ...options });
+          return real(file, args, options);
         };
 
         let thrown = null;
@@ -324,22 +356,171 @@ module.exports = defineCases({
     },
 
     {
-      name: 'a second snapshot force-updates the mirror',
+      name: 'a second snapshot parents on the first and fast-forwards the mirror, with no force push',
       run: (ctx) => {
         const { brandRoot, bare } = buildFixture();
         const calls = [];
-        const push = () => pushSnapshot({
-          brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: localRemote(bare, calls),
-        });
 
-        const first = push();
+        const first = pushTo(brandRoot, bare, 'main', calls);
         jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// edited after the first snapshot\n');
-        const second = push();
+        const second = pushTo(brandRoot, bare, 'main', calls);
 
         ctx.expect(second, 'a new tree is a new commit').not.toBe(first);
-        ctx.expect(run('git', ['rev-parse', 'main'], bare).trim(), 'the mirror moved to it').toBe(second);
-        // Siblings, never a fast-forward: only a force push can land the second one
-        ctx.expect(run('git', ['rev-list', '--count', 'main'], bare).trim()).toBe('1');
+        ctx.expect(revOf(bare, 'main'), 'the mirror moved to it').toBe(second);
+        ctx.expect(revOf(bare, 'main^'), 'its parent is the first snapshot').toBe(first);
+        ctx.expect(countOf(bare, 'main')).toBe('2');
+        ctx.expect(forcedPush(calls), 'a push argv carried a force').toBe(false);
+        // Only a chained snapshot fetches: the first found no tip to fetch
+        expectAuthed(ctx, calls, 'fetch');
+      },
+    },
+
+    {
+      name: 'a fresh clone holding none of the earlier snapshots still parents on the remote tip',
+      run: (ctx) => {
+        const { base, repo, brandRoot, bare } = buildFixture();
+        pushTo(brandRoot, bare, 'omega-deploy');
+        jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// edited after the first snapshot\n');
+        const tip = pushTo(brandRoot, bare, 'omega-deploy');
+
+        // --no-local clones over the transport, so only reachable objects arrive
+        const clone = path.join(base, 'clone');
+        run('git', ['clone', '-q', '--no-local', repo, clone], base);
+        run('git', ['config', 'user.email', 'snapshot@example.com'], clone);
+        run('git', ['config', 'user.name', 'Snapshot Test'], clone);
+        const cloneBrand = path.join(clone, 'brands', 'playground');
+        let held = true;
+        try {
+          execFileSync('git', ['cat-file', '-e', tip], { cwd: clone, stdio: 'ignore' });
+        } catch {
+          held = false;
+        }
+        ctx.expect(held, 'the clone already held the remote tip').toBe(false);
+
+        const third = pushTo(cloneBrand, bare, 'omega-deploy');
+
+        ctx.expect(revOf(bare, 'omega-deploy'), 'the mirror moved to it').toBe(third);
+        ctx.expect(revOf(bare, 'omega-deploy^'), 'its parent is the remote tip').toBe(tip);
+        ctx.expect(countOf(bare, 'omega-deploy')).toBe('3');
+        ctx.expect(treeOf(bare, 'omega-deploy'), 'the clone\'s brand folder is the root').toEqual(['.gitignore', 'package.json', 'src/app.js']);
+      },
+    },
+
+    {
+      name: 'a tip left by an older parentless snapshot becomes the next snapshot\'s parent',
+      run: (ctx) => {
+        const { base, brandRoot, bare } = buildFixture();
+
+        // The old lane's commit, built inside the mirror by hand, so the
+        // developer's repo has never held it.
+        const env = { ...process.env, GIT_INDEX_FILE: path.join(base, 'old-snapshot.index') };
+        const inBare = (args) => execFileSync('git', ['--git-dir', bare, '--work-tree', brandRoot, ...args], { cwd: brandRoot, encoding: 'utf8', env }).trim();
+        run('git', ['config', 'user.email', 'snapshot@example.com'], bare);
+        run('git', ['config', 'user.name', 'Snapshot Test'], bare);
+        inBare(['add', '-A']);
+        const old = inBare(['commit-tree', inBare(['write-tree']), '-m', 'chore(deploy): snapshot']);
+        inBare(['update-ref', 'refs/heads/omega-deploy', old]);
+
+        const calls = [];
+        const next = pushTo(brandRoot, bare, 'omega-deploy', calls);
+
+        ctx.expect(revOf(bare, 'omega-deploy'), 'the mirror moved to it').toBe(next);
+        ctx.expect(revOf(bare, 'omega-deploy^'), 'its parent is the old parentless tip').toBe(old);
+        ctx.expect(countOf(bare, 'omega-deploy')).toBe('2');
+        ctx.expect(forcedPush(calls), 'a push argv carried a force').toBe(false);
+      },
+    },
+
+    {
+      name: 'an unchanged brand still lands a new snapshot and returns its sha',
+      run: (ctx) => {
+        const { brandRoot, bare } = buildFixture();
+
+        const first = pushTo(brandRoot, bare, 'main');
+        const second = pushTo(brandRoot, bare, 'main');
+
+        ctx.expect(second, 'the same tree is still a new commit').not.toBe(first);
+        ctx.expect(revOf(bare, 'main'), 'the returned sha is the one that landed').toBe(second);
+        ctx.expect(revOf(bare, 'main^'), 'chained on the first').toBe(first);
+      },
+    },
+
+    {
+      name: 'a ref moved between the tip read and the push fails naming the mirror, and the foreign commit stands',
+      run: (ctx) => {
+        const { brandRoot, bare } = buildFixture();
+        const first = pushTo(brandRoot, bare, 'main');
+        jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// edited after the first snapshot\n');
+
+        // A concurrent deploy lands its own commit on the ref right before this push
+        run('git', ['config', 'user.email', 'other@example.com'], bare);
+        run('git', ['config', 'user.name', 'Other Deploy'], bare);
+        const real = localRemote(bare, []);
+        let foreign = null;
+        const racing = (file, args, options) => {
+          if (args[0] === 'push') {
+            foreign = run('git', ['commit-tree', `${first}^{tree}`, '-p', first, '-m', 'foreign'], bare).trim();
+            run('git', ['update-ref', 'refs/heads/main', foreign], bare);
+          }
+          return real(file, args, options);
+        };
+
+        let thrown = null;
+        try {
+          pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: racing });
+        } catch (error) {
+          thrown = error;
+        }
+
+        ctx.expect(thrown && thrown.message, 'the push failed naming the mirror').toMatch(/Pushing the snapshot to acme\/acme-omega failed/);
+        ctx.expect(thrown.message.includes(TOKEN), 'the raw token never reaches the message').toBe(false);
+        ctx.expect(thrown.message.includes(gitAuthValue(TOKEN)), 'and neither does its base64').toBe(false);
+        ctx.expect(revOf(bare, 'main'), 'the concurrent deploy\'s commit was not overwritten').toBe(foreign);
+      },
+    },
+
+    {
+      name: 'chained pushes leave the developer\'s tree, index, branches and refs exactly as they were',
+      run: (ctx) => {
+        const { repo, brandRoot, bare } = buildFixture();
+        const state = () => ({
+          status: run('git', ['status', '--porcelain'], repo),
+          index: run('git', ['ls-files', '--stage'], repo),
+          branches: run('git', ['branch', '--list'], repo),
+          refs: run('git', ['for-each-ref'], repo),
+        });
+        const before = state();
+
+        pushTo(brandRoot, bare, 'omega-deploy');
+        pushTo(brandRoot, bare, 'omega-deploy');
+
+        ctx.expect(state()).toEqual(before);
+      },
+    },
+
+    {
+      name: 'a tip read that fails for any reason but a missing ref is rethrown naming the mirror, token scrubbed',
+      run: (ctx) => {
+        const { brandRoot, bare } = buildFixture();
+        const real = localRemote(bare, []);
+
+        const failing = (file, args, options) => {
+          if (args[0] === 'ls-remote') {
+            throw new Error(`Command failed: git ls-remote (AUTHORIZATION: basic ${gitAuthValue(TOKEN)}) token=${TOKEN}`);
+          }
+          return real(file, args, options);
+        };
+
+        let thrown = null;
+        try {
+          pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: failing });
+        } catch (error) {
+          thrown = error;
+        }
+
+        ctx.expect(thrown && thrown.message, 'the failure names the mirror and ref it was reading').toMatch(/Reading acme\/acme-omega#main failed/);
+        ctx.expect(thrown.message.includes(TOKEN), 'the raw token never reaches the message').toBe(false);
+        ctx.expect(thrown.message.includes(gitAuthValue(TOKEN)), 'and neither does its base64').toBe(false);
       },
     },
 

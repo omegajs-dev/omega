@@ -27,8 +27,11 @@ is not a warning.
 | `cloud.config.apiKey` | Read for password verification and backend calls (the cloud service lands it). |
 | `cloud.shared: true` | Skip — the owning brand manages accounts. |
 
-The service also skips with no `backend` target, and when
-`.omega/secrets/service-account.json` is missing (run the cloud service first).
+The service also skips with no `backend` target, when
+`.omega/secrets/service-account.json` is missing (run the cloud service first), with no
+`brand.url`, and with a `brand.url` on a default Pages host (`*.github.io`, the address an unset
+`brand.url` resolves to, [config.md](../shared/config.md)), whose reason is
+`brand.url is the hosting provider's default address (<host>): no domain to manage`.
 
 **Passwords** resolve per account through the owner channels, lazily — nothing happens until
 an account actually needs one: `OMEGA_ACCOUNT_PASSWORD__*` env var →

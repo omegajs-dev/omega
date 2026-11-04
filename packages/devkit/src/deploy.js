@@ -285,7 +285,7 @@ function checkLaneLockfile(lane, steps) {
  *    `gh-pages` default moves back to `main` here, before step 2 writes a
  *    workflow file to a branch the next web deploy force-pushes over;
  * 2. the BEHIND check, for a brand that is its own repo's toplevel: a checkout
- *    behind the remote default branch refuses, because the force-push below
+ *    behind the remote default branch refuses, because the snapshot push below
  *    would overwrite the deploy branch with a tree that lacks what the admin
  *    publish committed there;
  * 3. the composed WORKFLOW FILES to the default branch, and only when they
@@ -294,7 +294,8 @@ function checkLaneLockfile(lane, steps) {
  *    is never committed, and what the developer has not committed stays theirs;
  * 4. the linked packages PACKED (tarballs are files in the tree, so they ride
  *    the snapshot like anything else untracked and not ignored), the brand
- *    folder force-pushed to the deploy branch, and the tree put back.
+ *    folder pushed to the deploy branch as this run's snapshot, and the tree
+ *    put back.
  *
  * A brand outside git (`repo: false`) delivers nothing at all: there is no
  * index to snapshot from, so the dispatch runs on whatever the branch holds.
@@ -403,7 +404,7 @@ async function deliverLane(options) {
   }
 
   // Then the ref itself (#902): GitHub resolves the branch on its side, so a
-  // dispatch sent in the same second as the force-push can still resolve to the
+  // dispatch sent in the same second as the push can still resolve to the
   // PREVIOUS commit and build a tree this deploy never pushed. Both callers get
   // the wait from here, so every target of a run dispatches a settled ref.
   await steps.waitRef({
@@ -651,11 +652,11 @@ function resolveDeployLane(options = {}) {
  * Refuse a deploy from a checkout that is BEHIND the repo's default branch
  * ([#915](https://github.com/Omega-JS-Stack/omega/issues/915)).
  *
- * The delivery force-pushes this folder over `omega-deploy`. A checkout missing
- * commits the default branch already carries would therefore publish a site
- * without them, and the admin publish is exactly that case: it commits a post
- * to the default branch and to the deploy branch, and a stale laptop would
- * force it back off both. So the deploy stops here, with the fix in the line.
+ * The delivery pushes this folder over `omega-deploy` as this run's snapshot.
+ * A checkout missing commits the default branch already carries would
+ * therefore publish a site without them, and the admin publish is exactly
+ * that case: it commits a post to the default branch and to the deploy branch,
+ * and a stale laptop would push it back off both. So the deploy stops here, with the fix in the line.
  *
  * Plain git via argument arrays, like every other git call in this lane. No
  * `origin` remote, or a remote that has no such branch yet, is nothing to be
@@ -679,11 +680,11 @@ function assertNotBehind(options) {
     // ONLY the two answers that really mean there is nothing to compare
     // against. A fetch that failed on the network, the token or the remote's
     // permissions says nothing about this checkout, and proceeding on it would
-    // force-push a stale folder over everything the branch carries.
+    // push a stale folder over everything the branch carries.
     const said = `${e.stderr || ''}${e.message || ''}`;
 
     if (!/couldn't find remote ref|does not appear to be a git repository|No such remote/i.test(said)) {
-      throw new Error(`Could not fetch origin/${branch} in ${cwd}, so there is no telling whether this checkout is behind it, and the deploy force-pushes the checkout over ${SNAPSHOT_REF}. git said: ${said.trim() || 'nothing at all'}`);
+      throw new Error(`Could not fetch origin/${branch} in ${cwd}, so there is no telling whether this checkout is behind it, and the deploy pushes this checkout as its snapshot over ${SNAPSHOT_REF}. git said: ${said.trim() || 'nothing at all'}`);
     }
 
     if (logger) logger.log(`No origin/${branch} to compare against yet: nothing to be behind.`);
@@ -694,7 +695,7 @@ function assertNotBehind(options) {
     // Exits 0 exactly when the remote branch is already in this history.
     git(['merge-base', '--is-ancestor', `origin/${branch}`, 'HEAD']);
   } catch (e) {
-    throw new Error(`This checkout is behind origin/${branch}, and the deploy force-pushes it over ${SNAPSHOT_REF}: anything ${branch} carries that you do not (a post the admin published, a sibling's commit) would be deployed away. Run \`git pull\` in ${cwd}, then deploy again.`);
+    throw new Error(`This checkout is behind origin/${branch}, and the deploy pushes it as its snapshot over ${SNAPSHOT_REF}: anything ${branch} carries that you do not (a post the admin published, a sibling's commit) would be deployed away. Run \`git pull\` in ${cwd}, then deploy again.`);
   }
 }
 

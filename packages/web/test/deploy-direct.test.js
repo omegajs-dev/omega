@@ -94,62 +94,32 @@ module.exports = defineCases({
       },
     },
 
-    // #366: absolute URLs (canonical, og:url, hreflang alternates, sitemap) build
-    // from brand.url, so a project site that leaves it unset emits wrong or empty
-    // canonicals on every page. Nothing is derived at build time: the deploy names
-    // the exact value to set.
+    // The loader fills an unset brand.url with the Pages address before any plan
+    // runs, so a config that reaches the plan without it derives that same address.
     {
-      name: 'direct plan: a project site with no brand.url WARNS, printing the Pages URL to set (#366)',
+      name: 'direct plan: no brand.url plans the Pages project site from the repo',
       run: (ctx) => {
-        const warnings = [];
-        const originalWarn = console.warn;
-        console.warn = (...parts) => warnings.push(parts.join(' '));
+        const plan = buildDirectPlan({ repo: { owner: 'Dreamr-Design' }, brand: { id: 'dreamr' }, targets: TARGETS }, WEB);
 
-        let plan;
-        let quiet;
-        try {
-          plan = buildDirectPlan({ repo: { owner: 'Omega-JS-Stack' }, brand: { id: 'omega' }, targets: TARGETS }, WEB);
-          quiet = warnings.length;
-          buildDirectPlan({ repo: { owner: 'Org' }, brand: { id: 'b', url: 'https://www.example.com' }, targets: TARGETS }, WEB);
-        } finally {
-          console.warn = originalWarn;
-        }
-
-        const warning = warnings.find((line) => line.includes('brand.url'));
-        ctx.expect(warning, `the project-site plan warns about the unset brand.url: ${warnings.join(' | ')}`).toBeTruthy();
-        // The no-trailing-slash form: what the docs write, and what composes with
-        // `{{ site.url }}{{ page.url }}` without doubling the slash.
-        ctx.expect(warning.includes('"https://omega-js-stack.github.io/omega-web"'), `the warning names the exact value to set: ${warning}`).toBeTruthy();
-        ctx.expect(plan.url, 'the plan ADDRESS keeps its trailing slash: it is a directory, not a value to paste').toBe('https://omega-js-stack.github.io/omega-web/');
-        ctx.expect(warnings.length, 'a custom-domain plan has nothing to warn about').toBe(quiet);
+        ctx.expect(plan.url).toBe('https://dreamr-design.github.io/dreamr-web/');
+        ctx.expect(plan.pathPrefix).toBe('/dreamr-web/');
       },
     },
 
-    // #366: the advice has to be SAFE to follow: setting brand.url to the Pages
-    // address must leave the plan exactly as it was, or the warning would break the
-    // deploy it advises.
+    // A hand-set Pages address is the value the loader would derive, so it must
+    // plan the very same project site: no CNAME, the project path, the same address.
     {
-      name: 'direct plan: taking the advice (brand.url = the Pages address) keeps the project-site plan intact (#366)',
+      name: 'direct plan: a hand-set brand.url equal to the Pages address plans the same project site the loader would derive',
       run: (ctx) => {
-        const warnings = [];
-        const originalWarn = console.warn;
-        console.warn = (...parts) => warnings.push(parts.join(' '));
-
-        let plan;
-        try {
-          plan = buildDirectPlan({
-            repo: { owner: 'Omega-JS-Stack' },
-            brand: { id: 'omega', url: 'https://omega-js-stack.github.io/omega-web' },
-            targets: TARGETS,
-          }, WEB);
-        } finally {
-          console.warn = originalWarn;
-        }
+        const plan = buildDirectPlan({
+          repo: { owner: 'Omega-JS-Stack' },
+          brand: { id: 'omega', url: 'https://omega-js-stack.github.io/omega-web' },
+          targets: TARGETS,
+        }, WEB);
 
         ctx.expect(plan.cname, 'still a project site: no CNAME claiming <owner>.github.io').toBe('');
         ctx.expect(plan.pathPrefix, 'still mounted under the project path: assets keep resolving').toBe('/omega-web/');
         ctx.expect(plan.url, 'the same address it published to before').toBe('https://omega-js-stack.github.io/omega-web/');
-        ctx.expect(warnings, 'and the warning is spent: brand.url is set now').toEqual([]);
       },
     },
 

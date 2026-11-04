@@ -72,6 +72,7 @@ const { validateConfig } = require('./validate.js');
 const { TARGETS } = require('./schema.js');
 const { schemaDefaults } = require('./defaults.js');
 const { targetNameFromDir, targetUrl } = require('./targets.js');
+const { pagesAddress } = require('./repo.js');
 
 const FILE_NAME = 'omega.json5';
 const SEO_FILE_NAME = 'seo.json5';
@@ -470,6 +471,28 @@ function companyFacts(hostRoot, config) {
 }
 
 /**
+ * Fill an unset `brand.url` with the `web` target's default Pages address:
+ * a brand with no domain of its own writes nothing (or nulls a declared one
+ * out) and every reader still gets a real url. Mutates the merged config.
+ * @param {object} config - The merged config (its `brand` and `repo` blocks).
+ * @param {object} targets - The merged `targets` map, every entry whole.
+ * @returns {boolean} Whether `brand.url` was filled.
+ */
+function fillPagesBrandUrl(config, targets) {
+  if (config.brand && config.brand.url) return false;
+
+  const entry = isPlainObject(targets) ? targets.web : null;
+  if (!isPlainObject(entry) || entry.type !== 'web') return false;
+
+  const address = pagesAddress({ ...config, targets }, 'web');
+  if (!address) return false;
+
+  // pagesAddress resolved, so brand.id did and config.brand exists
+  config.brand.url = address;
+  return true;
+}
+
+/**
  * Load + resolve a project's omega.json5.
  * @param {string} projectDir - The project root (target root in a brand monorepo).
  * @param {string} [target] - The framework TYPE this project runs ('web',
@@ -590,6 +613,8 @@ function loadConfig(projectDir, target, options) {
     config.targets = targets;
   }
 
+  const filledBrandUrl = fillPagesBrandUrl(config, targets);
+
   // The target's own public URL (#588): an entry's explicit `url` already
   // merged to the top level above, and a bare `community: { type: 'web' }`
   // derives https://community.<brand host> through the ONE resolver, landing in
@@ -607,7 +632,9 @@ function loadConfig(projectDir, target, options) {
     // A layer's environment overlay IS that layer's statement of brand.url
     // (#856), so a development brand.url is a brand-layer value like any
     // other: the targets under it keep deriving their own names off it.
-    const brandLayerUrl = (brandOverlay && brandOverlay.brand && brandOverlay.brand.url)
+    // A filled Pages address IS the brand layer's url: no layer stated one.
+    const brandLayerUrl = (filledBrandUrl ? config.brand.url : null)
+      || (brandOverlay && brandOverlay.brand && brandOverlay.brand.url)
       || (brand && brand.brand && brand.brand.url)
       || (companyOverlay && companyOverlay.brand && companyOverlay.brand.url)
       || (inherited && inherited.brand && inherited.brand.url)
@@ -760,6 +787,8 @@ function composeTargetConfig(projectDir, target, options) {
       return [entryName, isPlainObject(entry) && entry.type ? { type: entry.type } : {}];
     }));
   }
+
+  fillPagesBrandUrl(config, mergedTargets);
 
   // The resolved company rides the upload like every other layer above it: the
   // deployed runtime has no registry and no company tree, so the facts have to

@@ -20,10 +20,24 @@ const frameworkPackage = require('../../package.json');
 const ALLOCATED_NAMES = ['auth', 'functions', 'firestore', 'database', 'hosting', 'storage', 'pubsub', 'ui'];
 const DECLARED_NAMES = [...ALLOCATED_NAMES, 'hub', 'logging', 'eventarc', 'tasks'];
 
-// Each project takes its own 70-port window inside 49100-49499, so no case boots onto a port the last one used.
+// Each project takes the first free 70-port window inside 49100-49499 from a random start, so no case boots
+// onto a port the last one used, or one a leftover on this machine still holds.
 let nextWindow = Math.floor(Math.random() * 5);
 
 const REALLOCATING = 'was taken while the stack came up; reallocating';
+
+/** The declared ports of the first window, from the random start, that nothing on this machine holds. */
+async function freeWindowPorts() {
+  for (let tried = 0; tried < 5; tried++) {
+    const base = 49100 + (nextWindow++ % 5) * 70;
+    const ports = Object.fromEntries(DECLARED_NAMES.map((name, index) => [name, base + index * 5]));
+    ports.websocket = base + 60;
+
+    if ((await heldOf(Object.values(ports))).length === 0) return ports;
+  }
+
+  throw new Error('every 70-port window in 49100-49499 has a held port, so no case has a place to boot');
+}
 
 /**
  * A throwaway backend target the real boot can stage and start: its peers declared (so the scaffold installs
@@ -31,14 +45,12 @@ const REALLOCATING = 'was taken while the stack came up; reallocating';
  * @param {object} [options]
  * @param {string} [options.databaseRules] - A database rules path for firebase.json to name.
  */
-function makeProject({ databaseRules } = {}) {
+async function makeProject({ databaseRules } = {}) {
   const projectDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'omega-retry-')));
   const projectId = `demo-omega-retry-${path.basename(projectDir).slice(-6).toLowerCase()}`;
-  const base = 49100 + (nextWindow++ % 5) * 70;
-  const ports = Object.fromEntries(DECLARED_NAMES.map((name, index) => [name, base + index * 5]));
+  const ports = await freeWindowPorts();
   const emulators = Object.fromEntries(DECLARED_NAMES.map((name) => [name, { port: ports[name] }]));
 
-  ports.websocket = base + 60;
   emulators.firestore.websocketPort = ports.websocket;
   emulators.ui.enabled = true;
 
@@ -223,7 +235,7 @@ module.exports = defineCases({
     {
       name: 'a-port-taken-mid-bind-is-bumped-and-the-boot-retried-once',
       async run({ expect, waitFor }) {
-        const project = makeProject();
+        const project = await makeProject();
         const auth = holdPublishedAuth(project.projectDir, { every: false });
 
         try {
@@ -266,7 +278,7 @@ module.exports = defineCases({
       async run({ expect, waitFor }) {
         // Twice on the same wall is not a race any more: the report names the port, and the holder lsof finds
         // for it (this test process), and never signals it.
-        const project = makeProject();
+        const project = await makeProject();
         const auth = holdPublishedAuth(project.projectDir, { every: true });
         let failure = null;
 
@@ -296,7 +308,7 @@ module.exports = defineCases({
       async run({ expect, waitFor }) {
         // A rules file that does not exist: firebase-tools refuses the database emulator and exits before ready,
         // naming no port. The retry is for the race this run can do something about, so this fails once.
-        const project = makeProject({ databaseRules: 'missing/database.rules.json' });
+        const project = await makeProject({ databaseRules: 'missing/database.rules.json' });
 
         try {
           await withBumpedBoot(project, async ({ command, lines }) => {
@@ -320,7 +332,7 @@ module.exports = defineCases({
       async run({ expect }) {
         // The real close handler of a real stack, read after a newer attempt took the token: a late close from a
         // dead first attempt must not unpublish the stack that is actually up, nor delete the config it runs on.
-        const project = makeProject();
+        const project = await makeProject();
         const resolvedConfig = path.join(project.projectDir, 'firebase.resolved.json');
 
         try {
