@@ -1,7 +1,7 @@
 # Publishing — the runbook
 
 > The publish-proving checkpoint's script, run for real on 2026-09-09: the seven
-> publishables are on the registry ([#25](https://github.com/Omega-JS-Stack/omega/issues/25)) at 0.56.0, the
+> publishables are on the registry ([#25](https://github.com/Omega-JS-Stack/omega/issues/25)) at 0.57.0, the
 > monorepo's own number (0.1.0 went out first that night and is deprecated: the family
 > carries ONE version, the root package.json's, by ruling 2026-09-10),
 > each with `publishConfig.access: public`, and published is the new normal. The unlatch
@@ -25,7 +25,7 @@ the launcher resolves the router's bin as `@omega.js/mcp-router/cli`.
 
 Registry-real internal ranges (everything else is workspace `*`): `@omega.js/client`
 in backend/web/desktop/extension; `@omega.js/backend` and `@omega.js/mcp-router` in
-manager: the EXACT family version (0.56.0 today), not carets, because the family is
+manager: the EXACT family version (0.57.0 today), not carets, because the family is
 lockstep (below).
 
 **The Node floor follows where the code runs** ([#1126](https://github.com/Omega-JS-Stack/omega/issues/1126)): code that runs inside Cloud Functions (`@omega.js/backend`, `@omega.js/client` and the internals vendored into the backend: devkit, config, account, analytics, monitoring) declares the Functions runtime's floor, `engines.node` `>=22`, equal to the backend's `omega.functionsRuntime`; every other package (web, desktop, extension, manager, mcp-router, template-kit) declares the toolchain floor, `>=24`.

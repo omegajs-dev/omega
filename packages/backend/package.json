@@ -1,6 +1,6 @@
 {
   "name": "@omega.js/backend",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "OMEGA backend framework — build, test, and deploy Firebase Cloud Functions backends",
   "private": false,
   "publishConfig": {
@@ -104,7 +104,7 @@
     "@inquirer/prompts": "^8.7.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/rest": "^22.0.1",
-    "@omega.js/client": "0.56.0",
+    "@omega.js/client": "0.57.0",
     "@resvg/resvg-js": "^2.6.2",
     "@sendgrid/mail": "^8.1.6",
     "@sentry/node": "^10.54.0",

@@ -97,7 +97,7 @@ Single config format everywhere: shared sections (brand, cloud, analytics, payme
 - [testing.md](shared/testing.md): the tiered verification pipeline (unit → corpus → e2e → verts → journey)
 - [deploys.md](shared/deploys.md): the deliberate `omega deploy` verb on every target (no push triggers, ever). **A brand deploy never needs a publish** (Ian 2026-09-12): the snapshot lane packs every `file:`-linked `@omega.js/*` package into tarballs that ride the pushed mirror, so the runner installs the framework code as it sits in this working tree
 - [updates.md](shared/updates.md): the `omega update` dependency-update contract
-- [publishing.md](shared/publishing.md): the publish runbook and the lockstep release (run: the seven publishables are on npm at 0.56.0)
+- [publishing.md](shared/publishing.md): the publish runbook and the lockstep release (run: the seven publishables are on npm at 0.57.0)
 - [icons.md](shared/icons.md): the one Font Awesome mechanism on every surface
 - [logging.md](shared/logging.md): the one log-tag contract (`[@omega.js/<package>:<module>]`) and its guard
 - [theming.md](shared/theming.md): the `--omega-*` design-system contract, shell chrome, motion

@@ -2,7 +2,7 @@
   "name": "omega",
   "displayName": "OMEGA",
   "description": "OMEGA framework knowledge for Claude — skills for the @omega.js packages, shipped beside the code they describe.",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "author": {
     "name": "ITW Creative Works",
     "url": "https://github.com/ITW-Creative-Works"
