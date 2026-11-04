@@ -228,6 +228,21 @@ module.exports = defineCases({
     },
 
     {
+      name: 'domain: a default Pages brand.url is no domain, so setup skips with the one reason',
+      run: async (ctx) => {
+        const cloudflare = fakeCloudflare(null);
+        const namecheap = fakeNamecheap();
+
+        const result = await runService(brandConfig({ url: 'https://dreamr-design.github.io/dreamr-web' }), { cloudflare, namecheap });
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(cloudflare.lookups).toEqual([]);
+        ctx.expect(namecheap.calls).toEqual([]);
+      },
+    },
+
+    {
       name: 'domain: skips without CLOUDFLARE_TOKEN (zone nameservers are unreadable)',
       run: async (ctx) => {
         const result = await runService(brandConfig(), { namecheap: fakeNamecheap() });

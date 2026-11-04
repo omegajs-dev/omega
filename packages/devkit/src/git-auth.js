@@ -18,7 +18,8 @@
  *     ignore a bearer header, so the push falls back to a username prompt
  *     (proven on the first playground push, [#872](https://github.com/Omega-JS-Stack/omega/issues/872));
  *   - a failure is rethrown SCRUBBED, in both the raw form and the base64 the
- *     header carries, so no lane can print what it was careful not to pass.
+ *     header carries, so no lane can print what it was careful not to pass:
+ *     `scrubbedFailure` is that rethrow, and `scrubToken` the scrub inside it.
  */
 
 // The one config entry either lane sets: git applies `http.<url>.extraheader`
@@ -70,4 +71,20 @@ function scrubToken(message, token) {
     .split(gitAuthValue(token)).join('***');
 }
 
-module.exports = { gitAuthEnv, gitAuthValue, scrubToken, EXTRAHEADER_KEY };
+/**
+ * A failed git call rethrown under `what`, its status kept: git's own message
+ * quotes what it was given, and a caller's message is never trusted with the
+ * credential the lane was careful not to pass.
+ *
+ * @param {string} what - The failed step, naming the repo (`Pushing ... to <owner>/<repo>`).
+ * @param {Error} error - What the git call threw.
+ * @param {string} [token] - The token to scrub.
+ * @returns {Error} `<what> failed: <scrubbed message>`, to throw.
+ */
+function scrubbedFailure(what, error, token) {
+  const failure = new Error(`${what} failed: ${scrubToken(error && error.message, token)}`);
+  failure.status = error && error.status;
+  return failure;
+}
+
+module.exports = { gitAuthEnv, gitAuthValue, scrubToken, scrubbedFailure, EXTRAHEADER_KEY };

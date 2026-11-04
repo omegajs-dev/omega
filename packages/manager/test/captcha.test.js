@@ -152,6 +152,19 @@ module.exports = defineCases({
       },
     },
 
+    {
+      name: 'captcha: a default Pages brand.url is no domain, so setup skips with the one reason before any client call',
+      run: async (ctx) => {
+        const recaptcha = fakeRecaptcha();
+
+        const result = await runService(brandConfig({ url: 'https://dreamr-design.github.io/dreamr-web' }), { recaptcha });
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(recaptcha.calls).toEqual([]);
+      },
+    },
+
     // ─── Half-keyed brand (#507) ─────────────────────────────────────────────────
 
     // A setup-time throw is how a service fails the walk: manage.js's runService

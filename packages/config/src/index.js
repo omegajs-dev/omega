@@ -46,7 +46,7 @@ const { WINDOWS_SIGNING_STRATEGIES, DEFAULT_WINDOWS_SIGNING_STRATEGY, WINDOWS_CL
 const { resolveWinbackOffer, WINBACK_OFFER_DEFAULTS, WINBACK_DURATIONS } = require('./winback.js');
 const { PAYMENT_PROVIDERS, paymentProvider } = require('./payment-providers.js');
 const { SUBSCRIPTION_CADENCES } = require('./payment-cadences.js');
-const { REPO_PROVIDERS, HOSTING_PROVIDERS, repoBlock, sourceRepo, repoDrift, repoMissing, releasesRepo, websiteRepo, hostingProvider, pagesHost, brandVisibility } = require('./repo.js');
+const { REPO_PROVIDERS, HOSTING_PROVIDERS, repoBlock, sourceRepo, repoDrift, repoMissing, releasesRepo, websiteRepo, hostingProvider, pagesHost, pagesAddress, isDefaultPagesHost, defaultAddressReason, brandVisibility } = require('./repo.js');
 const { isDemoProject } = require('./demo.js');
 const { deriveBundleIdPrefix, composeBundleId } = require('./bundle-id.js');
 const { DEV_FACT_CHANNEL, devFactMissing } = require('./dev-facts.js');
@@ -267,6 +267,12 @@ module.exports = {
   // The Pages custom domain of a web target: the manage walk sets it on the
   // repo, the deploy writes it into the CNAME, from this ONE derivation
   pagesHost,
+  // A GitHub-hosted web target's default Pages address (an unset brand.url
+  // resolves to it), the test for a default Pages host, and the ONE reason a
+  // domain-managing reader skips one with
+  pagesAddress,
+  isDefaultPagesHost,
+  defaultAddressReason,
   // Visibility has ONE statement, the brand root's package.json `private`
   brandVisibility,
 

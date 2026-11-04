@@ -194,6 +194,23 @@ module.exports = defineCases({
     },
 
     {
+      name: 'cloud: a default Pages brand.url is no domain, so setup skips with the one reason before any client call',
+      run: async (ctx) => {
+        const config = brandConfig();
+        config.brand.url = 'https://dreamr-design.github.io/dreamr-web';
+        const firebase = fakeFirebase();
+        const cloudflare = fakeCf();
+
+        const result = await runService(config, { firebase, cloudflare });
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(firebase.calls).toEqual([]);
+        ctx.expect(cloudflare.calls).toEqual([]);
+      },
+    },
+
+    {
       name: 'cloud: shared project only runs service-account + sdk-config',
       run: async (ctx) => {
         const config = brandConfig({

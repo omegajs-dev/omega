@@ -136,8 +136,9 @@ function brandHost(url) {
  * override, then the derivation. A target NAMED for its type is the brand
  * itself (`brand.url`); any other name is that name AS A SUBDOMAIN of the
  * brand host (#588), which is what makes `community: { type: 'web' }` a
- * complete declaration. Nothing is half-derived: no usable brand.url means
- * null, never `https://community.`.
+ * complete declaration. On a default Pages host a sibling WEB target derives
+ * its own Pages address (`pagesAddress`) instead. Nothing is half-derived: no
+ * usable brand.url means null, never `https://community.`.
  * @param {object} config - The (resolved) config carrying brand.url and targets.
  * @param {string} name - The target name.
  * @returns {string|null} The target's URL, or null when none is known.
@@ -153,6 +154,15 @@ function targetUrl(config, name) {
   if (entry && name === entry.type) return brandUrl;
 
   const host = brandHost(brandUrl);
+
+  // A sibling web target of a brand on a default Pages host has its own Pages
+  // address: `<name>.<owner>.github.io` is no site. Local require: repo.js
+  // requires this module.
+  if (entry && entry.type === 'web') {
+    const { isDefaultPagesHost, pagesAddress } = require('./repo.js');
+    if (isDefaultPagesHost(host)) return pagesAddress(config, name);
+  }
+
   return host ? `https://${name}.${host}` : null;
 }
 

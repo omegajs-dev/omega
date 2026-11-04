@@ -188,6 +188,19 @@ module.exports = defineCases({
       },
     },
 
+    {
+      name: 'targetUrl: a second web target on a default Pages host is its own Pages address, never a github.io subdomain',
+      run: (ctx) => {
+        const config = {
+          brand: { id: 'dreamr', name: 'Dreamr', url: 'https://dreamr-design.github.io/dreamr-web' },
+          repo: { owner: 'dreamr-design' },
+          targets: { web: { type: 'web' }, admin: { type: 'web' } },
+        };
+
+        ctx.expect(targetUrl(config, 'admin')).toBe('https://dreamr-design.github.io/dreamr-admin');
+      },
+    },
+
     // ─── targetPortOffset ───
 
     {

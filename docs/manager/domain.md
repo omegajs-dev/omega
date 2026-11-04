@@ -44,7 +44,11 @@ forwards its mail (`routing`). The config schema declares one row per entry
 equal, so a new provider is a registry entry plus its schema row; any other key fails the
 load naming `npx omega migrate`.
 
-`domain.enabled: false` skips the service.
+`domain.enabled: false` skips the service, and so does a brand with no `brand.url`. A
+`brand.url` on a default Pages host (`*.github.io`, the address an unset `brand.url` resolves
+to, [config.md](../shared/config.md)) skips it with `brand.url is the hosting provider's default
+address (<host>): no domain to manage`: there is no registrar entry to point. Both skip
+before the registrar ask.
 
 When no registrar is picked, the manage walk asks for one: a choice from the registry's
 registrars lands as the presence pick (`domain.providers: { namecheap: {} }`) and the service

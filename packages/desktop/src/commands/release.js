@@ -6,7 +6,7 @@
 //   1. The ONE deploy lane every target takes (`@omega.js/devkit/deploy`'s
 //      deployViaDispatch, #872, #915): the composed workflow files reach the
 //      default branch when they differ there (GitHub registers a workflow from
-//      that branch), the brand folder is force-pushed to `omega-deploy` (packed
+//      that branch), the brand folder is pushed to `omega-deploy` (packed
 //      when it is linked), and the workflow is dispatched on that ref (the
 //      brand's own repo and the composed workflow name: devkit's
 //      dispatchTarget, #847).

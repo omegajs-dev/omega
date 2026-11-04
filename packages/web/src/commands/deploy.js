@@ -7,7 +7,7 @@
  * ([#872](https://github.com/Omega-JS-Stack/omega/issues/872),
  * [#915](https://github.com/Omega-JS-Stack/omega/issues/915)): the executor
  * resolves it from the brand (`@omega.js/devkit/deploy`'s resolveDeployLane),
- * packs any local frameworks and force-pushes a SNAPSHOT of the brand folder to
+ * packs any local frameworks and pushes a SNAPSHOT of the brand folder to
  * `omega-deploy`, the one branch CI ever builds. Then it waits for the workflow
  * and dispatches. A linked tree no longer switches itself to the direct lane;
  * `--direct` is how a human asks for that.
@@ -41,7 +41,7 @@ const logger = new Logger('deploy');
 // sets it on the repo ([#883](https://github.com/Omega-JS-Stack/omega/issues/883)):
 // this lane writes the CNAME file the push publishes, and the two claiming
 // different domains for one site is the bug that pairing them prevents.
-const { pagesHost, repoMissing } = require('@omega.js/config');
+const { pagesHost, pagesAddress, brandHost, repoMissing } = require('@omega.js/config');
 
 /**
  * The URL this deploy PUBLISHES to, split where the host ends: the two facts
@@ -139,9 +139,9 @@ function deployPathPrefix(config, env, cwd) {
   if (pagesHost(config, targetName(cwd || process.cwd()))) return '/';
 
   // A `*.github.io` brand.url names its own mount (#366): the path it carries
-  // IS the base path, so setting brand.url to the Pages address the deploy
-  // advises can never move the build. A bare Pages host names no project and
-  // falls through to the slug.
+  // IS the base path, so the Pages address the loader fills an unset brand.url
+  // with mounts where the website repo does. A bare Pages host names no
+  // project and falls through to the slug.
   const fromBrandUrl = resolvePathPrefix(brandUrlParts(config).path);
   if (fromBrandUrl) return `${fromBrandUrl}/`;
 
@@ -231,19 +231,10 @@ function buildDirectPlan(config, options) {
   const pathPrefix = deployPathPrefix(config, env, cwd);
   // A project site serves under the SAME base path the build mounts every URL
   // under, so the two can never drift apart (#358 derives both). Its host comes
-  // from brand.url when that names the Pages address, so the plan reports the
-  // address the brand declared rather than a second derivation of it (#366).
-  const projectHost = brandUrl.host || `${owner.toLowerCase()}.github.io`;
+  // from brand.url when that names the Pages address, else from the Pages
+  // address the loader fills an unset brand.url with, never a second spelling.
+  const projectHost = brandUrl.host || brandHost(pagesAddress(config, targetName(cwd)));
   const url = cname ? `https://${cname}` : `https://${projectHost}${pathPrefix}`;
-
-  // Absolute URLs (canonical, og:url, hreflang alternates, sitemap) build from
-  // brand.url, so a project site that leaves it unset emits wrong or empty
-  // canonicals on every page (#366). Nothing is derived on its behalf — the
-  // address this plan resolved to IS the value, so the warning names it, in the
-  // form the docs write it: no trailing slash, ready to compose a page URL onto.
-  if (!brandUrl.host) {
-    logger.warn(`brand.url is unset — canonical, og:url and sitemap URLs will not resolve. Set brand.url to "${url.replace(/\/$/, '')}" in the brand's config/omega.json5.`);
-  }
 
   return {
     owner,
@@ -360,7 +351,7 @@ function deployDirect({ dryRun }) {
  */
 function pushDist(plan, options) {
   const { resolveToken } = require('@omega.js/devkit/deploy');
-  const { gitAuthEnv, scrubToken } = require('@omega.js/devkit/git-auth');
+  const { gitAuthEnv, scrubbedFailure } = require('@omega.js/devkit/git-auth');
   const opts = options || {};
   const execFn = opts.execFn || execFileSync;
   const env = opts.env || process.env;
@@ -375,9 +366,7 @@ function pushDist(plan, options) {
   } catch (error) {
     // Belt and braces: the token is in no argv here, but a future caller's
     // error text is never trusted with it.
-    const failure = new Error(`Pushing to ${plan.repo} failed: ${scrubToken(error && error.message, token)}`);
-    failure.status = error && error.status;
-    throw failure;
+    throw scrubbedFailure(`Pushing to ${plan.repo}`, error, token);
   }
 }
 

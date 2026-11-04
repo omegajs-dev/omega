@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- [#1145](../../issues/1145) - An unset `brand.url` on a GitHub Pages web brand resolves to its Pages address in the config loader, a sibling web target derives its own, and every domain-managing service (edge, domain, search, cloud, account, campaigns, captcha, verify, purge) skips a default Pages host before any credential ask.
 - [#822](../../issues/822) - Every build warns, never fails, on a bare `require` of a package the target did not declare, naming both fixes: declare it, or load the framework's copy through its door (`omega.require`, `require('@omega.js/desktop').require`, the extension twin). Backend aligns its two firebase peers on every verb.
 - [#955](../../issues/955) - A brand's own top-level user keys (`users/{uid}.notes`) ride into `User` on every surface: the account root passes unknown keys through, a stored key named like a `User` property throws naming it, and the framework rules refuse a client write of one. The playground counts notes on the user document.
 - [#1120](../../issues/1120) - A brand ships its own Cloudflare Worker: `script` resolves in the brand's `workers/` folder, then the company tree's, then the framework's, and a worker entry's `secrets: ['KEY']` sends brand `.env` values as `secret_text` bindings. A missing script or secret fails the walk before the workers step sends any request.
@@ -42,6 +43,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - [#984](../../issues/984) - The suite converter (`scripts/convert-suites.js`, its source and assert layers, its fixtures) is gone: every `node:test` suite it was written for is converted, and a brand's remaining suite converts by hand with the register's map.
 
 ### Fixed
+- [#1151](../../issues/1151) - The backend port-retry suite boots each throwaway project on the first 70-port window nothing on the machine holds, instead of a blind pick the boot's preflight then refuses, and names the range when every window is taken.
+- [#1150](../../issues/1150) - The manager's emulator-teardown test gives a slow init five seconds to reap the signalled group, so a container that collects orphans on a tick no longer reads a sound teardown as a leader-only signal.
+- [#1144](../../issues/1144) - The deploy snapshot is parented on the deploy ref's remote tip and pushed without force, so a push carries only what changed since the last deploy; the first snapshot of a repo stays parentless.
+- [#1146](../../issues/1146) - The brand deploy summary gives a target that stepped aside its own `⊘ <name>: <detail>` row, and prints "N target(s) not attempted after the failure" only when a failing backend stopped the run.
 - [#1128](../../issues/1128) - The Claude plugin's MCP launcher checks for the router's `dist/router.js` before requiring it; a never-prepared checkout gets one stderr line naming `npm run prepare --prefix <pkg root>` and exit 1, instead of a module-not-found stack and no MCP server.
 - [#1099](../../issues/1099) - The backend emulator boot's one bump-and-retry now fires on firebase's own "Port N is not open" exit as well as node's `EADDRINUSE`, still only for a port this run allocated. Two stacks booting in the same second no longer stop the boot.
 - [#1100](../../issues/1100) - In the flows lane a failed boot case (ports held, emulator, website) skips every later case with the reason, instead of running each into its 60 s wait; the matrix rows keep reporting independently.

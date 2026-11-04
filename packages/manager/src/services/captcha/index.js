@@ -22,6 +22,7 @@
  * Missing either → interactive runs ask; non-interactive runs skip with guidance.
  */
 const chalk = require('chalk').default;
+const { defaultAddressReason } = require('@omega.js/config');
 
 const { serviceInputSpec } = require('../../config.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -38,6 +39,15 @@ module.exports.run = createServiceRunner({
     if (recaptchaConfig.enabled === false) {
       return { skip: true, reason: 'captcha.providers.recaptcha.enabled = false' };
     }
+
+    // Read before the site-key ask: a brand with no domain has no key to register
+    const url = (context.brandConfig.brand?.url || '').replace(/^https?:\/\//, '');
+    if (!url) {
+      return { skip: true, reason: 'no brand.url configured' };
+    }
+
+    const pagesReason = defaultAddressReason(url);
+    if (pagesReason) return { skip: true, reason: pagesReason };
 
     // The site key's ONE home is config (#893), so a missing one is ASKED for
     // right here through the config flow, which lands it in omega.json5 and
@@ -74,11 +84,6 @@ module.exports.run = createServiceRunner({
     const configuredSecret = process.env.RECAPTCHA_SECRET_KEY || null;
     if (configuredSecret && !configuredSiteKey) {
       console.log(`      ${chalk.yellow('⚠')} RECAPTCHA_SECRET_KEY is set but captcha.providers.recaptcha.siteKey is missing from config — the client sends an empty token and every protected POST 403s. Paste the site key into config/omega.json5: ${recaptchaConsoleUrl(context.brandConfig, configuredSiteKey)}`);
-    }
-
-    const url = (context.brandConfig.brand?.url || '').replace(/^https?:\/\//, '');
-    if (!url) {
-      return { skip: true, reason: 'no brand.url configured' };
     }
 
     // De-ITW: the ask points at the GCP reCAPTCHA console (the brand's OWN

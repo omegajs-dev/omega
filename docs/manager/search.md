@@ -40,5 +40,9 @@ TXT record to add by hand.
 ## Gotchas
 
 - **A brand with no web target has no sitemap to submit** — skipped, not warned.
+- **No domain, no property.** No `brand.url` skips the service, and so does a `brand.url` on a
+  default Pages host (`*.github.io`, the address an unset `brand.url` resolves to,
+  [config.md](../shared/config.md)), with `brand.url is the hosting provider's default address
+  (<host>): no domain to manage`. Both skip before the credential ask.
 - **Verification happens once.** Google answers "already verified" when an earlier attempt
   succeeded; that is treated as success, not an error.

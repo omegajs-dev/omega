@@ -247,7 +247,49 @@ function pagesHost(config, name) {
 
   const host = brandHost(String(url || ''));
 
-  return DEFAULT_PAGES_HOST.test(host) ? '' : host;
+  return isDefaultPagesHost(host) ? '' : host;
+}
+
+/**
+ * Whether a host is a GitHub default Pages host (`<owner>.github.io`, or the
+ * bare form): an ADDRESS the hosting provider owns, never a domain a brand can
+ * set a CNAME, a zone or a registrar on.
+ * @param {string} host - A bare host, as `brandHost` returns it.
+ * @returns {boolean}
+ */
+function isDefaultPagesHost(host) {
+  return DEFAULT_PAGES_HOST.test(String(host || ''));
+}
+
+/**
+ * The ONE skip reason of every domain-managing reader (the edge, domain,
+ * search, cloud, account, campaigns and captcha services, the verify sweep's
+ * live gate, the web purge): set when the url's host is a default Pages host,
+ * so each skipper is one call.
+ * @param {string} [url] - A brand url, scheme optional; empty answers null.
+ * @returns {string|null} The reason, or null when the url names a domain (or nothing).
+ */
+function defaultAddressReason(url) {
+  const host = brandHost(String(url || ''));
+
+  return isDefaultPagesHost(host) ? `brand.url is the hosting provider's default address (${host}): no domain to manage` : null;
+}
+
+/**
+ * A GitHub-hosted web target's default Pages address,
+ * `https://<owner lowercased>.github.io/<brand.id>-<name>`: the url the
+ * loader fills an unset `brand.url` with, and the host the web deploy's
+ * project-site plan falls back to, so the two never spell it apart.
+ * @param {object} config - Composed omega config carrying `targets`.
+ * @param {string} name - The web target's name.
+ * @returns {string|null} Null when `websiteRepo` is (no owner, no brand id, another provider).
+ * @throws {Error} When the name is not declared, or names a target that is not web.
+ */
+function pagesAddress(config, name) {
+  const website = websiteRepo(config, name);
+  if (!website) return null;
+
+  return `https://${website.owner.toLowerCase()}.github.io/${website.name}`;
 }
 
 /**
@@ -292,5 +334,8 @@ module.exports = {
   websiteRepo,
   hostingProvider,
   pagesHost,
+  pagesAddress,
+  isDefaultPagesHost,
+  defaultAddressReason,
   brandVisibility,
 };

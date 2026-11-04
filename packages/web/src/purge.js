@@ -8,6 +8,7 @@
  * post-deploy nicety, not a gate.
  */
 const fetch = require('wonderful-fetch');
+const { defaultAddressReason } = require('@omega.js/config');
 
 const API = 'https://api.cloudflare.com/client/v4';
 
@@ -51,6 +52,10 @@ async function purgeZoneCache(options) {
   let zone = config.edge && config.edge.providers && config.edge.providers.cloudflare && config.edge.providers.cloudflare.zone;
   let zoneName = null;
   if (!zone) {
+    const pagesReason = defaultAddressReason(config.brand && config.brand.url);
+    if (pagesReason) {
+      return { status: 'skipped', reason: pagesReason };
+    }
     const apex = apexOf(config.brand && config.brand.url);
     if (!apex) {
       return { status: 'skipped', reason: 'no edge.providers.cloudflare.zone in config and no brand.url to derive the zone from' };

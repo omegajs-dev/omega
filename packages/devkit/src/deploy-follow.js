@@ -179,7 +179,7 @@ async function followRun(options) {
 
   // The run has to be building the tree this deploy pushed (#902). GitHub
   // resolves the dispatch's ref on its own side, so a run started in the same
-  // second as the force-push can carry the PREVIOUS snapshot, publish the
+  // second as the push can carry the PREVIOUS snapshot, publish the
   // version before this one, and conclude green with nothing in its log saying
   // so. Following it at all would report that as this deploy's verdict.
   if (headSha && found.head_sha !== headSha) {

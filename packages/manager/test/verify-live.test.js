@@ -79,6 +79,15 @@ module.exports = defineCases({
     },
 
     {
+      name: 'verify: a default Pages brand.url is gated with the one reason, naming no hostname to check',
+      run: (ctx) => {
+        const surface = resolveVerifySurface({ brand: { url: 'https://dreamr-design.github.io/dreamr-web' }, cloud: { config: { projectId: 'dreamr' } } });
+        ctx.expect(surface.gated).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(surface.hostnames).toEqual([]);
+      },
+    },
+
+    {
       name: 'verify site: 200 + text/html + a non-trivial body passes',
       run: async (ctx) => {
         const fetchImpl = fakeFetch();

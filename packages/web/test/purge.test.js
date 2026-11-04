@@ -89,6 +89,18 @@ module.exports = defineCases({
     },
 
     {
+      name: 'purge: a default Pages brand.url with no zone id skips with the one reason and sends no request',
+      run: async (ctx) => {
+        const { calls, fetcher } = recorder([]);
+        const result = await purgeZoneCache({ config: { brand: { url: 'https://dreamr-design.github.io/dreamr-web' } }, token: 't', fetcher });
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(calls).toEqual([]);
+      },
+    },
+
+    {
       name: 'purge: dry run resolves the zone and plans, sends no purge',
       run: async (ctx) => {
         const { calls, fetcher } = recorder([{ result: [{ id: 'zone-dry', name: 'omegajs.dev' }] }]);

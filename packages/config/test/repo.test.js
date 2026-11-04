@@ -20,6 +20,7 @@ const {
   websiteRepo,
   hostingProvider,
   pagesHost,
+  pagesAddress,
   brandVisibility,
 } = require('../src/index.js');
 
@@ -237,6 +238,16 @@ module.exports = defineCases({
         ctx.expect(pages('https://omega-js-stack.github.io'), 'a bare Pages host is not one either').toBe('');
         ctx.expect(pages('http://OWNER.GitHub.io/Site'), 'host matching is case-insensitive').toBe('');
         ctx.expect(pages('https://github.io.example.com'), 'a real domain that merely CONTAINS github.io still is one').toBe('github.io.example.com');
+      },
+    },
+
+    {
+      name: 'pagesAddress: a web target hosted anywhere but GitHub has no Pages address',
+      run: (ctx) => {
+        ctx.expect(pagesAddress(BRAND, 'web'), 'the github default: the project site under the lowercased owner').toBe('https://acme-org.github.io/acme-web');
+
+        const vercel = { ...BRAND, targets: { ...BRAND.targets, web: { type: 'web', hosting: { provider: 'vercel' } } } };
+        ctx.expect(pagesAddress(vercel, 'web')).toBe(null);
       },
     },
 

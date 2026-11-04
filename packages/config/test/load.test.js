@@ -87,6 +87,20 @@ const COMPOSE_DEFAULTS = {
   defaultOnly: true,
 };
 
+// ─── The Pages brand: no domain of its own ───
+
+// A brand whose web target is served from GitHub Pages under its owner. The
+// address is the literal GitHub serves, never recomputed from owner and id.
+const PAGES_ADDRESS = 'https://dreamr-design.github.io/dreamr-web';
+
+function pagesBrand(targets) {
+  return `{
+    brand: { id: 'dreamr', name: 'Dreamr' },
+    repo: { owner: 'dreamr-design' },
+    targets: ${targets},
+  }`;
+}
+
 // ─── The company layer (#54, reshaped by #677) ───
 
 // A PARENT brand carrying a company/ tree, and a brand that names it with one
@@ -454,6 +468,109 @@ module.exports = defineCases({
         cleanup(ctx, solo);
         ctx.expect(loadConfig(solo, 'web').name).toBe('web');
         ctx.expect(loadConfig(solo, 'web').config.flavor).toBe('only');
+      },
+    },
+
+    {
+      name: 'an unset brand.url on a Pages-hosted web target resolves to its Pages address, from the target and brand-wide',
+      run: (ctx) => {
+        const root = makeFixture('pages-brand', {
+          'config/omega.json5': pagesBrand(`{ web: { type: 'web' } }`),
+          'targets/web/package.json': '{}',
+        });
+        cleanup(ctx, root);
+
+        const web = loadConfig(path.join(root, 'targets', 'web'), 'web');
+        ctx.expect(web.errors).toEqual([]);
+        ctx.expect(web.config.brand.url).toBe(PAGES_ADDRESS);
+        ctx.expect(web.config.url, 'the target named for its type still takes brand.url as its own').toBe(undefined);
+        ctx.expect(loadConfig(root).config.brand.url, 'a brand-wide load resolves the same address').toBe(PAGES_ADDRESS);
+      },
+    },
+
+    {
+      name: 'a local layer nulling brand.url switches the declared domain off, and the Pages address fills it',
+      run: (ctx) => {
+        const root = makeFixture('pages-null-local', {
+          'config/omega.json5': `{
+      brand: { id: 'dreamr', name: 'Dreamr', url: 'https://acme.test' },
+      repo: { owner: 'dreamr-design' },
+      targets: { web: { type: 'web' } },
+    }`,
+          'targets/web/config/omega.json5': `{ brand: { url: null } }`,
+        });
+        cleanup(ctx, root);
+
+        ctx.expect(loadConfig(path.join(root, 'targets', 'web'), 'web').config.brand.url).toBe(PAGES_ADDRESS);
+      },
+    },
+
+    {
+      name: 'a brand with no web target derives no brand.url',
+      run: (ctx) => {
+        const root = makeFixture('pages-no-web', {
+          'config/omega.json5': pagesBrand(`{ backend: { type: 'backend' } }`),
+          'targets/backend/package.json': '{}',
+        });
+        cleanup(ctx, root);
+
+        ctx.expect(loadConfig(path.join(root, 'targets', 'backend'), 'backend').config.brand.url).toBe(undefined);
+        ctx.expect(loadConfig(root).config.brand.url).toBe(undefined);
+      },
+    },
+
+    {
+      name: 'a web target with no repo.owner leaves brand.url unset, and the load does not throw',
+      run: (ctx) => {
+        const root = makeFixture('pages-no-owner', {
+          'config/omega.json5': `{ brand: { id: 'dreamr', name: 'Dreamr' }, targets: { web: { type: 'web' } } }`,
+          'targets/web/package.json': '{}',
+        });
+        cleanup(ctx, root);
+
+        ctx.expect(loadConfig(path.join(root, 'targets', 'web'), 'web').config.brand.url).toBe(undefined);
+        ctx.expect(loadConfig(root).config.brand.url).toBe(undefined);
+      },
+    },
+
+    {
+      name: 'a second web target on the Pages brand derives its own Pages address, never a github.io subdomain',
+      run: (ctx) => {
+        const root = makeFixture('pages-second-web', {
+          'config/omega.json5': pagesBrand(`{ web: { type: 'web' }, admin: { type: 'web' } }`),
+          'targets/web/package.json': '{}',
+          'targets/admin/package.json': '{}',
+        });
+        cleanup(ctx, root);
+
+        const admin = loadConfig(path.join(root, 'targets', 'admin'), 'web');
+        ctx.expect(admin.config.url).toBe('https://dreamr-design.github.io/dreamr-admin');
+        ctx.expect(admin.config.brand.url, 'the filled value is the brand layer, so it is the main site').toBe(PAGES_ADDRESS);
+      },
+    },
+
+    {
+      name: 'a brand on its own domain resolves every url as before, a repo owner notwithstanding',
+      run: (ctx) => {
+        const root = makeFixture('pages-own-domain', {
+          'config/omega.json5': `{
+      brand: { id: 'dreamr', name: 'Dreamr', url: 'https://acme.test' },
+      repo: { owner: 'dreamr-design' },
+      targets: { web: { type: 'web' }, admin: { type: 'web' } },
+    }`,
+          'targets/web/package.json': '{}',
+          'targets/admin/package.json': '{}',
+        });
+        cleanup(ctx, root);
+
+        const web = loadConfig(path.join(root, 'targets', 'web'), 'web');
+        ctx.expect(web.config.brand.url).toBe('https://acme.test');
+        ctx.expect(web.config.url).toBe(undefined);
+
+        const admin = loadConfig(path.join(root, 'targets', 'admin'), 'web');
+        ctx.expect(admin.config.brand.url).toBe('https://acme.test');
+        ctx.expect(admin.config.url).toBe('https://admin.acme.test');
+        ctx.expect(loadConfig(root).config.brand.url).toBe('https://acme.test');
       },
     },
 
@@ -855,6 +972,20 @@ module.exports = defineCases({
 
         ctx.expect(() => composeTargetConfig(path.join(brandRoot, 'targets', 'backend'), 'backend')).toThrow(/Secret-shaped keys/);
         ctx.expect(() => composeTargetConfig(brandRoot, 'nope')).toThrow(/Unknown target/);
+      },
+    },
+
+    {
+      name: 'composeTargetConfig: a backend target of the Pages brand uploads the resolved Pages address as brand.url',
+      run: (ctx) => {
+        const root = makeFixture('compose-pages', {
+          'config/omega.json5': pagesBrand(`{ web: { type: 'web' }, backend: { type: 'backend' } }`),
+          'targets/backend/package.json': '{}',
+        });
+        cleanup(ctx, root);
+
+        const { config } = composeTargetConfig(path.join(root, 'targets', 'backend'), 'backend');
+        ctx.expect(config.brand.url).toBe(PAGES_ADDRESS);
       },
     },
 

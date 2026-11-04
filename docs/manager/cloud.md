@@ -28,6 +28,10 @@ everything that depends on a backend.
 ## Config
 
 - `cloud.enabled: false` — skip.
+- `brand.url`: none skips the service, and so does one on a default Pages host (`*.github.io`,
+  the address an unset `brand.url` resolves to, [config.md](../shared/config.md)), with
+  `brand.url is the hosting provider's default address (<host>): no domain to manage`: authDomain and `api.<domain>` need a domain
+  the brand owns.
 - `cloud.config.projectId` — the ONE home of the project id
   ([#23](https://github.com/Omega-JS-Stack/omega/issues/23)). Missing → an interactive run
   offers the selection/creation flow and lands it in omega.json5; otherwise the service skips.

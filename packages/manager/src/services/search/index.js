@@ -13,6 +13,7 @@
  * webmasters + siteverification scopes ride the same file). No credentials →
  * the service skips.
  */
+const { defaultAddressReason } = require('@omega.js/config');
 const { serviceInputSpec } = require('../../config.js');
 const { googleTokenStorePath } = require('../../lib/google-auth.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -34,6 +35,9 @@ module.exports.run = createServiceRunner({
     if (!domain) {
       return { skip: true, reason: 'no brand.url configured' };
     }
+
+    const pagesReason = defaultAddressReason(domain);
+    if (pagesReason) return { skip: true, reason: pagesReason };
 
     // The shared setup contract (#608) — provide, skip this run, or disable
     // the service for good; a headless run steps aside loudly.

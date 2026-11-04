@@ -28,9 +28,10 @@
  *
  * ONE DELIVERY per run (#901): a lane's delivery used to run once per TARGET,
  * which is what kept the targets in single file. It runs HERE now, once: the
- * one lane (#915) force-pushes the brand folder to `omega-deploy` and every
- * target verb is handed `--snapshot=<sha>` so it dispatches against that very
- * commit instead of overwriting it under its siblings.
+ * one lane (#915) pushes this run's snapshot (chained on the previous one) to
+ * `omega-deploy`, and every target verb is handed `--snapshot=<sha>` so it
+ * dispatches against that very commit instead of overwriting it under its
+ * siblings.
  */
 const path = require('node:path');
 const chalk = require('chalk').default;
@@ -50,7 +51,8 @@ const { PICKER_FLAG, assertPickerFlags, selectTargets, buildForwardedFlags } = r
  *
  * It refuses a checkout behind the repo's default branch, pushes the composed
  * workflow files there when they differ, packs the brand's linked frameworks,
- * force-pushes the brand folder to `omega-deploy` and puts the tree back
+ * pushes this run's snapshot (chained on the previous one) to `omega-deploy`
+ * and puts the tree back
  * ([#915](https://github.com/Omega-JS-Stack/omega/issues/915)); the sha it
  * returns is what every target verb of this run dispatches against.
  *
@@ -195,8 +197,9 @@ module.exports = async (options = {}) => {
   if (runDelivery.sha) {
     // The delivery just ran, once, above. `--snapshot=<sha>` is the root's word
     // to each target verb that the push is done: left to themselves the group's
-    // targets would each force-push the same brand folder over the ref their
-    // siblings are dispatching against. Nobody types it.
+    // targets would each push a snapshot of their own (chained on the previous
+    // one) to `omega-deploy` while their siblings dispatch against it. Nobody
+    // types it.
     targetFlags.push(`--snapshot=${runDelivery.sha}`);
   }
 
@@ -211,7 +214,7 @@ module.exports = async (options = {}) => {
    *
    * @param {object} entry - The discovered target.
    * @param {boolean} prefixed - Whether this run is part of the group.
-   * @returns {Promise<object|null>} its summary row, or null when it stepped aside
+   * @returns {Promise<object>} its summary row, flagged `skipped` when it stepped aside
    */
   const runTarget = async (entry, prefixed) => {
     const label = `[${selected.indexOf(entry) + 1}/${selected.length}] ${entry.name}`;
@@ -221,13 +224,13 @@ module.exports = async (options = {}) => {
     // there is nothing to publish and nothing broken (#603)
     if (run.kind === 'skip') {
       console.log(chalk.dim(`\n⊘ ${label}: ${run.detail} — skipped`));
-      return null;
+      return { name: entry.name, ok: true, skipped: true, detail: run.detail };
     }
 
     // Its script cannot be handed --dry-run, so the dry run stops at the plan
     if (run.kind === 'plan') {
       console.log(chalk.dim(`\n⊘ ${label}: dry run — ${run.detail}`));
-      return null;
+      return { name: entry.name, ok: true, skipped: true, detail: run.detail };
     }
 
     if (run.kind === 'error') {
@@ -249,8 +252,6 @@ module.exports = async (options = {}) => {
 
   for (const entry of gate) {
     const record = await runTarget(entry, false);
-    if (!record) continue;
-
     summary.push(record);
     if (!record.ok) {
       failed = true;
@@ -271,12 +272,11 @@ module.exports = async (options = {}) => {
     const records = await Promise.all(group.map((entry) => runTarget(entry, true)));
 
     for (const record of records) {
-      if (!record) continue;
       summary.push(record);
       if (!record.ok) failed = true;
     }
 
-    const fell = records.filter((record) => record && !record.ok).map((record) => record.name);
+    const fell = records.filter((record) => !record.ok).map((record) => record.name);
     if (fell.length > 0) {
       console.error(chalk.red(`\n✗ ${fell.join(', ')} failed: every other target of the group still ran to the end`));
     }
@@ -285,13 +285,17 @@ module.exports = async (options = {}) => {
   // ─── Summary + aggregate exit ──────────────────────────────────────────────
   console.log(chalk.bold('\nDeploy summary'));
   for (const entry of summary) {
+    if (entry.skipped) {
+      console.log(chalk.dim(`  ⊘ ${entry.name}: ${entry.detail}`));
+      continue;
+    }
     console.log(entry.ok
       ? `  ${chalk.green('✓')} ${entry.name}`
       : `  ${chalk.red('✗')} ${entry.name} ${chalk.dim(`— ${entry.detail}`)}`);
   }
-  const skipped = selected.length - summary.length;
-  if (skipped > 0) {
-    console.log(chalk.dim(`  ⊘ ${skipped} target${skipped === 1 ? '' : 's'} not attempted after the failure`));
+  const unattempted = stopped ? selected.length - summary.length : 0;
+  if (unattempted > 0) {
+    console.log(chalk.dim(`  ⊘ ${unattempted} target${unattempted === 1 ? '' : 's'} not attempted after the failure`));
   }
 
   if (failed) {

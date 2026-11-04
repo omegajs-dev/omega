@@ -53,6 +53,10 @@ send time. A dry run names the groups it would create and writes nothing.
 ## Config
 
 - `marketing.campaigns.enabled: false` — skip.
+- `brand.url`: none skips the service, and so does one on a default Pages host (`*.github.io`,
+  the address an unset `brand.url` resolves to, [config.md](../shared/config.md)), with
+  `brand.url is the hosting provider's default address (<host>): no domain to manage`, before the SendGrid key ask: there is no
+  sender domain to authenticate.
 - `marketing.campaigns.providers.sendgrid` — the vendor is a KEY under `providers`
   ([#425](https://github.com/Omega-JS-Stack/omega/issues/425)): no entry means none chosen.
 - `marketing.campaigns.providers.sendgrid.listId` — written back by `list`.

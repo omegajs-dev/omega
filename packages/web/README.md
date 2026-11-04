@@ -264,12 +264,12 @@ gh-pages brand never types the variable: a `brand.url` naming a domain of your
 own means the site serves at that domain's root (the CNAME both lanes publish
 cannot carry a path) → `/`; a `brand.url` naming a `*.github.io` address means
 the path IT carries is the mount → `/<name>/` ([#366](https://github.com/Omega-JS-Stack/omega/issues/366));
-`brand.url` unset means the default project address
-`https://<owner>.github.io/<name>/` → `/<name>/`, from the same repo slug the
-deploy plan resolves. `--direct` sets it around the build it runs itself; the
+`brand.url` unset resolves, in the config loader, to that default project
+address `https://<owner>.github.io/<name>`, so it mounts the same way →
+`/<name>/` ([#1145](https://github.com/Omega-JS-Stack/omega/issues/1145)). `--direct` sets it around the build it runs itself; the
 scaffolded CI workflow derives it remotely through the same function
-(`@omega.js/web/deploy`'s `targetPathPrefix()`, with `GITHUB_REPOSITORY` naming
-the repo when the config carries no slug). An explicitly exported value always
+(`@omega.js/web/deploy`'s `targetPathPrefix()`, which reads the repo from the
+config alone). An explicitly exported value always
 wins, and `omega dev` / a bare `omega build` stay at the root.
 
 The direct lane deploys **both** Pages shapes ([#361](https://github.com/Omega-JS-Stack/omega/issues/361)): with a
@@ -277,11 +277,14 @@ The direct lane deploys **both** Pages shapes ([#361](https://github.com/Omega-J
 without one it publishes a project site at the derived
 `https://<owner>.github.io/<name>/`, mounted under the matching base path, with
 no CNAME step at all. Plan address and build prefix come from one derivation,
-and the repo slug resolves from the config, then `GITHUB_REPOSITORY`, then the
-tree's own `origin` remote. A project site still sets `brand.url` to its Pages
-URL, without a trailing slash (`https://<owner>.github.io/<name>`) — absolute
-URLs build from it and nothing derives them at build time, so the direct lane
-warns and prints the exact value when it is unset ([#366](https://github.com/Omega-JS-Stack/omega/issues/366)).
+and the repo is config-only: `websiteRepo(config, <target name>)`, never
+`GITHUB_REPOSITORY` or a git remote, which name the repo the checkout sits in;
+a config with no `repo.owner` refuses and names the key to set. A project site needs no `brand.url` at all: the
+loader fills an unset one with its Pages address (`https://<owner>.github.io/<name>`,
+no trailing slash), so the absolute URLs build from it, and the edge, domain and
+cache-purge steps (and every other domain-managing service) skip it as no
+domain to manage. Buying a domain later is one
+line: `brand.url` becomes that domain.
 A `*.github.io` host is **never** a custom domain: neither the deploy plan nor
 the production build's `dist/CNAME` step reads one as such, so setting that
 value keeps the project shape instead of flipping the site to the domain root.

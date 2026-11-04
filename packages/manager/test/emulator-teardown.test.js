@@ -93,15 +93,22 @@ const DRIVER_PATH = join(scripts.cwd(), 'driver.js');
 const SLEEPER_PATH = join(scripts.cwd(), 'sleeper.js');
 const STRAY_STUB_PATH = join(scripts.cwd(), 'stray-stub.js');
 
+// Gone is the reaper's call, not the teardown's: an init that collects orphans
+// on a tick (a cloud container's) takes about two seconds, so the window
+// outlasts that and still sits far under the stub's 60-second sleep.
+const GROUP_GONE_WINDOW_MS = 5000;
+const GROUP_GONE_POLL_MS = 20;
+
 /** @returns {Promise<boolean>} True once no process in the group answers. */
 async function groupGone(pid) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  const deadline = Date.now() + GROUP_GONE_WINDOW_MS;
+  while (Date.now() < deadline) {
     try {
       process.kill(-pid, 0);
     } catch {
       return true;
     }
-    await sleep(20);
+    await sleep(GROUP_GONE_POLL_MS);
   }
 
   return false;

@@ -9,6 +9,7 @@ const defineCases = require('@omega.js/devkit/test/define-cases');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { stripVTControlCharacters } = require('node:util');
 
 // ─── The delivery lane's boundary (#678) ─────────────────────────────────────
 // The lane deploy runs before it fans out is manage's own runner, stubbed HERE
@@ -298,6 +299,34 @@ async function runDeployCommand(cwd, options = {}) {
   }
 }
 
+/** Run the command as runDeployCommand does, keeping every console.log line it printed, colors stripped. */
+async function runCapturingLog(cwd, options = {}) {
+  const lines = [];
+  const originalLog = console.log;
+  console.log = (...args) => lines.push(stripVTControlCharacters(args.map(String).join(' ')));
+
+  try {
+    const code = await runDeployCommand(cwd, options);
+    // The summary is what follows its heading: earlier `⊘ <name>:` lines are the run's own notes.
+    const heading = lines.findLastIndex((line) => line.trim() === 'Deploy summary');
+    const summary = heading === -1 ? '' : lines.slice(heading + 1).join('\n');
+    return { code, lines, printed: lines.join('\n'), summary };
+  } finally {
+    console.log = originalLog;
+  }
+}
+
+/** Add a custom target to a staged brand: its config entry and a package.json carrying `scripts`. */
+function addCustomTarget(brand, name, scripts = {}) {
+  const configPath = path.join(brand, 'config', 'omega.json5');
+  fs.writeFileSync(configPath, fs.readFileSync(configPath, 'utf8').replace('targets: {', `targets: { ${name}: { type: 'custom' },`));
+  write(path.join(brand, 'targets', name, 'package.json'), JSON.stringify({ name, private: true, scripts }));
+}
+
+// A stepped-aside summary row: its name, a colon, then a reason.
+const skippedRow = (name) => new RegExp(`^\\s*⊘ ${name}: \\S`, 'm');
+const NOT_ATTEMPTED = /not attempted after the failure/;
+
 module.exports = defineCases({
   type: 'group',
   description: 'deploy-command',
@@ -437,20 +466,11 @@ module.exports = defineCases({
         // its inherited stdout and the summary ticks the target.
         fs.writeFileSync(path.join(brand, 'SKIP-backend'), '');
 
-        const lines = [];
-        const originalLog = console.log;
-        console.log = (...args) => lines.push(args.map(String).join(' '));
-
-        let code;
-        try {
-          code = await runDeployCommand(brand);
-        } finally {
-          console.log = originalLog;
-        }
+        const { code, printed } = await runCapturingLog(brand);
 
         ctx.expect(readCalls(brand).map((c) => c.name), 'web still deploys after the skipped backend').toEqual(['backend', 'web']);
         ctx.expect(code, 'a skip is not a failure: the run stays green').toBe(undefined);
-        ctx.expect(lines.join('\n').includes('✓ backend'), `the summary ticks the skipped target (printed: ${lines.join('\n')})`).toBeTruthy();
+        ctx.expect(printed.includes('✓ backend'), `the summary ticks the skipped target (printed: ${printed})`).toBeTruthy();
       },
     },
 
@@ -466,6 +486,66 @@ module.exports = defineCases({
         for (const call of calls) {
           ctx.expect(call.argv, 'the brand-level bail switch never forwards').toEqual(['deploy', '--snapshot=sha1234567890abcdef']);
         }
+        ctx.expect(code).toBe(1);
+      },
+    },
+
+    // ─── The summary: stepped aside versus never attempted ───────────────────────
+
+    {
+      name: 'a custom target with no deploy script is its own skipped row, and a passing run names no failure',
+      run: async (ctx) => {
+        const { brand } = stageBrand();
+        addCustomTarget(brand, 'factory');
+
+        const { code, printed, summary } = await runCapturingLog(brand);
+
+        ctx.expect(skippedRow('factory').test(summary), `the custom target reads as stepped aside, with its reason (printed: ${printed})`).toBeTruthy();
+        ctx.expect(printed.includes('✓ web'), `the web deploy passed (printed: ${printed})`).toBeTruthy();
+        ctx.expect(NOT_ATTEMPTED.test(printed), `nothing failed, so nothing went unattempted (printed: ${printed})`).toBe(false);
+        ctx.expect(code, 'the run exits 0').toBe(undefined);
+      },
+    },
+
+    {
+      name: 'a --dry-run plans a custom target\'s script: a skipped row, and no "not attempted" line',
+      run: async (ctx) => {
+        const { brand } = stageBrand();
+        addCustomTarget(brand, 'api', { deploy: 'node -e "process.exit(0)"' });
+
+        const { printed, summary } = await runCapturingLog(brand, { 'dry-run': true, dryRun: true });
+
+        ctx.expect(skippedRow('api').test(summary), `the planned custom target reads as stepped aside (printed: ${printed})`).toBeTruthy();
+        ctx.expect(NOT_ATTEMPTED.test(printed), `a dry run stopped nothing (printed: ${printed})`).toBe(false);
+      },
+    },
+
+    {
+      name: 'a failing backend counts the group it stopped as not attempted, and exits 1',
+      run: async (ctx) => {
+        const { brand } = stageBrand(['desktop']);
+        fs.writeFileSync(path.join(brand, 'FAIL-backend'), '');
+
+        const { code, printed } = await runCapturingLog(brand);
+
+        ctx.expect(/⊘ 2 targets? not attempted after the failure/.test(printed), `web and desktop never ran (printed: ${printed})`).toBeTruthy();
+        ctx.expect(code).toBe(1);
+      },
+    },
+
+    {
+      name: '--continue-on-error past a failing backend: failed, passed and skipped rows, and no "not attempted" line',
+      run: async (ctx) => {
+        const { brand } = stageBrand();
+        addCustomTarget(brand, 'factory');
+        fs.writeFileSync(path.join(brand, 'FAIL-backend'), '');
+
+        const { code, printed, summary } = await runCapturingLog(brand, { 'continue-on-error': true, continueOnError: true });
+
+        ctx.expect(/^\s*✗ backend/m.test(summary), `the backend reads as failed (printed: ${printed})`).toBeTruthy();
+        ctx.expect(/^\s*✓ web/m.test(summary), `the web target reads as passed (printed: ${printed})`).toBeTruthy();
+        ctx.expect(skippedRow('factory').test(summary), `the custom target reads as stepped aside (printed: ${printed})`).toBeTruthy();
+        ctx.expect(NOT_ATTEMPTED.test(printed), `every target was attempted (printed: ${printed})`).toBe(false);
         ctx.expect(code).toBe(1);
       },
     },
