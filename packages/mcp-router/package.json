@@ -1,6 +1,6 @@
 {
   "name": "@omega.js/mcp-router",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "One lazy MCP endpoint for every OMEGA session: a stdio server that proxies many upstream MCP servers and surfaces each upstream's tools only once it is activated",
   "private": false,
   "publishConfig": {

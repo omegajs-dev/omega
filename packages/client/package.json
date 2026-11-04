@@ -1,6 +1,6 @@
 {
   "name": "@omega.js/client",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "OMEGA client runtime — the shared frontend singleton (Firebase auth, account, analytics, notifications, bindings) embedded by the OMEGA web, desktop, and extension frameworks",
   "private": false,
   "publishConfig": {
