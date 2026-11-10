@@ -25,11 +25,11 @@ const DESIRED_TOGGLES = {
 };
 
 module.exports = async function ensureEventWebhook(context) {
-  const { sendgridApi: api, brandConfig, options = {} } = context;
+  const { sendgridApi: api, options = {} } = context;
 
-  // The opt-out, the no-parent refusal and the host are the shared helper's
-  // (#677): the newsletter service's webhook answers all three identically.
-  const parent = resolveParentHost(brandConfig.company, 'Event Webhook');
+  // The opt-out, the no-parent refusal and the parent's API address are the
+  // shared helper's: the newsletter service's webhook answers them identically.
+  const parent = resolveParentHost(context, 'Event Webhook');
   if (parent.skip) {
     return {};
   }
@@ -41,8 +41,8 @@ module.exports = async function ensureEventWebhook(context) {
     throw new Error('OMEGA_WEBHOOK_KEY absent after the campaigns setup ran — its REQUIRES entry or its requestServiceInput call is missing');
   }
 
-  const { parentHost } = parent;
-  const desiredUrl = `https://api.${parentHost}/omega/marketing/webhook/forward?provider=sendgrid&key=${process.env.OMEGA_WEBHOOK_KEY}`;
+  const { parentApi } = parent;
+  const desiredUrl = `${parentApi}/omega/marketing/webhook/forward?provider=sendgrid&key=${process.env.OMEGA_WEBHOOK_KEY}`;
 
   const current = await api.getEventWebhookSettings();
 
@@ -61,7 +61,7 @@ module.exports = async function ensureEventWebhook(context) {
 
   if (Object.keys(patch).length === 0) {
     console.log(`      ${chalk.green('✓')} Event Webhook up to date`);
-    console.log(`      ${chalk.dim('→')} ${chalk.dim(`https://api.${parentHost}/omega/marketing/webhook/forward`)}`);
+    console.log(`      ${chalk.dim('→')} ${chalk.dim(`${parentApi}/omega/marketing/webhook/forward`)}`);
     return { output: { eventWebhook: { url: 'converged' } } };
   }
 
@@ -70,7 +70,7 @@ module.exports = async function ensureEventWebhook(context) {
   }
 
   if (patch.url) {
-    console.log(`      ${chalk.yellow('↻')} Pointing Event Webhook at ${chalk.cyan(`api.${parentHost}`)}'s forwarder`);
+    console.log(`      ${chalk.yellow('↻')} Pointing Event Webhook at ${chalk.cyan(parentApi)}'s forwarder`);
   }
   const enablingToggles = Object.keys(patch).filter((key) => key !== 'url' && key !== 'enabled');
   if (enablingToggles.length > 0) {

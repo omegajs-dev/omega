@@ -413,7 +413,7 @@ module.exports = defineCases({
               steps: {
                 ...laneSteps(order),
                 stage: async () => ({ staged: [], restore: async () => order.push('restore') }),
-                push: () => { throw new Error('remote rejected the snapshot'); },
+                push: async () => { throw new Error('remote rejected the snapshot'); },
                 wait: async () => order.push('wait'),
               },
             })).rejects.toThrow(/remote rejected the snapshot/);

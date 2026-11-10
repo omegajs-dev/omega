@@ -230,5 +230,26 @@ module.exports = defineCases({
         ]);
       },
     },
+
+    {
+      name: 'getApiUrl-on-a-default-Pages-host-is-the-project-functions-address',
+      async run() {
+        const instance = bootOmega();
+        instance.config.brand.url = 'https://ian.github.io/site';
+        instance.project.projectId = 'omegajs-playground';
+
+        expect(instance.getApiUrl('production')).toBe('https://us-central1-omegajs-playground.cloudfunctions.net/omega_api');
+      },
+    },
+
+    {
+      name: 'getParentApiUrl-of-a-Pages-company-with-no-project-id-is-empty',
+      async run() {
+        const instance = bootOmega();
+        instance.config.company = { ...instance.config.company, id: 'ian-co', url: 'https://ian.github.io/ian-co-web' };
+
+        expect(instance.getParentApiUrl(), 'never api.ian.github.io, a host nobody serves').toBe('');
+      },
+    },
   ],
 });

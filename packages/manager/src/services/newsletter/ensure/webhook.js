@@ -25,7 +25,7 @@ const DESIRED_EVENT_TYPES = [
 const WEBHOOK_DESCRIPTION = '@omega.js/backend consent pipeline (managed by OMEGA — do not edit manually)';
 
 module.exports = async function ensureWebhook(context) {
-  const { beehiivApi: api, brandConfig, serviceData, options = {} } = context;
+  const { beehiivApi: api, serviceData, options = {} } = context;
 
   const publicationId = serviceData.publicationId;
   if (!publicationId) {
@@ -33,9 +33,9 @@ module.exports = async function ensureWebhook(context) {
     return {};
   }
 
-  // The opt-out, the no-parent refusal and the host are the shared helper's
-  // (#677): the campaigns service's Event Webhook answers all three identically.
-  const parent = resolveParentHost(brandConfig.company, 'webhook');
+  // The opt-out, the no-parent refusal and the parent's API address are the
+  // shared helper's: the campaigns service's Event Webhook answers them identically.
+  const parent = resolveParentHost(context, 'webhook');
   if (parent.skip) {
     return {};
   }
@@ -47,8 +47,8 @@ module.exports = async function ensureWebhook(context) {
     throw new Error('OMEGA_WEBHOOK_KEY absent after the newsletter setup ran — its REQUIRES entry or its requestServiceInput call is missing');
   }
 
-  const { parentHost } = parent;
-  const desiredUrl = `https://api.${parentHost}/omega/marketing/webhook/forward?provider=beehiiv&key=${process.env.OMEGA_WEBHOOK_KEY}`;
+  const { parentApi } = parent;
+  const desiredUrl = `${parentApi}/omega/marketing/webhook/forward?provider=beehiiv&key=${process.env.OMEGA_WEBHOOK_KEY}`;
 
   const webhooks = await api.listWebhooks(publicationId);
 
@@ -97,7 +97,7 @@ module.exports = async function ensureWebhook(context) {
   });
   const newId = created?.data?.id || created?.id || '(unknown id)';
   console.log(`      ${chalk.green('✓')} Webhook created ${chalk.dim(`(${newId})`)}`);
-  console.log(`      ${chalk.dim('→')} ${chalk.dim(`https://api.${parentHost}/omega/marketing/webhook/forward`)}`);
+  console.log(`      ${chalk.dim('→')} ${chalk.dim(`${parentApi}/omega/marketing/webhook/forward`)}`);
 
   return { output: { webhook: { id: newId, created: true } } };
 };

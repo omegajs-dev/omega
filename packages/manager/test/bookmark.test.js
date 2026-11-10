@@ -119,6 +119,21 @@ module.exports = defineCases({
       },
     },
 
+    {
+      name: 'bookmark: a brand on a default Pages host links its API at the project\'s Cloud Functions address',
+      run: (ctx) => {
+        const links = generateLinks(
+          { brand: { id: 'dreamr', url: 'https://dreamr-design.github.io/dreamr-web' }, cloud: { config: { projectId: 'dreamr-app' } } },
+          [{ name: 'backend', target: 'backend' }, { name: 'web', target: 'web' }],
+        );
+
+        ctx.expect(links.Live.map((l) => l.url)).toEqual([
+          'https://dreamr-design.github.io/dreamr-web',
+          'https://us-central1-dreamr-app.cloudfunctions.net/omega_api',
+        ]);
+      },
+    },
+
     // ─── registration ────────────────────────────────────────────────────────────
 
     {

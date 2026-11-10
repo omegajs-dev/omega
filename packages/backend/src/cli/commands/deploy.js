@@ -22,13 +22,11 @@ const { isCI } = require('@omega.js/devkit/ci');
 const path = require('path');
 const jetpack = require('fs-jetpack');
 const { refuseWhenCustom, refuseWhenToolsMissing } = require('../utils/project-type');
-const { loadConfig, loadEnv, targetNameFromDir } = require('@omega.js/config');
+const { loadConfig, loadEnv, targetNameFromDir, FUNCTIONS_REGION } = require('@omega.js/config');
 const { resolveLicenseStamp } = require('@omega.js/devkit/license');
 const { deployViaDispatch, dispatchTarget, laneLabel, resolveToken } = require('@omega.js/devkit/deploy');
 const { assertBrandVersion } = require('@omega.js/devkit/brand-version');
 const { deployPrecheck } = require('../utils/deploy-precheck');
-
-const DEFAULT_REGION = 'us-central1';
 
 class DeployCommand extends BaseCommand {
   async execute() {
@@ -300,7 +298,7 @@ class DeployCommand extends BaseCommand {
 
     try {
       const output = await powertools.execute(
-        `gcloud functions list --project ${projectId} --regions ${DEFAULT_REGION} --format="json(name,httpsTrigger)"`,
+        `gcloud functions list --project ${projectId} --regions ${FUNCTIONS_REGION} --format="json(name,httpsTrigger)"`,
         { log: false },
       );
 
@@ -331,7 +329,7 @@ class DeployCommand extends BaseCommand {
     for (const fnName of httpFunctions) {
       try {
         const policyOutput = await powertools.execute(
-          `gcloud functions get-iam-policy ${fnName} --project ${projectId} --region ${DEFAULT_REGION} --format=json`,
+          `gcloud functions get-iam-policy ${fnName} --project ${projectId} --region ${FUNCTIONS_REGION} --format=json`,
           { log: false },
         );
 
@@ -347,7 +345,7 @@ class DeployCommand extends BaseCommand {
         }
 
         await powertools.execute(
-          `gcloud functions add-iam-policy-binding ${fnName} --project ${projectId} --region ${DEFAULT_REGION} --member="allUsers" --role="roles/cloudfunctions.invoker"`,
+          `gcloud functions add-iam-policy-binding ${fnName} --project ${projectId} --region ${FUNCTIONS_REGION} --member="allUsers" --role="roles/cloudfunctions.invoker"`,
           { log: false },
         );
 

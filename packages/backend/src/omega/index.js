@@ -18,7 +18,7 @@
  */
 const path = require('path');
 const EventEmitter = require('events');
-const { hasOmegaConfig, loadConfig, loadEnv, formatErrors, backendProjectType, envEnvironment, envPort, CLASSIC_PORTS } = require('@omega.js/config');
+const { hasOmegaConfig, loadConfig, loadEnv, formatErrors, backendProjectType, envEnvironment, envPort, CLASSIC_PORTS, apiAddress, FUNCTIONS_REGION } = require('@omega.js/config');
 const environment = require('@omega.js/config/environment');
 const { resolvedConfigValues } = require('./helpers/resolved-config.js');
 const env = require('./libraries/env.js');
@@ -132,7 +132,7 @@ class Omega extends EventEmitter {
     // server and Sentry stay off
     options.runnerHost = typeof options.runnerHost === 'undefined' ? false : options.runnerHost;
     options.identity = typeof options.identity === 'undefined' ? true : options.identity;
-    options.resourceZone = typeof options.resourceZone === 'undefined' ? 'us-central1' : options.resourceZone;
+    options.resourceZone = typeof options.resourceZone === 'undefined' ? FUNCTIONS_REGION : options.resourceZone;
     options.sentry = typeof options.sentry === 'undefined' ? !options.runnerHost : options.sentry;
     options.reportErrorsInDev = typeof options.reportErrorsInDev === 'undefined' ? false : options.reportErrorsInDev;
     options.useFirebaseLogger = typeof options.useFirebaseLogger === 'undefined' ? true : options.useFirebaseLogger;
@@ -458,7 +458,7 @@ class Omega extends EventEmitter {
         ? `https://localhost:${httpsPort}`
         : `http://localhost:${devPort('hosting')}`;
     }
-    return `https://api.${(this.config.brand?.url || '').replace(/^https?:\/\//, '')}`;
+    return apiAddress(this.config.brand?.url || '', this.project.projectId, this.project.resourceZone);
   }
 
   getWebsiteUrl(env) {
@@ -478,11 +478,11 @@ class Omega extends EventEmitter {
     return this.config.company?.url || this.config.brand?.url || '';
   }
 
-  // The parent's API URL (`https://api.{parent-host}`), ALWAYS the live one, in
-  // every environment of this brand
+  // The parent's API URL (its `apiAddress`), ALWAYS the live one, in every
+  // environment of this brand. Only a brand that IS its parent knows the
+  // parent's project id here, so a sub-brand's Pages-hosted parent answers ''.
   getParentApiUrl() {
-    const base = this.getParentUrl().replace(/^https?:\/\//, '');
-    return base ? `https://api.${base}` : '';
+    return apiAddress(this.getParentUrl(), this.isParent() ? this.project.projectId : undefined, this.project.resourceZone);
   }
 
   // Whether this backend IS the webhook root: the brand names no company, or

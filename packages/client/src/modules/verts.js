@@ -743,7 +743,13 @@ class Verts {
         logger.warn('inhouse source is "company" but no company url resolved (the brand names none, or its company is not reachable)');
         return null;
       }
-      return this.omega.getApiUrl(null, companyUrl);
+      // A company on a default Pages host has no address this brand can derive
+      try {
+        return this.omega.getApiUrl(null, companyUrl);
+      } catch (e) {
+        logger.warn(`inhouse source is "company" but ${e.message}`);
+        return null;
+      }
     }
 
     logger.warn('Unsupported inhouse source:', configured);

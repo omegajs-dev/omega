@@ -7,6 +7,9 @@
 // The local port chain and the local URLs on it (env, then the baked
 // `dev.ports`, then a loud miss) are @omega.js/client's, the one home.
 const chain = require('@omega.js/client/modules/dev-ports.js');
+// The API address (api.<brand host>, or the functions address on a default
+// Pages host) and the functions region are @omega.js/config's, the one home.
+const { FUNCTIONS_REGION, apiAddress } = require('@omega.js/config/api-address');
 
 // The step that writes the resolved dev map into this surface's artifact, named
 // in every missing-fact error below (#834).
@@ -49,12 +52,12 @@ function getFunctionsUrl(context, environment) {
     return chain.localFunctionsUrl(bakedPorts(context), projectId, DEV_FACT_WRITER);
   }
 
-  return `https://us-central1-${projectId}.cloudfunctions.net`;
+  return `https://${FUNCTIONS_REGION}-${projectId}.cloudfunctions.net`;
 }
 
 /**
- * The API base: the local stack in development and testing, the brand's api
- * subdomain in production.
+ * The API base: the local stack in development and testing, the brand's
+ * `apiAddress` in production (api.<host>, or the functions url on a Pages host).
  * @param {object} context - the instance asking (its `config` and `getEnvironment()`).
  * @param {string} [environment] - an override of the running environment.
  * @returns {string} the API base URL.
@@ -68,15 +71,20 @@ function getApiUrl(context, environment) {
     return chain.localApiUrl(bakedPorts(context), DEV_FACT_WRITER);
   }
 
-  // Prod: api.<brand host>. Mirrors @omega.js/client.getApiUrl. Never derive
-  // from authDomain — it is an auth concern (the brand host, with /__/auth/*
-  // self-hosted at build time) and must stay free to change independently.
+  // Prod: api.<brand host>, or the functions address on a default Pages host.
+  // Mirrors @omega.js/client.getApiUrl. Never derive from authDomain: it is an
+  // auth concern (the brand host, with /__/auth/* self-hosted at build time)
+  // and must stay free to change independently.
   const brandUrl = context.config?.brand?.url;
   if (!brandUrl) {
     throw new Error('brand.url not set in config/omega.json5');
   }
 
-  return `https://api.${new URL(brandUrl).hostname}`;
+  const address = apiAddress(brandUrl, context.config?.cloud?.config?.projectId);
+  if (!address) {
+    throw new Error('cloud.config.projectId not set in config/omega.json5: a default Pages brand.url has no API address without it');
+  }
+  return address;
 }
 
 /**

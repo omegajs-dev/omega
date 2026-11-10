@@ -2,7 +2,8 @@
  * Ensure Workers + routes match `edge.providers.cloudflare.workers`
  * [{ name, route, script, env, secrets }]. script resolves in the brand's
  * workers/ first, then the company tree's, then this service's; secrets
- * names brand .env keys; route supports `{ domain }` templating.
+ * names brand .env keys; route supports `{ domain }` templating. Every worker
+ * also gets a FUNCTIONS_REGION plain_text binding, config's Cloud Functions region.
  *
  * 1. Resolves every script and secret; a missing one throws before any request.
  * 2. Reads existing workers + zone routes + account ID.
@@ -12,6 +13,7 @@
  * 4. PUTs worker scripts as multipart form data, POSTs/PUTs/DELETEs routes.
  */
 const { join } = require('node:path');
+const { FUNCTIONS_REGION } = require('@omega.js/config');
 const chalk = require('chalk').default;
 const jetpack = require('fs-jetpack');
 const { resolveCompany } = require('@omega.js/config');
@@ -103,7 +105,7 @@ module.exports = async function ensureWorkers(context) {
   for (const workerConfig of workersConfig) {
     const route = templateObject(workerConfig.route, { domain });
     const { script, secrets } = resolved.get(workerConfig);
-    const worker = { name: workerConfig.name, script, env: workerConfig.env || {}, secrets };
+    const worker = { name: workerConfig.name, script, env: { FUNCTIONS_REGION, ...workerConfig.env }, secrets };
 
     const existingWorker = existingWorkers.find((w) => w.id === workerConfig.name);
     if (existingWorker) {

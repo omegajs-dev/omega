@@ -83,6 +83,16 @@ module.exports = defineCases({
     },
 
     {
+      // A brand on a default Pages host calls `<functions address>/omega_api/omega/health`;
+      // Cloud Functions hands the function the path after its name, so the router
+      // sees `/omega/health` and must still find the route.
+      name: 'the-functions-address-path-of-a-pages-brand-resolves-its-route',
+      async run({ expect }) {
+        expect(resolve('/omega/health')).toBe('health');
+      },
+    },
+
+    {
       name: 'the-retired-backend-manager-alias-is-no-prefix',
       async run({ expect }) {
         expect(resolve('/backend-manager/user/sign-up')).toBe('backend-manager/user/sign-up');

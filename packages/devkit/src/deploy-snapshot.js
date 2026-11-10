@@ -14,14 +14,21 @@
  * no checkout, nothing a `git status` or a `git branch` can see, and the working
  * tree the developer is looking at is never touched. Its ROOT is the BRAND
  * FOLDER, never the enclosing repo's, so the mirror is a brand checkout and not
- * a copy of whatever tree the brand happens to live in. Its PARENT is the deploy
- * ref's current tip on the mirror, fetched by ref name into FETCH_HEAD alone, so
- * the ref's history is snapshots only and the push carries just what the mirror
- * lacks; the first snapshot on a mirror is parentless. The brand's own history
- * never rides, which is what keeps a public brand repo from receiving the
- * private tree it was cut from, and nothing here commits anything a developer
- * did not. The push is a fast-forward, never forced, so a ref another deploy
- * moved meanwhile fails the push loudly.
+ * a copy of whatever tree the brand happens to live in. Its PARENT is the
+ * previous snapshot made parentless: a deploy ref tip that has a parent is
+ * first re-rooted on the server, through the git data API, as a parentless
+ * copy of its own tree (the ref moved there by a forced ref update and read
+ * back until it answers the root), and that root is fetched by ref name into
+ * FETCH_HEAD alone. So the ref holds the previous root and the new snapshot,
+ * plus any admin publish committed on top between local deploys (the
+ * backend's deploy-branch lane), whose tree the next re-root keeps and whose
+ * commits it drops. The push carries just what the mirror lacks, and GitHub's
+ * gc drops the old chain. The first snapshot on a mirror is parentless, and a
+ * failed re-root stops the deploy before anything is pushed. The brand's own
+ * history never rides, which is what keeps a public brand repo from receiving
+ * the private tree it was cut from, and nothing here commits anything a
+ * developer did not. The push is a fast-forward, never forced, so a ref
+ * another deploy moved meanwhile fails the push loudly.
  *
  * ONE write ever reaches a repo's DEFAULT branch, and it is `pushWorkflowFiles`
  * below: GitHub registers a workflow from the default branch (the listing and
@@ -62,19 +69,24 @@ const { execFileSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 const jetpack = require('fs-jetpack');
 const { resolveCompany, COMPANY_RESOLVED_FILE, mintBridgeSources } = require('@omega.js/config');
-const { gitAuthEnv, scrubbedFailure } = require('./git-auth.js');
+const { gitAuthEnv, scrubToken, scrubbedFailure } = require('./git-auth.js');
 const { composedWorkflowOwner } = require('./ci-workflows.js');
 const { formatJson } = require('./write-json.js');
 
 // Constants
 const API_BASE = 'https://api.github.com';
 const SNAPSHOT_MESSAGE = 'chore(deploy): snapshot the brand for this run';
+const REROOT_MESSAGE = 'chore(deploy): re-root the snapshot chain on the previous snapshot';
 // Where GitHub reads a workflow from, in the repo and on disk alike.
 const WORKFLOWS_DIR = '.github/workflows';
 // GitHub indexes a freshly pushed workflow a few seconds after the push, and a
 // dispatch before that 404s: about a minute of polling, then a loud failure.
 const POLL_ATTEMPTS = 20;
 const POLL_INTERVAL_MS = 3000;
+// A ref update GitHub has accepted can still read as the previous tip for a
+// moment, and a fetch then misses the root: a short poll, then a loud failure.
+const REROOT_POLL_ATTEMPTS = 10;
+const REROOT_POLL_INTERVAL_MS = 1000;
 
 /** Run a command and capture its stdout (a file and an argument array, never a shell string). */
 function execCommand(file, args, options = {}) {
@@ -94,23 +106,17 @@ function shortSha(sha) {
 }
 
 /**
- * Push the brand folder to `<owner>/<repo>` at `ref` as a mirror snapshot,
- * parented on that ref's current remote tip.
- *
- * @param {object} options - Options.
- * @param {string} options.brandRoot - The brand folder to snapshot.
- * @param {string} options.owner - The mirror repo's owner.
- * @param {string} options.repo - The mirror repo's bare name.
- * @param {string} options.ref - The deploy ref the snapshot chain lands on (`omega-deploy`).
- * @param {string} options.token - The GitHub token, carried in the env.
+ * Push the brand folder to `<owner>/<repo>` at `ref` as a snapshot chained on the re-rooted tip.
+ * @param {object} options - Required: `brandRoot`, `owner`, `repo`, `ref` and `token` (carried in the env).
  * @param {string} [options.message] - The snapshot commit's message.
- * @param {string[]} [options.require] - Brand-relative paths force-added when
- *   present (a linked brand's staged `omega_modules/` and lockfile).
+ * @param {string[]} [options.require] - Brand-relative paths force-added when present.
+ * @param {object} [options.refWait] - `{ attempts, delayMs }`, bounding the re-root's wait (tests).
  * @param {Function} [options.execFn] - The command runner (tests).
+ * @param {Function} [options.fetchFn] - Injectable fetch, for the re-root (tests).
  * @param {string} [options.indexFile] - The temporary index to build in.
- * @returns {string} The pushed commit sha.
+ * @returns {Promise<string>} The pushed commit sha.
  */
-function pushSnapshot(options) {
+async function pushSnapshot(options) {
   const {
     brandRoot,
     owner,
@@ -119,6 +125,8 @@ function pushSnapshot(options) {
     token,
     message = SNAPSHOT_MESSAGE,
     execFn = execCommand,
+    fetchFn = fetch,
+    refWait = {},
     indexFile = path.join(os.tmpdir(), `omega-snapshot-index-${process.pid}`),
   } = options;
 
@@ -163,10 +171,13 @@ function pushSnapshot(options) {
 
     const tree = git('write-tree').trim();
     const brandTree = prefix ? subtreeOf(git, tree, prefix) : tree;
-    // Chained on the previous snapshot, never on HEAD: the ref's history is
-    // snapshots only, and the tree it was cut from stays off the brand's repo.
-    const parent = remoteTip({ git, remote, url, owner, repo, ref, token });
-    const sha = git('commit-tree', brandTree, ...(parent ? ['-p', parent] : []), '-m', message).trim();
+    // Chained on the previous snapshot made parentless, never on HEAD: the ref
+    // holds the root, this snapshot and any admin publishes since, and the tree
+    // it was cut from stays off the brand's repo. The fetch brings the root's
+    // objects here; a ref moved since the re-root refuses the non-forced push.
+    const root = await rerootDeployRef({ owner, repo, ref, token, fetchFn, attempts: refWait.attempts, delayMs: refWait.delayMs });
+    remoteTip({ remote, url, owner, repo, ref, token });
+    const sha = git('commit-tree', brandTree, ...(root ? ['-p', root] : []), '-m', message).trim();
 
     // Pushed BY SHA, so no local branch is ever created here. Not forced: a
     // chained snapshot fast-forwards, and a ref moved since the read refuses.
@@ -184,27 +195,74 @@ function pushSnapshot(options) {
 }
 
 /**
- * The deploy ref's tip on the mirror, fetched by ref name so its commit and
- * objects exist locally: FETCH_HEAD only, no local ref and no branch.
+ * Re-root the deploy ref server-side: a tip with a parent is copied as a parentless commit
+ * of its own tree, the ref force-moved there, then read until it answers the root.
+ * @param {object} options - Required: `owner`, `repo`, `ref` and `token` (scrubbed from a failure).
+ * @param {Function} [options.fetchFn] - Injectable fetch (tests).
+ * @param {number} [options.attempts] - The poll budget of the wait for the root.
+ * @param {number} [options.delayMs] - The wait between those polls.
+ * @returns {Promise<string|null>} The root's sha (the tip itself when parentless), null with no ref.
+ * @throws {Error} Naming the failed step, the wait running out included.
+ */
+async function rerootDeployRef(options) {
+  const {
+    owner, repo, ref, token,
+    fetchFn = fetch,
+    attempts = REROOT_POLL_ATTEMPTS,
+    delayMs = REROOT_POLL_INTERVAL_MS,
+  } = options;
+  const { call, read, refHead } = gitData({ owner, repo, token, fetchFn });
+
+  const head = await refHead(ref);
+  if (!head) return null;
+
+  const tip = await read(await call(`/git/commits/${head}`), [200], `Reading the ${ref} tip commit`);
+  if (tip.parents.length === 0) return tip.sha;
+
+  const root = await read(
+    await call('/git/commits', { method: 'POST', body: JSON.stringify({ message: REROOT_MESSAGE, tree: tip.tree.sha, parents: [] }) }),
+    [201],
+    `Re-rooting ${ref}: creating the root commit`,
+  );
+  await read(
+    await call(`/git/refs/heads/${encodeURIComponent(ref)}`, { method: 'PATCH', body: JSON.stringify({ sha: root.sha, force: true }) }),
+    [200],
+    `Re-rooting ${ref}: moving the ref to the root commit`,
+  );
+
+  let seen = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    seen = await refHead(ref);
+    if (seen === root.sha) return root.sha;
+    // The last attempt has nothing left to wait for.
+    if (attempt < attempts) await delay(delayMs);
+  }
+
+  throw new Error(`Re-rooting ${ref}: ${owner}/${repo}#${ref} still reads ${seen ? shortSha(seen) : 'no sha'} ${Math.round((attempts * delayMs) / 1000)}s after the ref update, not the root ${shortSha(root.sha)}, so the snapshot has nothing to chain on. Check https://github.com/${owner}/${repo}/commits/${ref} and deploy again.`);
+}
+
+/**
+ * Fetch the deploy ref's tip from the mirror by ref name, so the root the
+ * re-root just left and its objects exist locally for the snapshot to chain
+ * on: FETCH_HEAD only, no local ref and no branch. A mirror with no such ref
+ * has nothing to fetch.
  *
  * @param {object} options - Options.
- * @param {Function} options.git - The bound git runner for local calls.
  * @param {Function} options.remote - The bound git runner carrying the auth env.
  * @param {string} options.url - The mirror's url.
  * @param {string} options.owner - The mirror repo's owner.
  * @param {string} options.repo - The mirror repo's bare name.
  * @param {string} options.ref - The deploy branch.
  * @param {string} options.token - The GitHub token, scrubbed from a failure.
- * @returns {string|null} The tip's sha, or null when the mirror has no such ref.
  */
-function remoteTip({ git, remote, url, owner, repo, ref, token }) {
+function remoteTip({ remote, url, owner, repo, ref, token }) {
   const what = `Reading ${owner}/${repo}#${ref}`;
 
   try {
     remote('ls-remote', '--exit-code', url, `refs/heads/${ref}`);
   } catch (error) {
     // `--exit-code` answers 2 for a ref the mirror does not have: a first snapshot.
-    if (error && error.status === 2) return null;
+    if (error && error.status === 2) return;
     throw scrubbedFailure(what, error, token);
   }
 
@@ -213,8 +271,6 @@ function remoteTip({ git, remote, url, owner, repo, ref, token }) {
   } catch (error) {
     throw scrubbedFailure(what, error, token);
   }
-
-  return git('rev-parse', 'FETCH_HEAD').trim();
 }
 
 /**
@@ -294,6 +350,39 @@ async function failureDetail(response) {
 }
 
 /**
+ * The git data API call shape every call here shares, bound to one repo and token.
+ * @param {object} options - Options.
+ * @param {string} options.owner - The repo's owner.
+ * @param {string} options.repo - The repo's bare name.
+ * @param {string} options.token - The GitHub token, scrubbed from a failure.
+ * @param {Function} [options.fetchFn] - Injectable fetch (tests).
+ * @returns {object} `call(route, init)` answers the response; `read(response, expected, what)` its
+ *   json, null for an accepted non-2xx, else throws `<what> on <owner>/<repo> failed`; `fail(response,
+ *   compose)` the scrubbed Error `compose(detail)` words; `refHead(name)` the branch's sha or null.
+ */
+function gitData({ owner, repo, token, fetchFn = fetch }) {
+  const call = (route, init) => fetchFn(`${API_BASE}/repos/${owner}/${repo}${route}`, { headers: ghHeaders(token), ...init });
+  const fail = async (response, compose) => new Error(scrubToken(compose(await failureDetail(response)), token));
+  const read = async (response, expected, what) => {
+    if (!expected.includes(response.status)) {
+      throw await fail(response, (detail) => `${what} on ${owner}/${repo} failed ${detail}`);
+    }
+    // Every ACCEPTED non-2xx reads as "not there": a 404 for a file the branch
+    // does not hold, a 409 for a repo with no commits at all.
+    return response.status < 300 ? response.json() : null;
+  };
+
+  // A repo with no such branch answers 404, and a freshly created one 409 `Git
+  // Repository is empty.`: both are no head.
+  const refHead = async (name) => {
+    const ref = await read(await call(`/git/ref/heads/${encodeURIComponent(name)}`), [200, 404, 409], `Reading ${name}`);
+    return ref ? ref.object.sha : null;
+  };
+
+  return { call, read, fail, refHead };
+}
+
+/**
  * The composed workflow files a brand carries, the ones GitHub has to have on
  * its DEFAULT branch before any dispatch of them resolves
  * ([#915](https://github.com/Omega-JS-Stack/omega/issues/915)).
@@ -335,13 +424,14 @@ function composedWorkflowFiles(brandRoot) {
  *   report its default branch is not something to guess at.
  */
 async function defaultBranchOf({ owner, repo, token, fetchFn = fetch }) {
-  const response = await fetchFn(`${API_BASE}/repos/${owner}/${repo}`, { headers: ghHeaders(token) });
+  const { call, fail } = gitData({ owner, repo, token, fetchFn });
+  const response = await call('');
 
   if (response.status === 404) {
     return null;
   }
   if (response.status !== 200) {
-    throw new Error(`Could not read ${owner}/${repo}'s default branch ${await failureDetail(response)}. The deploy needs it to know where the composed workflows go.`);
+    throw await fail(response, (detail) => `Could not read ${owner}/${repo}'s default branch ${detail}. The deploy needs it to know where the composed workflows go.`);
   }
 
   return (await response.json()).default_branch || null;
@@ -382,18 +472,7 @@ async function pushWorkflowFiles({ brandRoot, owner, repo, branch, token, fetchF
     return { pushed: [], removed: [], sha: null };
   }
 
-  const call = async (route, init) => {
-    const response = await fetchFn(`${API_BASE}/repos/${owner}/${repo}${route}`, { headers: ghHeaders(token), ...init });
-    return response;
-  };
-  const read = async (response, expected, what) => {
-    if (!expected.includes(response.status)) {
-      throw new Error(`${what} on ${owner}/${repo} failed ${await failureDetail(response)}`);
-    }
-    // Every ACCEPTED non-2xx reads as "not there": a 404 for a file the branch
-    // does not hold, a 409 for a repo with no commits at all.
-    return response.status < 300 ? response.json() : null;
-  };
+  const { call, read, refHead } = gitData({ owner, repo, token, fetchFn });
 
   // What the branch is missing or holds differently. The contents API answers
   // per file, which is also how a 404 tells the two apart from a whole branch
@@ -441,13 +520,12 @@ async function pushWorkflowFiles({ brandRoot, owner, repo, branch, token, fetchF
     return { pushed: [], removed: [], sha: null };
   }
 
-  // The head this commit sits on. A repo with no commit at all answers 404, and
-  // a freshly created one answers 409 `Git Repository is empty.`; both mean no
-  // head, so the first commit is parentless with no base tree to build on.
-  const head = await read(await call(`/git/ref/heads/${encodeURIComponent(branch)}`), [200, 404, 409], `Reading ${branch}`);
-  const parents = head ? [head.object.sha] : [];
+  // The head this commit sits on. No head means the first commit is
+  // parentless with no base tree to build on.
+  const head = await refHead(branch);
+  const parents = head ? [head] : [];
   const baseTree = head
-    ? (await read(await call(`/git/commits/${head.object.sha}`), [200], 'Reading the head commit')).tree.sha
+    ? (await read(await call(`/git/commits/${head}`), [200], 'Reading the head commit')).tree.sha
     : null;
 
   const tree = [];
@@ -534,39 +612,37 @@ async function healDefaultBranch({ owner, repo, current, token, fetchFn = fetch,
     return current;
   }
 
-  const url = `${API_BASE}/repos/${owner}/${repo}`;
-  const headers = ghHeaders(token);
+  const { call, fail } = gitData({ owner, repo, token, fetchFn });
   const byHand = 'Set the default branch by hand and re-run the deploy.';
 
   // The branch the default moves TO may not exist at all: a repo whose first
   // web deploy created gh-pages on an empty repo carries that one branch, so
   // `main` is created from the head it holds.
-  const existing = await fetchFn(`${url}/git/ref/heads/main`, { headers });
+  const existing = await call('/git/ref/heads/main');
 
   if (existing.status === 404) {
-    const source = await fetchFn(`${url}/git/ref/heads/gh-pages`, { headers });
+    const source = await call('/git/ref/heads/gh-pages');
 
     if (source.status !== 200) {
-      throw new Error(`${owner}/${repo} has no main branch and reading gh-pages to create one from failed ${await failureDetail(source)}. ${byHand}`);
+      throw await fail(source, (detail) => `${owner}/${repo} has no main branch and reading gh-pages to create one from failed ${detail}. ${byHand}`);
     }
 
-    const created = await fetchFn(`${url}/git/refs`, {
+    const created = await call('/git/refs', {
       method: 'POST',
-      headers,
       body: JSON.stringify({ ref: 'refs/heads/main', sha: (await source.json()).object.sha }),
     });
 
     if (created.status !== 201) {
-      throw new Error(`${owner}/${repo} has no main branch and creating one from gh-pages failed ${await failureDetail(created)}. ${byHand}`);
+      throw await fail(created, (detail) => `${owner}/${repo} has no main branch and creating one from gh-pages failed ${detail}. ${byHand}`);
     }
   } else if (existing.status !== 200) {
-    throw new Error(`Could not read ${owner}/${repo}'s main branch ${await failureDetail(existing)}, so the deploy cannot tell whether the default branch can move there. ${byHand}`);
+    throw await fail(existing, (detail) => `Could not read ${owner}/${repo}'s main branch ${detail}, so the deploy cannot tell whether the default branch can move there. ${byHand}`);
   }
 
-  const patch = await fetchFn(url, { method: 'PATCH', headers, body: JSON.stringify({ default_branch: 'main' }) });
+  const patch = await call('', { method: 'PATCH', body: JSON.stringify({ default_branch: 'main' }) });
 
   if (patch.status !== 200) {
-    throw new Error(`${owner}/${repo}'s default branch is gh-pages, where no workflow lives, and moving it back to main failed ${await failureDetail(patch)}. ${byHand}`);
+    throw await fail(patch, (detail) => `${owner}/${repo}'s default branch is gh-pages, where no workflow lives, and moving it back to main failed ${detail}. ${byHand}`);
   }
 
   if (logger) {
@@ -696,6 +772,8 @@ async function waitForRef(options) {
 
 module.exports = {
   pushSnapshot,
+  rerootDeployRef,
+  gitData,
   pushWorkflowFiles,
   composedWorkflowFiles,
   defaultBranchOf,

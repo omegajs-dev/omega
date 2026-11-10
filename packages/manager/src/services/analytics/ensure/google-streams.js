@@ -27,7 +27,7 @@
  * travels together.
  */
 const chalk = require('chalk').default;
-const { targetEntries, targetUrl } = require('@omega.js/config');
+const { targetEntries, targetUrl, apiAddress, defaultAddressReason } = require('@omega.js/config');
 const { pressEnterToOpen } = require('@omega.js/devkit/prompt');
 const { pollWithSpinner } = require('@omega.js/devkit/flows');
 const { writeBrandConfig } = require('../../../lib/config-write.js');
@@ -35,12 +35,13 @@ const { writeEnvValue } = require('../../../lib/env-secret.js');
 const { streamSecretEnvName } = require('../../../lib/analytics-secret.js');
 const { canPrompt, dryRunPlan } = require('../../../lib/run-gates.js');
 
-// target TYPE → stream URI subdomain (null = the target's own url) + display
-// name. Subdomains for app targets are virtual: they exist only to give each
-// target a distinct stream URI. Unlisted types default to the target's name.
+// target TYPE → stream URI subdomain (null = the target's own url; the
+// backend's is its apiAddress) + display name. Subdomains for app targets are
+// virtual: they exist only to give each target a distinct stream URI. Unlisted
+// types default to the target's name.
 const STREAM_TARGETS = {
   web: { displayName: 'Website', subdomain: null },
-  backend: { displayName: 'Backend', subdomain: 'api' },
+  backend: { displayName: 'Backend', subdomain: null },
   desktop: { displayName: 'Desktop App', subdomain: 'desktop' },
   extension: { displayName: 'Browser Extension', subdomain: 'extension' },
   mobile: { displayName: 'Mobile App', subdomain: 'mobile' },
@@ -84,10 +85,19 @@ module.exports = async function ensureGoogleStreams(context) {
   // the community stream instead of a second root-domain one.
   for (const entry of targetEntries(brandConfig)) {
     const target = entry.name;
+    const url = targetUrl(brandConfig, entry.name);
+
+    // The analytics setup required brand.url, so only a default Pages host
+    // leaves a target with no url
+    if (!url) {
+      console.log(chalk.dim(`      ⊘ ${target}: ${defaultAddressReason(brandConfig.brand.url)}`));
+      continue;
+    }
+
     const spec = STREAM_TARGETS[entry.type] || { displayName: entry.name, subdomain: entry.name };
-    const uri = spec.subdomain
-      ? `https://${spec.subdomain}.${domain}`
-      : (targetUrl(brandConfig, entry.name) || `https://${domain}`);
+    const uri = entry.type === 'backend'
+      ? apiAddress(brandConfig.brand.url, brandConfig.cloud?.config?.projectId)
+      : (spec.subdomain ? `https://${spec.subdomain}.${domain}` : url);
     const displayName = `${brandConfig.brand.name} - ${spec.displayName}`;
 
     let stream = existing.find((s) => s.type === 'WEB_DATA_STREAM' && s.webStreamData?.defaultUri === uri);

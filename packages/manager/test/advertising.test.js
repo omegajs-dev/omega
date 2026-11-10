@@ -111,6 +111,19 @@ module.exports = defineCases({
     },
 
     {
+      name: 'advertising: a default Pages brand.url is no domain, so the service skips with the one reason before any API call',
+      run: async (ctx) => {
+        const api = fakeAdsense();
+
+        const result = await runService(brandConfig({ url: 'https://dreamr-design.github.io/dreamr-web' }), { adsense: api });
+
+        ctx.expect(result.status).toBe('skipped');
+        ctx.expect(result.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
+        ctx.expect(api.calls).toEqual([]);
+      },
+    },
+
+    {
       name: 'advertising: skips without a client id — and the default carries no company account',
       run: async (ctx) => {
         const result = await runService(brandConfig({ client: null }), { adsense: fakeAdsense() });

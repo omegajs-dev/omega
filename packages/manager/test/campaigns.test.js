@@ -230,7 +230,7 @@ ${GROUP_KEYS.map((key) => `            ${key}: ${GROUP_IDS[key]},`).join('\n')}
 }
 `;
 
-function runService(config, { sendgrid, cloudflare = null, options = {}, serviceData = {}, webhookKey = true, brandRoot } = {}) {
+function runService(config, { sendgrid, cloudflare = null, options = {}, serviceData = {}, webhookKey = true, brandRoot, companyConfig } = {}) {
   if (webhookKey) {
     process.env.OMEGA_WEBHOOK_KEY = WEBHOOK_KEY;
   } else {
@@ -248,6 +248,7 @@ function runService(config, { sendgrid, cloudflare = null, options = {}, service
     serviceData,
     sendgridApi: sendgrid,
     cloudflareApi: cloudflare,
+    companyConfig,
   });
 }
 
@@ -1045,6 +1046,36 @@ module.exports = defineCases({
 
         ctx.expect(result.status).toBe('success');
         ctx.expect(api.callsTo('getEventWebhookSettings').length).toBe(0);
+        ctx.expect(result.output.eventWebhook).toBe(undefined);
+      },
+    },
+
+    {
+      name: 'campaigns: a company on a default Pages host points the Event Webhook at its project\'s Cloud Functions forwarder',
+      run: async (ctx) => {
+        const api = fakeSendgrid({ ...convergedResponses(), updateEventWebhookSettings: {} });
+
+        const result = await runService(
+          brandConfig({ company: { id: 'parent-brand', url: 'https://parent-org.github.io/parent-brand-web', images: {} } }),
+          { sendgrid: api, serviceData: { listId: 'lst_1' }, companyConfig: { cloud: { config: { projectId: 'parent-app' } } } },
+        );
+
+        ctx.expect(result.status).toBe('success');
+        ctx.expect(api.callsTo('updateEventWebhookSettings')[0].args[0]).toEqual({
+          url: `https://us-central1-parent-app.cloudfunctions.net/omega_api/omega/marketing/webhook/forward?provider=sendgrid&key=${WEBHOOK_KEY}`,
+        });
+      },
+    },
+
+    {
+      name: 'campaigns: a company on a default Pages host with no project id is no forwarder to point the Event Webhook at',
+      run: async (ctx) => {
+        const api = fakeSendgrid(convergedResponses());
+
+        const result = await runService(brandConfig({ company: { id: 'parent-brand', url: 'https://parent-org.github.io/parent-brand-web', images: {} } }), { sendgrid: api, serviceData: { listId: 'lst_1' } });
+
+        ctx.expect(result.status).toBe('success');
+        ctx.expect(api.callsTo('getEventWebhookSettings').length, 'never api.parent-org.github.io, a host nobody serves').toBe(0);
         ctx.expect(result.output.eventWebhook).toBe(undefined);
       },
     },

@@ -5,9 +5,9 @@
 // is git's own behavior: a commit whose root is the BRAND FOLDER (never the
 // enclosing repo's root), the .gitignore rules that decide what rides, an
 // untracked tarball folder that must ride, and a chain of snapshots that only
-// ever fast-forwards the mirror. Only the network is injected (the fetch
-// waitForWorkflow polls, and the remote URL, rewritten to the bare repo by the
-// injected exec).
+// ever fast-forwards the mirror. Only the network is injected (the git data
+// API the re-root calls, answered from the bare repo itself, and the remote URL,
+// rewritten to the bare repo by the injected exec).
 
 const defineCases = require('@omega.js/devkit/test/define-cases');
 const fs = require('node:fs');
@@ -59,6 +59,9 @@ function buildFixture() {
 
   const bare = path.join(base, 'mirror.git');
   run('git', ['init', '-q', '--bare', bare], base);
+  // The identity the git data double commits a re-rooted copy under
+  run('git', ['config', 'user.email', 'mirror@example.com'], bare);
+  run('git', ['config', 'user.name', 'Mirror API'], bare);
 
   return { base, repo, brandRoot, bare };
 }
@@ -76,6 +79,79 @@ function localRemote(bare, calls) {
     const rewritten = args.map((arg) => (String(arg).startsWith('https://github.com/') ? bare : arg));
     return execFileSync(file, rewritten, { encoding: 'utf8', ...options });
   };
+}
+
+/**
+ * GitHub's git data routes for the deploy ref, answered from the bare mirror:
+ * the fake IS the server, so a re-root it accepts moves the real ref the real
+ * fetch and push then see. `refuse` names the write (`create` or `patch`) that
+ * answers a 403 whose body echoes the token; `empty` answers a missing ref with
+ * GitHub's 409 for a repo with no commits, in place of the 404; `lag` is how
+ * many ref reads after a PATCH still answer the old tip while the real ref has
+ * already moved, the way GitHub's replicas trail a write.
+ * @param {string} bare - The bare repo standing in for the mirror.
+ * @param {{ refuse?: string, empty?: boolean, lag?: number }} [options] - The write to refuse, the empty-repo answer, the stale reads.
+ * @returns {{ fetchFn: Function, calls: object[], created: string[] }} The double.
+ */
+function mirrorApi(bare, { refuse = null, empty = false, lag = 0 } = {}) {
+  const calls = [];
+  const created = [];
+  let stale = null;
+  let staleReads = 0;
+  const answer = (status, body) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: String(status),
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  });
+  const refused = () => answer(403, { message: `Resource not accessible by integration (${TOKEN})` });
+  const git = (args) => run('git', args, bare).trim();
+
+  const fetchFn = async (url, init = {}) => {
+    const route = String(url).replace(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+/, '');
+    const method = init.method || 'GET';
+    const body = init.body ? JSON.parse(init.body) : null;
+    calls.push({ method, route, body });
+
+    const refRead = route.match(/^\/git\/ref\/heads\/(.+)$/);
+    if (method === 'GET' && refRead) {
+      let sha = null;
+      try {
+        sha = git(['rev-parse', '--verify', '--quiet', `refs/heads/${refRead[1]}`]);
+      } catch {
+        return empty ? answer(409, { message: 'Git Repository is empty.' }) : answer(404, { message: 'Not Found' });
+      }
+      if (staleReads > 0) {
+        staleReads -= 1;
+        sha = stale;
+      }
+      return answer(200, { ref: `refs/heads/${refRead[1]}`, object: { type: 'commit', sha } });
+    }
+    const commitRead = route.match(/^\/git\/commits\/([0-9a-f]{40})$/);
+    if (method === 'GET' && commitRead) {
+      const [tree, parents = ''] = git(['log', '-1', '--format=%T%n%P', commitRead[1]]).split('\n');
+      return answer(200, { sha: commitRead[1], tree: { sha: tree }, parents: parents.split(' ').filter(Boolean).map((sha) => ({ sha })) });
+    }
+    if (method === 'POST' && route === '/git/commits') {
+      if (refuse === 'create') return refused();
+      const sha = git(['commit-tree', body.tree, ...body.parents.flatMap((parent) => ['-p', parent]), '-m', body.message]);
+      created.push(sha);
+      return answer(201, { sha, tree: { sha: body.tree }, parents: body.parents.map((parent) => ({ sha: parent })) });
+    }
+    const refPatch = route.match(/^\/git\/refs\/heads\/(.+)$/);
+    if (method === 'PATCH' && refPatch) {
+      if (refuse === 'patch') return refused();
+      stale = git(['rev-parse', `refs/heads/${refPatch[1]}`]);
+      staleReads = lag;
+      git(['update-ref', `refs/heads/${refPatch[1]}`, body.sha]);
+      return answer(200, { ref: `refs/heads/${refPatch[1]}`, object: { type: 'commit', sha: body.sha } });
+    }
+
+    throw new Error(`the mirror API was asked for ${method} ${route}`);
+  };
+
+  return { fetchFn, calls, created };
 }
 
 /** A rev resolved in the bare repo: a ref, or `<ref>^` for its parent. */
@@ -102,9 +178,17 @@ function expectAuthed(ctx, calls, verb) {
   ctx.expect('GIT_INDEX_FILE' in call.options.env, `the ${verb} carries the temporary index`).toBe(false);
 }
 
-/** Push the fixture brand to the bare mirror's `ref`, recording every exec call. */
-function pushTo(brandRoot, bare, ref, calls = []) {
-  return pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref, token: TOKEN, execFn: localRemote(bare, calls) });
+/**
+ * Push the fixture brand to the bare mirror's `ref`, recording every exec call;
+ * `api` is the git data double the re-root talks to.
+ */
+function pushTo(brandRoot, bare, ref, calls = [], api = mirrorApi(bare)) {
+  return pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref, token: TOKEN, execFn: localRemote(bare, calls), fetchFn: api.fetchFn });
+}
+
+/** The `METHOD /route` of every call the git data double answered. */
+function routesOf(api) {
+  return api.calls.map((call) => `${call.method} ${call.route}`);
 }
 
 /** The paths a ref's tree carries, sorted. */
@@ -124,7 +208,7 @@ function mintedIn(bare, ref) {
 /** Push the fixture brand with the staged set a linked deploy requires. */
 function pushStaged(brandRoot, bare, required = ['omega_modules', 'package-lock.json']) {
   return pushSnapshot({
-    brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, require: required, execFn: localRemote(bare, []),
+    brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, require: required, execFn: localRemote(bare, []), fetchFn: mirrorApi(bare).fetchFn,
   });
 }
 
@@ -134,7 +218,7 @@ function pushStaged(brandRoot, bare, required = ['omega_modules', 'package-lock.
  * Give the fixture brand a company layer and push it under that machine's home.
  * @param {{ base: string, brandRoot: string, bare: string }} fixture - From buildFixture().
  */
-function pushWithCompany({ base, brandRoot, bare }) {
+async function pushWithCompany({ base, brandRoot, bare }) {
   // A parent brand carrying a company/ tree, plus the machine registry line its
   // own runs write: exactly what the dispatching machine has and a runner lacks.
   const parentRoot = path.join(base, 'parent');
@@ -148,13 +232,14 @@ function pushWithCompany({ base, brandRoot, bare }) {
   jetpack.write(path.join(home, 'brands.json'), JSON.stringify({ 'acme-co': { root: parentRoot, name: 'Acme Co', url: 'https://acme.test' } }));
 
   try {
-    pushSnapshot({
+    await pushSnapshot({
       brandRoot,
       owner: 'Omega-JS-Stack',
       repo: 'playground-omega',
       ref: 'main',
       token: TOKEN,
       execFn: localRemote(bare, []),
+      fetchFn: mirrorApi(bare).fetchFn,
     });
   } finally {
     if (previousHome === undefined) delete process.env.OMEGA_HOME;
@@ -257,13 +342,13 @@ module.exports = defineCases({
   tests: [
     {
       name: 'the pushed commit\'s root IS the brand folder, ignored files absent, staged files present',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { repo, brandRoot, bare } = buildFixture();
         const calls = [];
         const status = () => run('git', ['status', '--porcelain'], repo);
         const before = status();
 
-        const sha = pushSnapshot({
+        const sha = await pushSnapshot({
           brandRoot,
           owner: 'Omega-JS-Stack',
           repo: 'playground-omega',
@@ -274,6 +359,7 @@ module.exports = defineCases({
           // to carry (#872)
           require: ['omega_modules', 'package-lock.json'],
           execFn: localRemote(bare, calls),
+          fetchFn: mirrorApi(bare).fetchFn,
         });
 
         ctx.expect(sha, 'the pushed sha comes back').toMatch(/^[0-9a-f]{40}$/);
@@ -331,7 +417,7 @@ module.exports = defineCases({
 
     {
       name: 'a failed snapshot push is rethrown with the token scrubbed out of git\'s message',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
         const real = localRemote(bare, []);
 
@@ -344,7 +430,7 @@ module.exports = defineCases({
 
         let thrown = null;
         try {
-          pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: failing });
+          await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: failing, fetchFn: mirrorApi(bare).fetchFn });
         } catch (error) {
           thrown = error;
         }
@@ -357,13 +443,13 @@ module.exports = defineCases({
 
     {
       name: 'a second snapshot parents on the first and fast-forwards the mirror, with no force push',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
         const calls = [];
 
-        const first = pushTo(brandRoot, bare, 'main', calls);
+        const first = await pushTo(brandRoot, bare, 'main', calls);
         jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// edited after the first snapshot\n');
-        const second = pushTo(brandRoot, bare, 'main', calls);
+        const second = await pushTo(brandRoot, bare, 'main', calls);
 
         ctx.expect(second, 'a new tree is a new commit').not.toBe(first);
         ctx.expect(revOf(bare, 'main'), 'the mirror moved to it').toBe(second);
@@ -376,12 +462,12 @@ module.exports = defineCases({
     },
 
     {
-      name: 'a fresh clone holding none of the earlier snapshots still parents on the remote tip',
-      run: (ctx) => {
+      name: 'a fresh clone holding none of the earlier snapshots still chains on the re-rooted remote tip',
+      run: async (ctx) => {
         const { base, repo, brandRoot, bare } = buildFixture();
-        pushTo(brandRoot, bare, 'omega-deploy');
+        await pushTo(brandRoot, bare, 'omega-deploy');
         jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// edited after the first snapshot\n');
-        const tip = pushTo(brandRoot, bare, 'omega-deploy');
+        const tip = await pushTo(brandRoot, bare, 'omega-deploy');
 
         // --no-local clones over the transport, so only reachable objects arrive
         const clone = path.join(base, 'clone');
@@ -397,18 +483,20 @@ module.exports = defineCases({
         }
         ctx.expect(held, 'the clone already held the remote tip').toBe(false);
 
-        const third = pushTo(cloneBrand, bare, 'omega-deploy');
+        const api = mirrorApi(bare);
+        const third = await pushTo(cloneBrand, bare, 'omega-deploy', [], api);
 
         ctx.expect(revOf(bare, 'omega-deploy'), 'the mirror moved to it').toBe(third);
-        ctx.expect(revOf(bare, 'omega-deploy^'), 'its parent is the remote tip').toBe(tip);
-        ctx.expect(countOf(bare, 'omega-deploy')).toBe('3');
+        ctx.expect(revOf(bare, 'omega-deploy^'), 'its parent is the root the re-root created').toBe(api.created[0]);
+        ctx.expect(revOf(bare, 'omega-deploy^^{tree}'), 'a root carrying the remote tip\'s tree').toBe(revOf(bare, `${tip}^{tree}`));
+        ctx.expect(countOf(bare, 'omega-deploy')).toBe('2');
         ctx.expect(treeOf(bare, 'omega-deploy'), 'the clone\'s brand folder is the root').toEqual(['.gitignore', 'package.json', 'src/app.js']);
       },
     },
 
     {
       name: 'a tip left by an older parentless snapshot becomes the next snapshot\'s parent',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { base, brandRoot, bare } = buildFixture();
 
         // The old lane's commit, built inside the mirror by hand, so the
@@ -422,8 +510,11 @@ module.exports = defineCases({
         inBare(['update-ref', 'refs/heads/omega-deploy', old]);
 
         const calls = [];
-        const next = pushTo(brandRoot, bare, 'omega-deploy', calls);
+        const api = mirrorApi(bare);
+        const next = await pushTo(brandRoot, bare, 'omega-deploy', calls, api);
 
+        // A parentless tip is already a root: read, never rewritten
+        ctx.expect(routesOf(api)).toEqual(['GET /git/ref/heads/omega-deploy', `GET /git/commits/${old}`]);
         ctx.expect(revOf(bare, 'omega-deploy'), 'the mirror moved to it').toBe(next);
         ctx.expect(revOf(bare, 'omega-deploy^'), 'its parent is the old parentless tip').toBe(old);
         ctx.expect(countOf(bare, 'omega-deploy')).toBe('2');
@@ -432,12 +523,140 @@ module.exports = defineCases({
     },
 
     {
+      name: 'a remote tip with a parent is re-rooted on its own tree server-side, and the snapshot chains on that root, unforced (#1147)',
+      run: async (ctx) => {
+        const { brandRoot, bare } = buildFixture();
+        const first = await pushTo(brandRoot, bare, 'omega-deploy');
+        jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// the second snapshot\n');
+        const tip = await pushTo(brandRoot, bare, 'omega-deploy');
+        ctx.expect(revOf(bare, 'omega-deploy^'), 'the fixture tip has a parent').toBe(first);
+        const tipTree = revOf(bare, `${tip}^{tree}`);
+
+        jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// the third snapshot\n');
+        const calls = [];
+        const api = mirrorApi(bare);
+        const next = await pushTo(brandRoot, bare, 'omega-deploy', calls, api);
+
+        ctx.expect(routesOf(api)).toEqual([
+          'GET /git/ref/heads/omega-deploy',
+          `GET /git/commits/${tip}`,
+          'POST /git/commits',
+          'PATCH /git/refs/heads/omega-deploy',
+          // A ref that already answers the root takes one confirming read
+          'GET /git/ref/heads/omega-deploy',
+        ]);
+        const create = api.calls[2].body;
+        ctx.expect(create.parents, 'the root has no parent').toEqual([]);
+        ctx.expect(create.tree, 'and the tip\'s own tree: no bytes move').toBe(tipTree);
+        ctx.expect(api.calls[3].body, 'the ref is forced onto the root').toEqual({ sha: api.created[0], force: true });
+
+        ctx.expect(revOf(bare, 'omega-deploy'), 'the mirror moved to the new snapshot').toBe(next);
+        ctx.expect(revOf(bare, 'omega-deploy^'), 'its parent is the created root').toBe(api.created[0]);
+        ctx.expect(countOf(bare, 'omega-deploy'), 'the ref holds the root and the new snapshot').toBe('2');
+        ctx.expect(forcedPush(calls), 'a push argv carried a force').toBe(false);
+      },
+    },
+
+    {
+      name: 'no deploy ref on the mirror (a 404, or an empty repo\'s 409): the re-root writes nothing, and the first snapshot is parentless (#1147)',
+      run: async (ctx) => {
+        for (const [answered, empty] of [['404', false], ['409', true]]) {
+          const { brandRoot, bare } = buildFixture();
+          const api = mirrorApi(bare, { empty });
+
+          const sha = await pushTo(brandRoot, bare, 'omega-deploy', [], api);
+
+          ctx.expect(routesOf(api), `one ref read, answered ${answered}, and no write`).toEqual(['GET /git/ref/heads/omega-deploy']);
+          ctx.expect(revOf(bare, 'omega-deploy'), `the push after the ${answered} landed`).toBe(sha);
+          ctx.expect(countOf(bare, 'omega-deploy'), `with no parent after the ${answered}`).toBe('1');
+        }
+      },
+    },
+
+    {
+      name: 'a re-root write GitHub refuses rejects naming the step, token scrubbed, and pushes nothing (#1147)',
+      run: async (ctx) => {
+        const said = {};
+        for (const [step, named] of [['create', /commit/i], ['patch', /ref/i]]) {
+          const { brandRoot, bare } = buildFixture();
+          await pushTo(brandRoot, bare, 'omega-deploy');
+          jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// the second snapshot\n');
+          const tip = await pushTo(brandRoot, bare, 'omega-deploy');
+
+          const calls = [];
+          await ctx.expect(pushTo(brandRoot, bare, 'omega-deploy', calls, mirrorApi(bare, { refuse: step }))).rejects.toThrow((error) => {
+            said[step] = error.message;
+            ctx.expect(error.message, `the refused ${step} is named`).toMatch(named);
+            ctx.expect(error.message.includes(TOKEN), `the raw token never reaches the ${step} message`).toBe(false);
+            return true;
+          });
+
+          ctx.expect(calls.some((call) => call.args[0] === 'push'), `a push ran after the refused ${step}`).toBe(false);
+          ctx.expect(revOf(bare, 'omega-deploy'), `the ref still holds the tip after the refused ${step}`).toBe(tip);
+        }
+        ctx.expect(said.create, 'each refusal names its own step').not.toBe(said.patch);
+      },
+    },
+
+    {
+      name: 'a ref read that trails the re-root is polled until it answers the root, and only then fetched (#1147)',
+      run: async (ctx) => {
+        const { brandRoot, bare } = buildFixture();
+        await pushTo(brandRoot, bare, 'omega-deploy');
+        jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// the second snapshot\n');
+        await pushTo(brandRoot, bare, 'omega-deploy');
+
+        jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// the third snapshot\n');
+        const api = mirrorApi(bare, { lag: 2 });
+        const real = localRemote(bare, []);
+        // The git calls join the API log, so the order of the two is one list
+        const execFn = (file, args, options) => {
+          api.calls.push({ method: 'git', route: args[0] });
+          return real(file, args, options);
+        };
+        const next = await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn, fetchFn: api.fetchFn, refWait: { delayMs: 0 } });
+
+        const routes = routesOf(api);
+        const between = routes.slice(routes.indexOf('PATCH /git/refs/heads/omega-deploy'), routes.indexOf('git fetch'));
+        ctx.expect(routes.includes('git fetch'), 'the root was fetched').toBe(true);
+        ctx.expect(between.filter((route) => route === 'GET /git/ref/heads/omega-deploy').length >= 3, `two stale reads and the one that answers the root, before the fetch (got ${JSON.stringify(routes)})`).toBe(true);
+        ctx.expect(revOf(bare, 'omega-deploy'), 'the mirror moved to the new snapshot').toBe(next);
+        ctx.expect(revOf(bare, 'omega-deploy^'), 'its parent is the created root').toBe(api.created[0]);
+        ctx.expect(countOf(bare, 'omega-deploy')).toBe('2');
+      },
+    },
+
+    {
+      name: 'a ref that never answers the re-rooted root rejects naming the ref and the root it waited for, and pushes nothing (#1147)',
+      run: async (ctx) => {
+        const { brandRoot, bare } = buildFixture();
+        await pushTo(brandRoot, bare, 'omega-deploy');
+        jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// the second snapshot\n');
+        await pushTo(brandRoot, bare, 'omega-deploy');
+        const api = mirrorApi(bare, { lag: Infinity });
+        const calls = [];
+
+        await ctx.expect(pushSnapshot({
+          brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN,
+          execFn: localRemote(bare, calls), fetchFn: api.fetchFn, refWait: { attempts: 3, delayMs: 0 },
+        })).rejects.toThrow((error) => {
+          ctx.expect(error.message, 'the ref it waited on').toMatch(/acme\/acme-omega#omega-deploy/);
+          ctx.expect(error.message.includes(api.created[0].slice(0, 7)), `the root it waited for (got ${error.message})`).toBe(true);
+          ctx.expect(error.message.includes(TOKEN), 'the raw token never reaches the message').toBe(false);
+          return true;
+        });
+
+        ctx.expect(calls.some((call) => call.args[0] === 'push'), 'a push ran after the wait ran out').toBe(false);
+      },
+    },
+
+    {
       name: 'an unchanged brand still lands a new snapshot and returns its sha',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
 
-        const first = pushTo(brandRoot, bare, 'main');
-        const second = pushTo(brandRoot, bare, 'main');
+        const first = await pushTo(brandRoot, bare, 'main');
+        const second = await pushTo(brandRoot, bare, 'main');
 
         ctx.expect(second, 'the same tree is still a new commit').not.toBe(first);
         ctx.expect(revOf(bare, 'main'), 'the returned sha is the one that landed').toBe(second);
@@ -447,9 +666,9 @@ module.exports = defineCases({
 
     {
       name: 'a ref moved between the tip read and the push fails naming the mirror, and the foreign commit stands',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
-        const first = pushTo(brandRoot, bare, 'main');
+        const first = await pushTo(brandRoot, bare, 'main');
         jetpack.write(path.join(brandRoot, 'src', 'app.js'), '// edited after the first snapshot\n');
 
         // A concurrent deploy lands its own commit on the ref right before this push
@@ -467,7 +686,7 @@ module.exports = defineCases({
 
         let thrown = null;
         try {
-          pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: racing });
+          await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: racing, fetchFn: mirrorApi(bare).fetchFn });
         } catch (error) {
           thrown = error;
         }
@@ -481,7 +700,7 @@ module.exports = defineCases({
 
     {
       name: 'chained pushes leave the developer\'s tree, index, branches and refs exactly as they were',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { repo, brandRoot, bare } = buildFixture();
         const state = () => ({
           status: run('git', ['status', '--porcelain'], repo),
@@ -491,8 +710,8 @@ module.exports = defineCases({
         });
         const before = state();
 
-        pushTo(brandRoot, bare, 'omega-deploy');
-        pushTo(brandRoot, bare, 'omega-deploy');
+        await pushTo(brandRoot, bare, 'omega-deploy');
+        await pushTo(brandRoot, bare, 'omega-deploy');
 
         ctx.expect(state()).toEqual(before);
       },
@@ -500,7 +719,7 @@ module.exports = defineCases({
 
     {
       name: 'a tip read that fails for any reason but a missing ref is rethrown naming the mirror, token scrubbed',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
         const real = localRemote(bare, []);
 
@@ -513,7 +732,7 @@ module.exports = defineCases({
 
         let thrown = null;
         try {
-          pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: failing });
+          await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: failing, fetchFn: mirrorApi(bare).fetchFn });
         } catch (error) {
           thrown = error;
         }
@@ -526,11 +745,11 @@ module.exports = defineCases({
 
     {
       name: 'a brand that IS its own repo snapshots its whole tree',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { repo, bare } = buildFixture();
 
-        const sha = pushSnapshot({
-          brandRoot: repo, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []),
+        const sha = await pushSnapshot({
+          brandRoot: repo, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []), fetchFn: mirrorApi(bare).fetchFn,
         });
 
         ctx.expect(run('git', ['rev-parse', 'omega-deploy'], bare).trim(), 'the snapshot branch carries it').toBe(sha);
@@ -548,7 +767,7 @@ module.exports = defineCases({
 
     {
       name: 'the minted favicon folder and the three bridged files ride, nothing else under .omega/ (#1027)',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { repo, brandRoot, bare } = buildFixture();
         const status = () => run('git', ['status', '--porcelain'], repo);
         const before = status();
@@ -570,7 +789,7 @@ module.exports = defineCases({
           jetpack.write(path.join(brandRoot, '.omega', relative), 'minted\n');
         }
 
-        pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []) });
+        await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []), fetchFn: mirrorApi(bare).fetchFn });
 
         ctx.expect(mintedIn(bare, 'omega-deploy')).toEqual([
           '.omega/assets/favicon/favicon-32x32.png',
@@ -587,11 +806,11 @@ module.exports = defineCases({
 
     {
       name: 'a brand with no minted set pushes clean, with no .omega path in the tree (#1027)',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
         jetpack.write(path.join(brandRoot, '.omega', 'state.json'), '{}\n');
 
-        const sha = pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []) });
+        const sha = await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []), fetchFn: mirrorApi(bare).fetchFn });
 
         ctx.expect(run('git', ['rev-parse', 'omega-deploy'], bare).trim(), 'the push landed').toBe(sha);
         ctx.expect(mintedIn(bare, 'omega-deploy')).toEqual([]);
@@ -600,13 +819,13 @@ module.exports = defineCases({
 
     {
       name: 'a brand whose own ignore rules hide the staged tarballs and lockfile still pushes them',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { repo, brandRoot, bare } = buildFixture();
         jetpack.write(path.join(brandRoot, '.gitignore'), 'dist/\nomega_modules/\npackage-lock.json\n');
         const status = () => run('git', ['status', '--porcelain'], repo);
         const before = status();
 
-        const sha = pushStaged(brandRoot, bare);
+        const sha = await pushStaged(brandRoot, bare);
 
         ctx.expect(run('git', ['rev-parse', 'main'], bare).trim(), 'the push landed').toBe(sha);
         const tree = treeOf(bare, 'main');
@@ -618,12 +837,12 @@ module.exports = defineCases({
 
     {
       name: 'a nested brand whose enclosing repo ignores *.tgz still pushes its staged tarballs',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { repo, brandRoot, bare } = buildFixture();
         // A file pattern the brand inherits from the repo around it, never its own
         jetpack.append(path.join(repo, '.gitignore'), '*.tgz\n');
 
-        pushStaged(brandRoot, bare);
+        await pushStaged(brandRoot, bare);
 
         ctx.expect(treeOf(bare, 'main').includes('omega_modules/omega.js-liba-1.0.0.tgz'), 'the staged tarball rode').toBeTruthy();
       },
@@ -631,12 +850,12 @@ module.exports = defineCases({
 
     {
       name: 'a required path that does not exist is skipped, and the push still lands',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
         jetpack.write(path.join(brandRoot, '.gitignore'), 'dist/\nomega_modules/\npackage-lock.json\n');
         jetpack.remove(path.join(brandRoot, 'package-lock.json'));
 
-        const sha = pushStaged(brandRoot, bare);
+        const sha = await pushStaged(brandRoot, bare);
 
         ctx.expect(run('git', ['rev-parse', 'main'], bare).trim(), 'the push landed').toBe(sha);
         const tree = treeOf(bare, 'main');
@@ -647,12 +866,12 @@ module.exports = defineCases({
 
     {
       name: 'an ignored file nobody required stays home',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { brandRoot, bare } = buildFixture();
         jetpack.write(path.join(brandRoot, '.gitignore'), 'dist/\nomega_modules/\nsecret.txt\n');
         jetpack.write(path.join(brandRoot, 'secret.txt'), 'never rides\n');
 
-        pushStaged(brandRoot, bare);
+        await pushStaged(brandRoot, bare);
 
         const tree = treeOf(bare, 'main');
         ctx.expect(tree.includes('secret.txt'), 'the brand\'s own ignore rule still decides').toBe(false);
@@ -663,11 +882,11 @@ module.exports = defineCases({
 
     {
       name: 'the resolved company layer is generated for the push and gone after it',
-      run: (ctx) => {
+      run: async (ctx) => {
         const fixture = buildFixture();
         const { repo, brandRoot, bare } = fixture;
 
-        pushWithCompany(fixture);
+        await pushWithCompany(fixture);
 
         // It rode the mirror...
         ctx.expect(treeOf(bare, 'main').includes('config/company-resolved.json5'), 'the runner receives what this machine resolved').toBeTruthy();
@@ -686,11 +905,11 @@ module.exports = defineCases({
 
     {
       name: 'the resolved company layer rides even when an ignore rule hides it',
-      run: (ctx) => {
+      run: async (ctx) => {
         const fixture = buildFixture();
         jetpack.append(path.join(fixture.brandRoot, '.gitignore'), 'config/company-resolved.json5\n');
 
-        pushWithCompany(fixture);
+        await pushWithCompany(fixture);
 
         ctx.expect(treeOf(fixture.bare, 'main').includes('config/company-resolved.json5'), 'the runner still receives what this machine resolved').toBeTruthy();
       },
@@ -698,7 +917,7 @@ module.exports = defineCases({
 
     {
       name: 'a brand with no company generates nothing',
-      run: (ctx) => {
+      run: async (ctx) => {
         const { base, brandRoot, bare } = buildFixture();
         jetpack.write(path.join(brandRoot, 'config', 'omega.json5'), `{ brand: { id: 'playground', name: 'Playground' } }`);
 
@@ -706,7 +925,7 @@ module.exports = defineCases({
         process.env.OMEGA_HOME = path.join(base, 'home');
 
         try {
-          pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: localRemote(bare, []) });
+          await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'main', token: TOKEN, execFn: localRemote(bare, []), fetchFn: mirrorApi(bare).fetchFn });
         } finally {
           if (previousHome === undefined) delete process.env.OMEGA_HOME;
           else process.env.OMEGA_HOME = previousHome;

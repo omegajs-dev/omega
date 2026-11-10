@@ -5,6 +5,7 @@
  * the stripe/paypal/chargebee handlers (and hardcoded the company CDN for
  * product images — the image is brand.images.brandmark config now).
  */
+const { apiAddress } = require('@omega.js/config');
 const { absoluteBrandImage } = require('../../../lib/brand.js');
 
 /**
@@ -48,14 +49,18 @@ function productImage(brandConfig) {
  * @param {Object} brandConfig - Merged brand config
  * @param {string} provider - 'stripe' | 'paypal' | 'chargebee'
  * @param {string} [brandId] - Included as &brand= (chargebee only)
- * @returns {string} Webhook URL
+ * @returns {string} Webhook URL, on the brand's `apiAddress`
+ * @throws {Error} When the brand url derives no API address
  */
 function buildWebhookUrl(brandConfig, provider, brandId) {
-  const domain = brandConfig.brand.url.replace(/^https?:\/\//, '');
+  const api = apiAddress(brandConfig.brand.url, brandConfig.cloud?.config?.projectId);
+  if (!api) {
+    throw new Error(`brand.url ${brandConfig.brand.url} derives no API address for the ${provider} webhook: a default Pages host needs cloud.config.projectId`);
+  }
   const key = process.env.OMEGA_WEBHOOK_KEY;
   const brandParam = brandId ? `&brand=${brandId}` : '';
 
-  return `https://api.${domain}/omega/payments/webhook?provider=${provider}${brandParam}&key=${key}`;
+  return `${api}/omega/payments/webhook?provider=${provider}${brandParam}&key=${key}`;
 }
 
 /**

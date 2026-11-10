@@ -1,6 +1,6 @@
 const defineCases = require('@omega.js/devkit/test/define-cases');
 const http = require('node:http');
-const { createOmega, clearStorage, disposeOmega } = require('./helpers.js');
+const { getOmega, TEST_CONFIG, createOmega, clearStorage, disposeOmega } = require('./helpers.js');
 
 const beforeEachHook = clearStorage;
 
@@ -105,6 +105,26 @@ module.exports = defineCases({
           ctx.expect(calls[0].options.headers['Content-Type']).toBe('application/json');
           ctx.expect(calls[0].options.body).toBe('{}');
           ctx.expect(data.token).toBe('abc');
+        },
+      });
+
+      cases.push({
+        name: 'Request Module > a default Pages brand composes a route under its omega_api Cloud Functions address',
+        run: async (ctx) => {
+          await beforeHook(ctx);
+          await beforeEachHook();
+          ctx.after(afterEachHook);
+          const omega = getOmega();
+          await omega.initialize({
+            ...TEST_CONFIG,
+            brand: { ...TEST_CONFIG.brand, url: 'https://ian.github.io/site' },
+            firebase: { app: { enabled: false, config: { projectId: 'omegajs-playground' } } },
+          });
+          const calls = fetchStub([{ headers: { 'content-type': 'application/json' }, json: { status: 'ok' } }]);
+
+          await omega.request('/omega/health', { auth: false });
+
+          ctx.expect(calls[0].url).toBe('https://us-central1-omegajs-playground.cloudfunctions.net/omega_api/omega/health');
         },
       });
 

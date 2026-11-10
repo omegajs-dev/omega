@@ -13,19 +13,12 @@
 
 // Libraries
 const net = require('net');
-const { CLASSIC_PORTS, isPortFree } = require('@omega.js/config');
+const { CLASSIC_PORTS, FAMILY_UNAVAILABLE, isPortFree } = require('@omega.js/config');
 
 // The classics the allocator starts from, plus the two internal ports the
 // HTTPS proxies want (web's 4443, the backend's 5443) — holding those too
 // keeps a bumped stack from landing back on a number a developer's stack uses.
 const CLASSIC_HOLD_PORTS = [...new Set([...Object.values(CLASSIC_PORTS), 4443, 5443])];
-
-// A bind that fails because the ADDRESS FAMILY is not there (no IPv6 on this
-// host) is not a busy port — there is nothing to hold and nothing to collide
-// with. Same three codes @omega.js/config's own probe forgives, so the hold and
-// the allocator read a host the same way. Anything else (EADDRINUSE, EACCES) is
-// a real occupant.
-const FAMILY_UNAVAILABLE = ['EADDRNOTAVAIL', 'EAFNOSUPPORT', 'EINVAL'];
 
 /**
  * Hold one address of one port.
@@ -39,6 +32,8 @@ function holdAddress(port, host) {
     // A held port answers nothing: no accepted socket outlives the hold, so a
     // release closes at once even with a browser tab still connected.
     const server = net.createServer((socket) => socket.destroy());
+    // A missing address family (no IPv6) has nothing to hold or collide with,
+    // read with the allocator's own codes; any other error is a real occupant.
     server.once('error', (error) => resolve({
       status: FAMILY_UNAVAILABLE.includes(error.code) ? 'unavailable' : 'busy',
     }));
@@ -108,4 +103,4 @@ function releasePorts(servers) {
   }
 }
 
-module.exports = { holdClassicPorts, releasePorts, holdAddress, CLASSIC_HOLD_PORTS, FAMILY_UNAVAILABLE };
+module.exports = { holdClassicPorts, releasePorts, holdAddress, CLASSIC_HOLD_PORTS };

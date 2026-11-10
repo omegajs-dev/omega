@@ -23,6 +23,9 @@ const {
 } = require('./lib/testing-fixtures.js');
 
 const API_URL = 'https://api.fixture-brand.test/omega/health';
+// A brand with no domain of its own: brand.url is its GitHub Pages address
+const PAGES_URL = 'https://dreamr-design.github.io/dreamr-web';
+const PAGES_REASON = 'brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage';
 const GH_CMD = 'gh run list --repo sandbox-org/fixture-brand-omega --limit 1 --json status,conclusion,name';
 
 module.exports = defineCases({
@@ -232,6 +235,54 @@ module.exports = defineCases({
 
         ctx.expect(report.status).toBe('success');
         ctx.expect(fetch.calls).toEqual([]);
+      },
+    },
+
+    {
+      name: 'testing: a brand on a default Pages host probes its API at the project\'s Cloud Functions address',
+      run: async (ctx) => {
+        const root = stageBrand();
+        const targets = [stageBackendTarget(root, { installed: '5.9.0' })];
+        const healthUrl = 'https://us-central1-dreamr-app.cloudfunctions.net/omega_api/omega/health';
+        const fetch = fakeFetch({ [healthUrl]: { status: 200, body: { status: 'healthy', backendVersion: '5.9.0' } } });
+        const exec = fakeExec({ 'npm view @omega.js/backend version': '5.9.0\n', [GIT_CMD]: '' });
+        const config = brandConfig({
+          brand: { id: 'fixture-brand', name: 'Fixture Brand', url: PAGES_URL },
+          cloud: { config: { projectId: 'dreamr-app' } },
+          targets: { backend: { type: 'backend' } },
+        });
+
+        const report = await runService(config, { root, targets, fetch, exec });
+
+        ctx.expect(fetch.calls).toEqual([healthUrl]);
+        ctx.expect(report.output.results.passed).toContain('backend: API health');
+      },
+    },
+
+    {
+      name: 'testing: a brand on a default Pages host with no project id skips the API health with the one reason, zero fetches',
+      run: async (ctx) => {
+        const root = stageBrand();
+        const targets = [stageBackendTarget(root, { installed: '5.9.0' })];
+        const fetch = fakeFetch({});
+        const exec = fakeExec({ 'npm view @omega.js/backend version': '5.9.0\n', [GIT_CMD]: '' });
+        const config = brandConfig({
+          brand: { id: 'fixture-brand', name: 'Fixture Brand', url: PAGES_URL },
+          targets: { backend: { type: 'backend' } },
+        });
+
+        // The dimmed checks are the report's console lines, not its result object
+        const lines = [];
+        const original = console.log;
+        console.log = (...args) => { lines.push(args.join(' ')); };
+        try {
+          await runService(config, { root, targets, fetch, exec });
+        } finally {
+          console.log = original;
+        }
+
+        ctx.expect(fetch.calls).toEqual([]);
+        ctx.expect(lines.some((line) => line.includes(PAGES_REASON)), 'the skip names the default-address reason').toBe(true);
       },
     },
 

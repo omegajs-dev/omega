@@ -12,11 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - [#212](../../issues/212) - `POST /payments/intent` takes `simulate: 'abandon'` - the session is created and no webhook is fired, which is what an abandoned checkout IS. Test-provider only, never persisted.
 
 ### Changed
+- [#1148](../../issues/1148) - A brand on a default GitHub Pages host has one API address, its project's Cloud Functions `omega_api` url, answered by config's `apiAddress` on every surface and in the manager's webhooks. It derives no support email or contact block, and the streams and advertising steps skip hosts it does not own.
+- [#1147](../../issues/1147) - Before each deploy the snapshot chain is re-rooted on GitHub's side through the git data API: the deploy ref's tip becomes a parentless copy of its own tree and the new snapshot chains on it, so the ref holds one root, the latest snapshot and any admin publish since.
 - [#830](../../issues/830) - Jekyll-era template filters take `omega_*` names (`omega_slugify`, `omega_date_xmlschema`, `omega_where` and the rest). An old name fails the build naming its replacement, the `compat-filters` rule of `omega migrate` rewrites them, and `omega_jsonify` is compact by default (pass an indent for pretty output).
 - [#1084](../../issues/1084) - The `omega:init` skill ends on one commit holding the scaffold, made once the local site answers and before any port or feature work, so every brand has a clean starting point.
 - [#609](../../issues/609) - The playground carries four `_alternatives` fixtures so /alternatives and its comparison pages are checkable, and drops both its hand-written `download` map (derived) and its `translation.exclude` list (framework-owned).
 
 ### Fixed
+- [#1149](../../issues/1149) - The manager's edge email-ask suite reads an answered prompt by either tick glyph the prompt library draws, so its seven cases pass under a plain `TERM=linux` terminal as well as under `xterm-256color`.
+- [#1155](../../issues/1155) - The port allocator's free check also binds UDP on both wildcard families, so a port held by a UDP socket reads taken, the way firebase-tools on macOS reads it. The emulator port-retry suite's windows moved to 21100 through 21449, below the short-lived socket range.
 - [#769](../../issues/769) - Windows hosts get answers, not crashes: one cross-platform PATH probe (`where`/`which`) behind every mkcert, nodemon and Stripe-CLI check, mkcert and openjdk install hints that branch per platform instead of always saying `brew`, every shelled-out child through the host's own shell, and no `sleep` or `lsof` assumed.
 - [#212](../../issues/212) - The trial-lapse sweep re-reads and writes in ONE transaction, and counts a same-second webhook write as newer. A provider's own trial-end event landing in the sweep's window, or inside its read's own second, was silently written over.
 - [#212](../../issues/212) - The four test processors write `metadata.created`/`completed` like the webhook route, not `received`/`processed`. Their synthetic events handed the pipeline's staleness clock nothing and rode a now-fallback as if freshly arrived.

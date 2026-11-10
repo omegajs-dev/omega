@@ -18,6 +18,7 @@
  * Auth: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET in the brand .env
  * (adsense.readonly scope, own token cache).
  */
+const { defaultAddressReason } = require('@omega.js/config');
 const { serviceInputSpec } = require('../../config.js');
 const { googleTokenStorePath } = require('../../lib/google-auth.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -42,6 +43,9 @@ module.exports.run = createServiceRunner({
     if (!domain) {
       return { skip: true, reason: 'no brand.url configured' };
     }
+
+    const pagesReason = defaultAddressReason(domain);
+    if (pagesReason) return { skip: true, reason: pagesReason };
 
     // The shared setup contract (#608): ask for the Google OAuth client right
     // here — provide, skip this run, or disable AdSense for good.

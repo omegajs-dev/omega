@@ -86,14 +86,16 @@ function renderOmegaConfig(answers) {
     lines.push(`    tagline: ${JSON.stringify(answers.tagline)},`);
   }
 
-  lines.push(
-    `    url: ${JSON.stringify(answers.url)},`,
-    '    contact: {',
-    `      email: ${JSON.stringify(answers.email)},`,
-    '    },',
-    '  },',
-    '',
-  );
+  lines.push(`    url: ${JSON.stringify(answers.url)},`);
+  // A default Pages host derives no address, and an empty one is written nowhere
+  if (answers.email) {
+    lines.push(
+      '    contact: {',
+      `      email: ${JSON.stringify(answers.email)},`,
+      '    },',
+    );
+  }
+  lines.push('  },', '');
 
   // The ONE key that joins this brand to its company (#677): the parent's own
   // brand.id, or "self" when this brand IS the company. Unanswered writes

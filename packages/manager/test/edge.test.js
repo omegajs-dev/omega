@@ -1401,7 +1401,8 @@ module.exports = defineCases({
         };
 
         try {
-          const env = { FIREBASE_PROJECT_ID: 'fixture-project' };
+          // The two bindings the edge service puts on the worker: the brand's and FUNCTIONS_REGION
+          const env = { FIREBASE_PROJECT_ID: 'fixture-project', FUNCTIONS_REGION: 'us-central1' };
           await worker.fetch(new Request('https://api.fixture-brand.test/omega/user/signup?x=1'), env);
           await worker.fetch(new Request('https://api.fixture-brand.test/backend-manager/user/signup'), env);
         } finally {

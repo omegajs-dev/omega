@@ -159,6 +159,7 @@ module.exports = defineCases({
           const metadata = JSON.parse(call.form.get('metadata'));
           ctx.expect(metadata.main_module).toBe('index.js');
           ctx.expect(metadata.bindings).toEqual([
+            { type: 'plain_text', name: 'FUNCTIONS_REGION', text: 'us-central1' },
             { type: 'plain_text', name: 'MODE', text: 'live' },
             { type: 'secret_text', name: SECRET_KEY, text: 'pem-base64' },
           ]);

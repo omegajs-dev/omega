@@ -1,9 +1,9 @@
 {
-  "version": 10,
   "enabled": true,
   "proof": {
     "rootOnly": [
-      "."
+      ".",
+      "packages/backend"
     ]
   }
 }

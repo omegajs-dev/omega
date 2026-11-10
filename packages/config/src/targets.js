@@ -23,6 +23,7 @@
 const path = require('node:path');
 
 const { TARGETS, CUSTOM_TARGET_TYPE } = require('./schema.js');
+const { isDefaultPagesHost, apiAddress } = require('./api-address.js');
 
 // A target name is a folder name, so it must be a dir-safe slug
 const TARGET_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -136,9 +137,9 @@ function brandHost(url) {
  * override, then the derivation. A target NAMED for its type is the brand
  * itself (`brand.url`); any other name is that name AS A SUBDOMAIN of the
  * brand host (#588), which is what makes `community: { type: 'web' }` a
- * complete declaration. On a default Pages host a sibling WEB target derives
- * its own Pages address (`pagesAddress`) instead. Nothing is half-derived: no
- * usable brand.url means null, never `https://community.`.
+ * complete declaration. On a default Pages host a sibling WEB target is its
+ * own Pages address (`pagesAddress`), a backend the brand's `apiAddress`, any
+ * other target null. No usable brand.url means null, never `https://community.`.
  * @param {object} config - The (resolved) config carrying brand.url and targets.
  * @param {string} name - The target name.
  * @returns {string|null} The target's URL, or null when none is known.
@@ -151,16 +152,23 @@ function targetUrl(config, name) {
 
   const brandUrl = config && config.brand ? config.brand.url : null;
   if (!brandUrl) return null;
-  if (entry && name === entry.type) return brandUrl;
 
   const host = brandHost(brandUrl);
 
-  // A sibling web target of a brand on a default Pages host has its own Pages
-  // address: `<name>.<owner>.github.io` is no site. Local require: repo.js
-  // requires this module.
-  if (entry && entry.type === 'web') {
-    const { isDefaultPagesHost, pagesAddress } = require('./repo.js');
-    if (isDefaultPagesHost(host)) return pagesAddress(config, name);
+  // A brand on a default Pages host owns no subdomain: `<name>.<owner>.github.io`
+  // is no site, so only a web target and the backend have an address there.
+  if (entry && entry.type !== 'web' && isDefaultPagesHost(host)) {
+    const projectId = config.cloud && config.cloud.config ? config.cloud.config.projectId : undefined;
+    return entry.type === 'backend' ? apiAddress(brandUrl, projectId) || null : null;
+  }
+
+  if (entry && name === entry.type) return brandUrl;
+
+  // A sibling web target there has its own Pages address. Local require:
+  // repo.js requires this module.
+  if (entry && entry.type === 'web' && isDefaultPagesHost(host)) {
+    const { pagesAddress } = require('./repo.js');
+    return pagesAddress(config, name);
   }
 
   return host ? `https://${name}.${host}` : null;

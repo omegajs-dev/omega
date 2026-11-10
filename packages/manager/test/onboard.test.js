@@ -20,8 +20,9 @@ const { recordBrand } = require('@omega.js/config');
 // home still override it per test.
 require('@omega.js/devkit/test/temp-home');
 
-const { runOnboard, deriveId, deriveName, deriveUrl } = require('../src/onboard.js');
+const { runOnboard, deriveId, deriveName, deriveUrl, deriveEmail } = require('../src/onboard.js');
 const { runManage } = require('../src/manage.js');
+const { buildScaffoldPlan } = require('../src/lib/scaffold.js');
 const { openTtyPrompt } = require('./lib/interactive.js');
 const { createMachine } = require('./lib/fake-claude.js');
 const { toolProbe } = require('./lib/tool-probe.js');
@@ -123,6 +124,30 @@ module.exports = defineCases({
 
         ctx.expect(deriveName('acme-demo')).toBe('Acme Demo');
         ctx.expect(deriveUrl('acme-demo')).toBe('https://acmedemo.com'); // dashes drop out (omega-manager parity)
+      },
+    },
+
+    {
+      name: 'deriveEmail: a default Pages url derives no address, so the ask offers no support@<pages host>',
+      run: (ctx) => {
+        ctx.expect(deriveEmail('https://ian.github.io')).toBe('');
+      },
+    },
+
+    {
+      name: 'scaffold: a brand with no derived email writes no brand.contact block at all',
+      run: (ctx) => {
+        const plan = buildScaffoldPlan({
+          id: 'pages-brand',
+          name: 'Pages Brand',
+          url: 'https://ian.github.io',
+          email: deriveEmail('https://ian.github.io'),
+          accountAdmins: [],
+          targets: [{ name: 'web', type: 'web' }],
+        });
+        const config = JSON5.parse(plan.find((file) => file.path === 'config/omega.json5').contents);
+        ctx.expect(config.brand.url).toBe('https://ian.github.io');
+        ctx.expect('contact' in config.brand, 'no contact key, not an empty one').toBe(false);
       },
     },
 

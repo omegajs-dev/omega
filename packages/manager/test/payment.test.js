@@ -27,6 +27,8 @@ const BRAND_NAME = 'Fixture Brand';
 const BRAND_URL = `https://${DOMAIN}`;
 const BRAND_DESC = 'A fixture brand';
 const CONTACT_EMAIL = `support@${DOMAIN}`;
+// A brand with no domain of its own: brand.url is its GitHub Pages address
+const PAGES_URL = 'https://dreamr-design.github.io/dreamr-web';
 const BRANDMARK = `${BRAND_URL}/brandmark.png`;
 const WEBHOOK_KEY = 'fixture-webhook-key';
 const STRIPE_WEBHOOK_URL = `https://api.${DOMAIN}/omega/payments/webhook?provider=stripe&key=${WEBHOOK_KEY}`;
@@ -783,6 +785,45 @@ module.exports = defineCases({
         ctx.expect(stripe.callsTo('createWebhookEndpoint').map((c) => c.args)).toEqual([
           [STRIPE_WEBHOOK_URL, STRIPE_EVENTS],
         ]);
+      },
+    },
+
+    {
+      name: 'stripe-webhook: a brand on a default Pages host points the webhook at its Cloud Functions address',
+      run: async (ctx) => {
+        const responses = stripeConverged();
+        responses.getAccount = { id: 'acct_1', business_profile: { name: BRAND_NAME, url: PAGES_URL, support_email: CONTACT_EMAIL, support_url: PAGES_URL } };
+        responses.updateProduct = (id) => ({ id });
+        responses.listWebhookEndpoints = { data: [] };
+        responses.createWebhookEndpoint = { id: 'we_new' };
+        const stripe = fakeStripe(responses);
+        const config = brandConfig({ url: PAGES_URL, products: makeProducts({ ids: CONVERGED_IDS }), firebase: { config: { projectId: 'dreamr-app' } } });
+
+        await runService(config, { stripe, confirmed: true });
+
+        ctx.expect(stripe.callsTo('createWebhookEndpoint').map((c) => c.args[0])).toEqual([
+          `https://us-central1-dreamr-app.cloudfunctions.net/omega_api/omega/payments/webhook?provider=stripe&key=${WEBHOOK_KEY}`,
+        ]);
+      },
+    },
+
+    {
+      name: 'stripe-account: a Pages brand with no contact email skips the profile, never inventing support@<pages host>',
+      run: async (ctx) => {
+        const responses = stripeConverged();
+        responses.getAccount = { id: 'acct_1', business_profile: { name: BRAND_NAME, url: PAGES_URL, support_email: null, support_url: PAGES_URL } };
+        responses.updateAccount = { id: 'acct_1' };
+        responses.updateProduct = (id) => ({ id });
+        responses.listWebhookEndpoints = { data: [] };
+        responses.createWebhookEndpoint = { id: 'we_new' };
+        const stripe = fakeStripe(responses);
+        const config = brandConfig({ url: PAGES_URL, products: makeProducts({ ids: CONVERGED_IDS }), firebase: { config: { projectId: 'dreamr-app' } } });
+        delete config.brand.contact;
+
+        const result = await runService(config, { stripe, confirmed: true });
+
+        ctx.expect(stripe.callsTo('updateAccount')).toEqual([]);
+        ctx.expect(result.output.stripeAccount.reason).toBe('brand.url is the hosting provider\'s default address (dreamr-design.github.io): no domain to manage');
       },
     },
 
