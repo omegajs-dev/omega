@@ -14,8 +14,10 @@
 const path    = require('path');
 const jetpack = require('fs-jetpack');
 const yaml    = require('js-yaml');
-const { deepMerge, enabledFormats, desktopArtifactName, sanitizeProductName, releasesRepo, repoMissing } = require('@omega.js/config');
+const { deepMerge, FORMATS, enabledFormats, desktopArtifactName, sanitizeProductName, snapName, formatKeysSet, releasesRepo, repoMissing } = require('@omega.js/config');
+const { PUBLISHING_WALK } = require('@omega.js/devkit/ship-plan');
 const build = require('../../build.js');
+const { desktopPlatform } = require('../../utils/platform.js');
 
 const { writeMacEntitlements } = require('../../lib/sign-helpers/entitlements.js');
 const { resolveAndCopy }       = require('../../lib/sign-helpers/resolve-icons.js');
@@ -211,17 +213,10 @@ function baseConfig(config, extras = {}) {
 
   // Snap publishing rides the declaration like every other format
   // (`platforms.linux.formats.snap`, on unless dropped with `false`), and its
-  // settings live inside it. It is still auto-skipped when
-  // SNAPCRAFT_STORE_CREDENTIALS is absent, so a brand that has not run the
-  // manage walk's Snap ask yet gets a clean .deb + .AppImage build instead of a
-  // CI failure.
+  // settings live inside it. The config always names it; the tasks that make
+  // installers refuse without its login (assertStoreLogins), never this one.
   const snapCfg = formatOptions('linux', 'snap');
-  const snapConfigEnabled = ships('linux', 'snap');
-  const haveSnapCreds = !!process.env.SNAPCRAFT_STORE_CREDENTIALS;
-  const snapEnabled = snapConfigEnabled && haveSnapCreds;
-  if (snapConfigEnabled && !haveSnapCreds) {
-    logger.log('This local build skips the snap target: SNAPCRAFT_STORE_CREDENTIALS is not set (platforms.linux.formats.snap is on by default, so a publish refuses without it). Run `npx omega manage` (it asks) or `snapcraft export-login -` and add the blob to .env, or set platforms.linux.formats.snap to `false`.');
-  }
+  const snapShips = ships('linux', 'snap');
 
   const { entitlementsPath, icons, distRoot, projectRoot } = extras;
   // Paths in dist/electron-builder.yml must be project-relative because electron-builder
@@ -254,11 +249,10 @@ function baseConfig(config, extras = {}) {
   const supportEmail = trimmed(config.brand.contact?.email);
   const maintainer = supportEmail ? `${config.brand.name || productName} <${supportEmail}>` : '';
 
-  // The target lists, straight off the declaration. The snap is the one format
-  // with a second gate (its credentials, above); everything else ships because
-  // the brand declared it.
+  // The target lists, straight off the declaration: a format ships because the
+  // brand declared it.
   const linuxTargets = shipped
-    .filter((entry) => entry.platform === 'linux' && (entry.format !== 'snap' || snapEnabled))
+    .filter((entry) => entry.platform === 'linux')
     .map((entry) => ({ target: BUILDER_TARGETS[entry.format], arch: linuxArch }));
 
   // mac ships the dmg the site links plus the auto-update ZIP electron-updater
@@ -390,8 +384,13 @@ function baseConfig(config, extras = {}) {
     },
   };
 
-  // Snap-specific block — only emitted when enabled to keep the YAML clean.
-  if (snapEnabled) {
+  // Snap-specific block, only emitted when the snap ships. electron-builder
+  // names the snap after the linux executable, so that is where the name the
+  // publishing walk registers and the site links (snapName) is pinned.
+  if (snapShips) {
+    // Only a bare test config has no brand id: the validator requires one
+    const name = snapName(config);
+    if (name) out.linux.executableName = name;
     out.snap = {
       confinement: snapCfg.confinement || 'strict',
       grade:       snapCfg.grade       || 'stable',
@@ -471,6 +470,35 @@ function assertArchRules(arch, options) {
   }
 
   warn(message);
+}
+
+/**
+ * Refuse to make installers for a platform that ships a `store` format whose
+ * own keys are not all set. The `package` and `release` tasks call it first:
+ * electron-builder builds the HOST platform only, so a Linux run with the snap
+ * on and no snap login fails naming both, and a mac or Windows run goes on.
+ * A plain build, a dev run and a test boot make no installer and never call it.
+ * @param {object} config - The resolved desktop config.
+ * @param {object} [options] - `platform` (Node's word, default: the host's)
+ *   and `env` (default: process.env).
+ * @throws {Error} naming each format and its keys.
+ */
+function assertStoreLogins(config, options) {
+  options = options || {};
+  const platform = desktopPlatform(options.platform);
+  const env = options.env || process.env;
+
+  const unset = enabledFormats(config, 'desktop').filter((entry) => entry.platform === platform
+    && FORMATS.desktop[entry.platform][entry.format].kind === 'store'
+    && !formatKeysSet('desktop', entry.platform, entry.format, env));
+  if (unset.length === 0) return;
+
+  const lines = unset.map((entry) => {
+    const spec = FORMATS.desktop[entry.platform][entry.format];
+    return `platforms.${entry.platform}.formats.${entry.format} (on by default until set to false) publishes to the ${spec.label} and needs ${spec.requires.join(', ')}, which is not set`;
+  });
+  throw new Error(`This ${platform} run cannot make its installers: ${lines.join('; ')}. `
+    + `Run \`${PUBLISHING_WALK}\` (it asks for the key and writes the brand .env), or set the format to \`false\`.`);
 }
 
 // The electron-builder `publish` block: the brand's ONE public releases repo,
@@ -564,3 +592,4 @@ module.exports.expandYear    = expandYear;
 module.exports.resolveCategory = resolveCategory;
 module.exports.CATEGORY_MAP  = CATEGORY_MAP;
 module.exports.assertLinuxPackageMetadata = assertLinuxPackageMetadata;
+module.exports.assertStoreLogins = assertStoreLogins;

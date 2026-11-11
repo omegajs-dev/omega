@@ -16,8 +16,8 @@ const chalk = require('chalk').default;
 const { resolvePackageDir } = require('@omega.js/devkit/local');
 const { ENV_FILE } = require('@omega.js/devkit/env-file');
 
-const { serviceAskedKeys } = require('@omega.js/config');
-const { REQUIRES, TARGET_FRAMEWORKS, serviceInputs, describeServiceInputs } = require('../config.js');
+const { serviceAskedKeys, targetType } = require('@omega.js/config');
+const { REQUIRES, serviceInputs, describeServiceInputs } = require('../config.js');
 const { canPrompt } = require('./run-gates.js');
 const { googleTokenStorePath } = require('./google-auth.js');
 
@@ -401,7 +401,7 @@ function assertFamilyVersions({ brandRoot, targets = [], version = FAMILY_VERSIO
   const unreadable = [];
 
   for (const entry of targets) {
-    const framework = TARGET_FRAMEWORKS[entry.target];
+    const framework = targetType(entry.target)?.framework;
     // A custom target (#603) maps to no framework — there is nothing to compare
     if (!framework) continue;
 

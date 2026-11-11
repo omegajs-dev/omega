@@ -215,7 +215,7 @@ When you buy through links on our extension, we may earn an affiliate commission
 - Feature headlines short and punchy (under 50 characters)
 - 300-500 words (excluding the Bonus and Privacy sections)
 
-**After rewriting**, clear stale cached translations — delete `.cache/translations/description/` and the `description` key from `.cache/translate.json` — then have the user run `npm run build` to regenerate translations (see [translations.md](translations.md)).
+**After rewriting**, have the user run `npm run build` on their own machine and commit `translations/`: the edited source misses the committed cache, so every language retranslates it, and the saved entries for the old text are pruned (see [translations.md](translations.md)).
 
 ## See also
 

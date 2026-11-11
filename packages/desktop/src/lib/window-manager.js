@@ -49,9 +49,11 @@ const windowManager = {
     windowManager._electron = require('electron');
 
     // Quit when all windows close on win/linux. macOS is sticky (apps stay running).
+    // Through omega.quit(), so a last window closed inside a second-instance handler
+    // still waits for the forwarding duplicate to exit.
     if (process.platform !== 'darwin') {
       windowManager._electron.app.on('window-all-closed', () => {
-        windowManager._electron.app.quit();
+        windowManager._omega.quit();
       });
     }
 

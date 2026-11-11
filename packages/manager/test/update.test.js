@@ -287,5 +287,59 @@ module.exports = defineCases({
         ctx.expect(jetpack.exists(path.join(root, '.omega', 'cache', 'update.json')), 'no cache written').toBe(false);
       },
     },
+
+    // ─── Translation ─────────────────────────────────────────────────────────────
+
+    {
+      name: 'a non-interactive update builds the web and the extension target cache-only, and a type that translates nothing with no flag',
+      run: async (ctx) => {
+        // Each build records the arguments npm handed its script (a file, so node never reads them as its own options)
+        const ARGS_SCRIPT = 'node record-args.js';
+        const RECORD = "const fs = require('fs');\nfs.mkdirSync('dist', { recursive: true });\nfs.writeFileSync('dist/args.json', JSON.stringify(process.argv.slice(2)));\n";
+        const { root, targetPath: webPath } = stageBrand();
+        const extensionPath = path.join(root, 'targets', 'extension');
+        jetpack.write(path.join(webPath, 'package.json'), { ...jetpack.read(path.join(webPath, 'package.json'), 'json'), scripts: { build: ARGS_SCRIPT } });
+        jetpack.write(path.join(webPath, 'record-args.js'), RECORD);
+        jetpack.write(path.join(extensionPath, 'record-args.js'), RECORD);
+        jetpack.write(path.join(extensionPath, 'package.json'), {
+          name: 'extension',
+          private: true,
+          scripts: { build: ARGS_SCRIPT },
+          dependencies: { '@omega.js/extension': '^0.1.0' },
+        });
+        jetpack.write(path.join(root, 'node_modules', '@omega.js', 'extension', 'package.json'), { name: '@omega.js/extension', version: '0.1.0' });
+        // desktop's row says translates: false
+        const desktopPath = path.join(root, 'targets', 'desktop');
+        jetpack.write(path.join(desktopPath, 'record-args.js'), RECORD);
+        jetpack.write(path.join(desktopPath, 'package.json'), {
+          name: 'desktop',
+          private: true,
+          scripts: { build: ARGS_SCRIPT },
+          dependencies: { '@omega.js/desktop': '^0.1.0' },
+        });
+        jetpack.write(path.join(root, 'node_modules', '@omega.js', 'desktop', 'package.json'), { name: '@omega.js/desktop', version: '0.1.0' });
+
+        const previous = process.env.OMEGA_NON_INTERACTIVE;
+        process.env.OMEGA_NON_INTERACTIVE = '1';
+        try {
+          await targets({
+            brandRoot: root,
+            targets: [
+              { name: 'website', path: webPath, target: 'web' },
+              { name: 'extension', path: extensionPath, target: 'extension' },
+              { name: 'desktop', path: desktopPath, target: 'desktop' },
+            ],
+            options: {},
+          });
+        } finally {
+          if (previous === undefined) delete process.env.OMEGA_NON_INTERACTIVE;
+          else process.env.OMEGA_NON_INTERACTIVE = previous;
+        }
+
+        ctx.expect(jetpack.read(path.join(webPath, 'dist', 'args.json'), 'json'), 'web').toEqual(['--cached-only']);
+        ctx.expect(jetpack.read(path.join(extensionPath, 'dist', 'args.json'), 'json'), 'extension').toEqual(['--cached-only']);
+        ctx.expect(jetpack.read(path.join(desktopPath, 'dist', 'args.json'), 'json'), 'desktop').toEqual([]);
+      },
+    },
   ],
 });

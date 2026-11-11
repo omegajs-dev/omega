@@ -10,6 +10,7 @@
  * mutate: missing segments warn with human-readable conditions.
  */
 const chalk = require('chalk').default;
+const { emailProviderForRole } = require('@omega.js/config');
 const { select } = require('@omega.js/devkit/prompt');
 const { openBrowserAndPoll } = require('@omega.js/devkit/flows');
 const { segmentsFor } = require('../../../lib/backend-marketing.js');
@@ -17,7 +18,7 @@ const { AutomationClient } = require('../../../lib/automation-client.js');
 const { formatCondition, automateCreateSegment } = require('../lib/segment-automation.js');
 const { canPrompt } = require('../../../lib/run-gates.js');
 
-const BEEHIIV_SEGMENTS = segmentsFor('beehiiv');
+const BEEHIIV_SEGMENTS = segmentsFor(emailProviderForRole('newsletter').id);
 const SEGMENTS_URL = 'https://app.beehiiv.com/segments';
 
 /** Names of the @omega.js/backend segments missing from the publication. */

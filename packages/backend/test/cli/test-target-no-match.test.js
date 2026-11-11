@@ -18,7 +18,6 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const { discoverSuites } = require('../../dist/vendor/devkit/test/discovery.js');
-const { FRAMEWORK_IDS } = require('../../dist/vendor/devkit/test/scope.js');
 const { declaredLanes } = require('../../dist/utils/test-lanes.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
@@ -36,7 +35,7 @@ function discover(testPaths) {
       { source: 'project', dir: path.join(projectDir, 'test') },
     ],
     packageName: '@omega.js/backend',
-    frameworkAliases: FRAMEWORK_IDS['@omega.js/backend'],
+    frameworkAliases: ['backend'],
     lanes: declaredLanes(),
   };
 

@@ -64,15 +64,14 @@ function attachPage(descriptor, attribution) {
  *
  * @param {object} options
  * @param {string} options.provider - The provider key, matching the catalog's `providers` key.
- * @param {string} options.consentCategory - 'analytics' | 'marketing'.
  * @param {Function} [options.attach] - (descriptor, attribution) => void; places the
  *   captured attribution where THIS provider wants it. Stage C
  *   ([#384](https://github.com/Omega-JS-Stack/omega/issues/384)) owns the capture;
  *   stage D ([#385](https://github.com/Omega-JS-Stack/omega/issues/385)) fills the
  *   rest of `userData` with server match data.
- * @returns {{ provider: string, CONSENT_CATEGORY: string, resolve: Function }}
+ * @returns {{ provider: string, resolve: Function }}
  */
-function createAdapter({ provider, consentCategory, attach }) {
+function createAdapter({ provider, attach }) {
   /**
    * Resolve a canonical event into this provider's descriptor.
    * @param {string} canonicalName - The canonical event name.
@@ -124,7 +123,7 @@ function createAdapter({ provider, consentCategory, attach }) {
     return descriptor;
   }
 
-  return { provider, CONSENT_CATEGORY: consentCategory, resolve };
+  return { provider, resolve };
 }
 
 module.exports = { createAdapter, pick, attachPage };

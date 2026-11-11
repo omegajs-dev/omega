@@ -33,7 +33,7 @@ require('@omega.js/devkit/test/temp-home');
 
 const MONOREPO_ROOT = path.join(__dirname, '..');
 const { runOnboard } = require(path.join(MONOREPO_ROOT, 'packages', 'manager', 'src', 'onboard.js'));
-const { DEFAULT_TARGETS } = require(path.join(MONOREPO_ROOT, 'packages', 'manager', 'src', 'lib', 'default-targets.js'));
+const { ONBOARD_TARGETS } = require(path.join(MONOREPO_ROOT, 'packages', 'manager', 'src', 'lib', 'default-targets.js'));
 const { configureOmega, loadSiteData } = require('@omega.js/web');
 const { setEnvironment } = require('@omega.js/config/environment');
 
@@ -85,7 +85,7 @@ function deriveName(id) {
 }
 
 function expectedTargets(cell) {
-  return cell.targets ? cell.targets.split(',') : DEFAULT_TARGETS;
+  return cell.targets ? cell.targets.split(',') : ONBOARD_TARGETS;
 }
 
 /** Flip the seeded theme id in the cell's config (scaffold seeds classy). */

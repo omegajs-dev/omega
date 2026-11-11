@@ -11,8 +11,8 @@ publication webhook pointed at the parent backend's forwarder.
   created via API: when nothing matches, the exact values to copy are printed, an interactive
   run opens the create page and polls until the new publication auto-matches, and the resolved
   id is written back into omega.json5.
-- **`custom-fields`** — `@omega.js/backend`'s fields, honoring the provider skip list (Beehiiv
-  needs first/last name as custom fields but tracks country and UTM source natively). Beehiiv
+- **`custom-fields`**: `@omega.js/backend`'s fields, less the provider row's `nativeFields`
+  (Beehiiv needs first/last name as custom fields but tracks country and UTM source natively). Beehiiv
   matches subscriber values by DISPLAY name, so fields are diffed by `display`; a kind
   mismatch is a delete + recreate.
 - **`segments`** — Beehiiv has NO segment-create API. The read side lists what exists;
@@ -32,7 +32,7 @@ Fields and segments `@omega.js/backend` does not own are never touched.
 | Key | Meaning |
 |---|---|
 | `marketing.newsletter.enabled: false` | Skip. |
-| `marketing.newsletter.providers.beehiiv` | The vendor is a KEY under `providers` — no entry, no service. |
+| `marketing.newsletter.providers.beehiiv` | The vendor is a KEY under `providers`: no entry, no service. The service runs only for the provider whose row serves the `newsletter` role (`emailProviderForRole('newsletter')` in `@omega.js/config`), and its field and segment views take that row's id. |
 | `marketing.newsletter.providers.beehiiv.publicationId` | The publication; written back when resolved. |
 | `company.id` | Whose backend the webhook points at: the RESOLVED `company.url`, which is this brand's own url when it names no company ([#677](https://github.com/Omega-JS-Stack/omega/issues/677)). |
 | `company.webhooks: false` | The one deliberate opt-out: the provider ACCOUNT is shared and its single account-level webhook belongs to somebody else, so the walk leaves it alone. |

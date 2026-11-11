@@ -115,10 +115,12 @@ function setupPlatformDetection() {
     $hero.querySelector('[data-hero-icon]').innerHTML = $chipIcon.querySelector('svg')?.outerHTML || '';
   }
 
-  // The hero IS a download button — same tracking + onboarding as the cards
+  // The hero IS a download button: same tracking and onboarding as the cards
   $hero.addEventListener('click', () => {
     trackDownloadClick(detectedPlatform, $hero.textContent.trim(), $hero.href);
-    showOnboardingModal(detectedPlatform);
+    if (!isStoreLink($link)) {
+      showOnboardingModal(detectedPlatform);
+    }
   });
 
   $fallback.setAttribute('hidden', '');
@@ -137,9 +139,17 @@ function setupDownloadTracking() {
       const downloadUrl = this.getAttribute('href');
 
       trackDownloadClick(platformId, downloadName, downloadUrl);
-      showOnboardingModal(platformId);
+      if (!isStoreLink(this)) {
+        showOnboardingModal(platformId);
+      }
     });
   });
+}
+
+// A `store` format (the format table's kind, rendered onto the button) is a
+// plain link to the store: the store installs it, so there is no walkthrough.
+function isStoreLink($link) {
+  return $link.dataset.downloadKind === 'store';
 }
 
 // Slideshow auto-advance interval (ms)
@@ -361,6 +371,13 @@ function setupAutoDownload() {
   const downloadName = $downloadLink.textContent.trim();
 
   trackDownloadClick(detectedPlatform, downloadName, downloadUrl);
+
+  // A store has no file to fetch: the visitor goes to the store page
+  if (isStoreLink($downloadLink)) {
+    window.location.assign(downloadUrl);
+    return;
+  }
+
   showOnboardingModal(detectedPlatform);
 
   // Trigger the actual download via a hidden iframe to avoid navigating away

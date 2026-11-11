@@ -10,6 +10,7 @@ const fs   = require('fs');
 const os   = require('os');
 const JSON5 = require('json5');
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const { hashKey } = require('@omega.js/devkit/translate');
 const { SRC, stageProject, inProject, MANIFEST } = require('../../utils/package-project.js');
 
 const PUBLISH_TASK_PATH = path.join(SRC, 'gulp', 'tasks', 'publish.js');
@@ -639,12 +640,13 @@ module.exports = defineCases({
       run: async (ctx) => {
         // The scaffolded config/description.md is written with `{{ brand.name }}`
         // tokens; copied verbatim they reach the live store listing unrendered.
+        const source = `{{ brand.name }} makes browsing better.\nGet it at {{ brand.url }}.`;
         const tmp = stageProject({
           config: `{ brand: { id: 'staged', name: 'Staged Brand', url: 'https://staged.example.com' } }`,
           files: {
-            'config/description.md': `{{ brand.name }} makes browsing better.\nGet it at {{ brand.url }}.\n`,
-            // A translated variant carries the same tokens through the translator
-            'translations/es/description.md': `<!-- omega:source abc123abc123 -->\n{{ brand.name }} mejora tu navegación.\n`,
+            'config/description.md': source,
+            // A translated variant carries the same tokens through the translator, saved under its source's hash
+            'translations/es/description.json': JSON.stringify({ [hashKey(source)]: `{{ brand.name }} mejora tu navegación.\n` }),
           },
         });
         try {
@@ -661,8 +663,6 @@ module.exports = defineCases({
             const es = fs.readFileSync(path.join(descDir, 'es.md'), 'utf8');
             ctx.expect(es).toContain('Staged Brand mejora tu navegación.');
             ctx.expect(es).not.toContain('{{');
-            // the source marker is still stripped
-            ctx.expect(es).not.toContain('omega:source');
           });
         } finally {
           fs.rmSync(tmp, { recursive: true, force: true });

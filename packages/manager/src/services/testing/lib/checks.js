@@ -19,8 +19,7 @@ const path = require('node:path');
 const chalk = require('chalk').default;
 const jetpack = require('fs-jetpack');
 
-const { TARGET_FRAMEWORKS } = require('../../../config.js');
-const { sourceRepo, targetUrl, hasLogoSources, BRANDMARK_PNG_DEST, apiAddress, defaultAddressReason } = require('@omega.js/config');
+const { sourceRepo, targetUrl, hasLogoSources, BRANDMARK_PNG_DEST, apiAddress, defaultAddressReason, targetType } = require('@omega.js/config');
 const { recordDeploy, readDeployRecord } = require('@omega.js/devkit/deploy-record');
 const { resolvePackageRealDir } = require('@omega.js/devkit/local');
 
@@ -215,7 +214,7 @@ function checkTargetFiles(recorder, entry) {
  * dims out when the registry lookup fails (e.g. package not published yet).
  */
 function checkFrameworkVersion(recorder, entry, ctx) {
-  const framework = TARGET_FRAMEWORKS[entry.target];
+  const framework = targetType(entry.target)?.framework;
   if (!framework) return;
 
   // Deps live on the ONE manifest per target (src/dist pillar)
@@ -427,7 +426,7 @@ async function checkApiHealth(recorder, entry, ctx) {
     return;
   }
 
-  const framework = TARGET_FRAMEWORKS[entry.target];
+  const framework = targetType(entry.target)?.framework;
   const deployed = data?.backendVersion;
   if (!deployed) return;
 

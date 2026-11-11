@@ -7,8 +7,9 @@ const defineCases = require('@omega.js/devkit/test/define-cases');
 
 const { VERBS } = require('../src/verbs.js');
 const { verbScripts, projectScripts } = require('../src/verb-scripts.js');
+const { TARGET_TYPE_ROWS } = require('@omega.js/config/target-types');
 
-const FRAMEWORKS = ['@omega.js/web', '@omega.js/backend', '@omega.js/desktop', '@omega.js/extension'];
+const TARGET_FRAMEWORK_NAMES = TARGET_TYPE_ROWS.filter((row) => row.framework).map((row) => row.framework);
 
 module.exports = defineCases({
   type: 'group',
@@ -17,7 +18,7 @@ module.exports = defineCases({
     {
       name: 'verbScripts: every fan-out (`each`) row a framework owns, as its bare `omega <verb>`',
       run: (ctx) => {
-        for (const framework of FRAMEWORKS) {
+        for (const framework of TARGET_FRAMEWORK_NAMES) {
           const expected = VERBS
             .filter((row) => row.owners.includes(framework) && row.fanout === 'each')
             .map((row) => row.name);
@@ -32,7 +33,7 @@ module.exports = defineCases({
     {
       name: 'verbScripts: the `dev` row derives npm\'s own `start` script on every framework',
       run: (ctx) => {
-        for (const framework of FRAMEWORKS) {
+        for (const framework of TARGET_FRAMEWORK_NAMES) {
           const scripts = verbScripts(framework);
           ctx.expect(scripts.start, framework).toBe('omega dev');
           ctx.expect(scripts.dev, `${framework}: dev lands as start, never as its own key`).toBe(undefined);

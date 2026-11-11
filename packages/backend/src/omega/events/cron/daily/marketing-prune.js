@@ -1,52 +1,17 @@
 /**
- * Marketing contact pruning cron job
+ * Marketing contact pruning cron job: runs daily, acts on the 1st of each month,
+ * and is on unless marketing.prune.enabled is false. Strictly per role: each
+ * provider's own engagement decides its own removals, paying customers are kept,
+ * and removal is a DELETE, never an unsubscribe.
  *
- * Runs daily but only acts on the 1st of each month.
- *
- * Pruning is STRICTLY PER-PROVIDER ([#365](https://github.com/Omega-JS-Stack/omega/issues/365)):
- * each provider's own engagement decides that provider's removals, never the
- * other's. SendGrid carries offers and product mail, Beehiiv carries the
- * newsletter, and a reader who devours every newsletter while ignoring offers
- * is engaged on one channel and quiet on the other — deleting them from the
- * newsletter on a SendGrid-only signal was the bug this shape replaces.
- *
- *   Stage 1 (engagement_inactive_5m) — both providers, each on its own data:
- *     → Send re-engagement email via sendCampaign (brand-scoped internally)
- *     → Excludes engagement_inactive_6m (those get pruned instead)
- *     → Already per-provider: each provider resolves the segment key against
- *       its OWN engagement tracking, so nobody is targeted on foreign data
- *
- *   Stage 2 (engagement_inactive_6m) — SENDGRID ONLY:
- *     → Create brand-scoped temp segment via createBrandScopedSegment
- *     → Export contacts, exclude paying customers, bulk delete
- *     → Log deleted emails to Firestore for recoverability
- *
- *   Stage 3 — BEEHIIV ONLY:
- *     → List the publication's active subscriptions with Beehiiv's own
- *       per-subscriber stats, delete the ones inactive by THOSE stats
- *     → Exclude paying customers (the subscription_paid definition, resolved
- *       from Firestore since Beehiiv cannot see app subscriptions)
- *     → Log deleted emails to Firestore for recoverability
- *
- * Removal is always a DELETE, never an unsubscribe: an unsubscribe revokes
- * marketing consent in Firestore permanently, and a maintenance prune must
- * never spend a consent it can't give back.
- *
- * Segment keys are resolved to provider-specific IDs at runtime.
- *
- * ON BY DEFAULT ([#478](https://github.com/Omega-JS-Stack/omega/issues/478),
- * superseding #422's opt-in): the schema default supplies
- * marketing.prune.enabled = true through the resolved config, so the gate
- * below only stops a brand that set it false — see
- * docs/backend/marketing-campaigns.md § Contact Pruning for the contract.
- *
- * Runs on omega_cronDaily.
+ *   Stage 1: a re-engagement email to engagement_inactive_5m (excluding _6m),
+ *            through the campaigns role, whose provider holds those segments.
+ *   Stage 2: the campaigns provider deletes its brand-scoped _6m contacts.
+ *   Stage 3: the newsletter provider deletes subscribers inactive by its own stats.
+ * The contract: docs/backend/marketing-campaigns.md § Contact Pruning.
  */
-const sendgridProvider = require('../../../libraries/email/providers/sendgrid.js');
-const beehiivProvider = require('../../../libraries/email/providers/beehiiv.js');
 const Marketing = require('../../../libraries/email/marketing/index.js');
 const { User } = require('../../../helpers/account.js');
-const env = require('../../../libraries/env.js');
 
 // The Beehiiv lane's inactivity rule, mirroring the SendGrid engagement_inactive_6m
 // segment (libraries/email/constants.js) with Beehiiv's own numbers:
@@ -112,10 +77,9 @@ module.exports = async ({ ctx, omega }) => {
 
 /**
  * Stage 1: Send re-engagement email to contacts inactive 5+ months
- * (excluding 6+ months — those get pruned in stage 2).
- *
- * sendCampaign handles brand-scoping internally via _resolveAudience →
- * createBrandScopedSegment, so this stage is already brand-safe.
+ * (excluding 6+ months, which stage 2 prunes). It goes through the campaigns
+ * role alone, whose provider holds the engagement segments, and sendCampaign
+ * scopes the audience to the brand.
  */
 async function stageReengage(omega, ctx) {
   ctx.log('Marketing prune: Stage 1 — Re-engagement');
@@ -127,20 +91,26 @@ async function stageReengage(omega, ctx) {
     name: 'Re-engagement: Are you still with us?',
     subject: `We miss you at ${brand?.name || 'our service'}!`,
     preheader: 'Update your preferences or say goodbye',
-    content: [
-      '# We miss you!',
-      '',
-      'It\'s been a while since you\'ve opened one of our emails. We want to make sure we\'re sending you content you actually want.',
-      '',
-      '**If you\'d like to keep hearing from us**, simply open this email — no action needed!',
-      '',
-      'If we don\'t hear from you, we\'ll remove you from our mailing list next month to keep your inbox clean.',
-      '',
-      `Thanks for being part of the ${brand?.name || ''} community.`,
-    ].join('\n'),
+    data: {
+      content: {
+        message: [
+          '# We miss you!',
+          '',
+          'It\'s been a while since you\'ve opened one of our emails. We want to make sure we\'re sending you content you actually want.',
+          '',
+          '**If you\'d like to keep hearing from us**, simply open this email: no action needed!',
+          '',
+          'If we don\'t hear from you, we\'ll remove you from our mailing list next month to keep your inbox clean.',
+          '',
+          `Thanks for being part of the ${brand?.name || ''} community.`,
+        ].join('\n'),
+      },
+    },
     sender: 'hello',
     segments: ['engagement_inactive_5m'],
     excludeSegments: ['engagement_inactive_6m'],
+    // The engagement segments live on the campaigns provider alone
+    providers: ['campaigns'],
     sendAt: 'now',
   });
 
@@ -161,7 +131,6 @@ async function stageReengage(omega, ctx) {
 async function stagePrune(omega, ctx) {
   ctx.log('Marketing prune: Stage 2 — Prune (SendGrid)');
 
-  const marketing = omega.config?.marketing || {};
   const brand = omega.config?.brand;
   const admin = omega.firebase.admin;
 
@@ -170,12 +139,13 @@ async function stagePrune(omega, ctx) {
     return;
   }
 
-  if (marketing.campaigns?.enabled === false || !env.has('SENDGRID_API_KEY')) {
+  if (!Marketing.roleOn(omega.config, 'campaigns')) {
     ctx.log('Marketing prune: SendGrid not configured, skipping');
     return;
   }
 
-  const segmentIdMap = await sendgridProvider.resolveSegmentIds();
+  const campaignsProvider = Marketing.roleProvider('campaigns');
+  const segmentIdMap = await campaignsProvider.resolveSegmentIds();
   const pruneSegmentId = segmentIdMap['engagement_inactive_6m'];
 
   if (!pruneSegmentId) {
@@ -184,7 +154,7 @@ async function stagePrune(omega, ctx) {
   }
 
   // Brand-scope the prune segment
-  const tempPrune = await sendgridProvider.createBrandScopedSegment(
+  const tempPrune = await campaignsProvider.createBrandScopedSegment(
     [pruneSegmentId],
     brand.id,
   );
@@ -195,7 +165,7 @@ async function stagePrune(omega, ctx) {
   }
 
   try {
-    const exportResult = await sendgridProvider.getSegmentContacts(tempPrune.segmentId, 180000);
+    const exportResult = await campaignsProvider.getSegmentContacts(tempPrune.segmentId, 180000);
 
     if (!exportResult.success) {
       ctx.error('Marketing prune: Failed to export segment:', exportResult.error);
@@ -214,24 +184,34 @@ async function stagePrune(omega, ctx) {
     const paidSegmentId = segmentIdMap['subscription_paid'];
 
     if (paidSegmentId) {
-      const tempPaid = await sendgridProvider.createBrandScopedSegment(
+      const tempPaid = await campaignsProvider.createBrandScopedSegment(
         [paidSegmentId],
         brand.id,
       );
 
-      if (tempPaid) {
-        try {
-          const paidExport = await sendgridProvider.getSegmentContacts(tempPaid.segmentId, 180000);
+      // No paid segment to exclude means paying customers cannot be told apart
+      if (!tempPaid) {
+        ctx.error('Marketing prune: the subscription_paid segment has no usable query, so paying customers cannot be excluded; pruning nothing this run');
+        return;
+      }
 
-          if (paidExport.success && paidExport.contacts.length > 0) {
-            const paidEmails = new Set(paidExport.contacts.map(c => c.email));
-            contactsToPrune = contactsToPrune.filter(c => !paidEmails.has(c.email));
-            skippedPaid = exportResult.contacts.length - contactsToPrune.length;
-            ctx.log(`Marketing prune: Excluded ${skippedPaid} paying customers`);
-          }
-        } finally {
-          await tempPaid.cleanup();
+      try {
+        const paidExport = await campaignsProvider.getSegmentContacts(tempPaid.segmentId, 180000);
+
+        // A failed export leaves paying customers unknown; an empty one has none
+        if (!paidExport.success) {
+          ctx.error(`Marketing prune: the subscription_paid export failed (${paidExport.error}), so paying customers cannot be excluded; pruning nothing this run`);
+          return;
         }
+
+        if (paidExport.contacts.length > 0) {
+          const paidEmails = new Set(paidExport.contacts.map(c => c.email));
+          contactsToPrune = contactsToPrune.filter(c => !paidEmails.has(c.email));
+          skippedPaid = exportResult.contacts.length - contactsToPrune.length;
+          ctx.log(`Marketing prune: Excluded ${skippedPaid} paying customers`);
+        }
+      } finally {
+        await tempPaid.cleanup();
       }
     }
 
@@ -250,7 +230,7 @@ async function stagePrune(omega, ctx) {
 
     for (let i = 0; i < ids.length; i += 100) {
       const batch = ids.slice(i, i + 100);
-      const deleteResult = await sendgridProvider.bulkDeleteContacts(batch);
+      const deleteResult = await campaignsProvider.bulkDeleteContacts(batch);
 
       if (deleteResult.success) {
         totalDeleted += batch.length;
@@ -284,7 +264,6 @@ async function stagePrune(omega, ctx) {
 async function stageNewsletterPrune(omega, ctx) {
   ctx.log('Marketing prune: Stage 3 — Prune (Beehiiv)');
 
-  const marketing = omega.config?.marketing || {};
   const brand = omega.config?.brand;
   const admin = omega.firebase.admin;
 
@@ -293,12 +272,13 @@ async function stageNewsletterPrune(omega, ctx) {
     return;
   }
 
-  if (marketing.newsletter?.enabled === false || !env.has('BEEHIIV_API_KEY')) {
+  if (!Marketing.roleOn(omega.config, 'newsletter')) {
     ctx.log('Marketing prune: Beehiiv not configured, skipping');
     return;
   }
 
-  const listing = await beehiivProvider.listSubscriptions({
+  const newsletterProvider = Marketing.roleProvider('newsletter');
+  const listing = await newsletterProvider.listSubscriptions({
     status: 'active',
     expand: ['stats'],
   });
@@ -330,7 +310,7 @@ async function stageNewsletterPrune(omega, ctx) {
   for (let i = 0; i < targets.length; i += NEWSLETTER_DELETE_CHUNK) {
     const batch = targets.slice(i, i + NEWSLETTER_DELETE_CHUNK);
     const results = await Promise.allSettled(
-      batch.map(subscription => beehiivProvider.removeContact(subscription.email))
+      batch.map(subscription => newsletterProvider.removeContact(subscription.email))
     );
 
     results.forEach((result, index) => {
@@ -356,21 +336,11 @@ async function stageNewsletterPrune(omega, ctx) {
 }
 
 /**
- * Split prune candidates into the ones to delete and the paying customers to
- * keep — stage 2's subscription_paid exclusion, done the only way Beehiiv
- * allows.
- *
- * Beehiiv has no view of app subscriptions (its own `subscription_tier` is the
- * paid-NEWSLETTER tier, a different thing), so paid-ness comes from Firestore:
- * the marketing library's canonical by-email user lookup, then the account
- * package's User. Its `active` IS the subscription_paid
- * segment's two conditions (plan not basic AND status active), so no second
- * definition of "paying" enters the codebase.
- *
- * No user doc means a pure newsletter contact with nothing to pay with, and a
- * failed lookup reads the same way — the same fail-open posture stage 2 takes
- * when its paid export comes back empty.
- *
+ * Split prune candidates into targets and paying customers to keep. Beehiiv
+ * cannot see app subscriptions, so each email's user doc decides, by the User's
+ * `active` (the subscription_paid segment's own conditions). No user doc, or a
+ * failed lookup, keeps it a target: stage 2 likewise goes on when its paid
+ * export is empty, though it stops when that export fails.
  * @param {object} admin - firebase-admin instance
  * @param {object} ctx - Assistant (for logging)
  * @param {Array<object>} candidates - Subscriptions inactive by Beehiiv's stats
@@ -491,6 +461,7 @@ async function logPrunedEmails(admin, ctx, brandId, suffix, payload) {
 
 // Exposed as statics for plain-node unit tests (prune-per-provider.test.js) —
 // the cron entry itself only acts on the 1st of the month.
+module.exports.stageReengage = stageReengage;
 module.exports.stagePrune = stagePrune;
 module.exports.stageNewsletterPrune = stageNewsletterPrune;
 module.exports.isNewsletterInactive = isNewsletterInactive;

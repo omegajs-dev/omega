@@ -16,6 +16,7 @@
 
 const defineCases = require('@omega.js/devkit/test/define-cases');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const { setPromptStreams } = require('@omega.js/devkit/prompt');
@@ -63,15 +64,117 @@ function stubBrowser() {
   };
 }
 
+/** The runner a case that names no world gets: it runs no command at all. */
+function noCommands(file) {
+  throw new Error(`this case runs no command, got ${file}`);
+}
+
 function context(brandRoot, brandConfig, options = {}) {
   return {
     brandId: 'b',
     brandRoot,
     brandConfig,
     operations: OPERATIONS.publishing,
-    options,
+    options: { execFn: noCommands, ...options },
   };
 }
+
+/**
+ * A stand-in for the `snapcraft` CLI behind the `execFn` seam, so no case
+ * reaches the store. `account` is `{ names }`, the names the login holds, and
+ * null is logged out; `missing` throws the ENOENT of a tool not installed.
+ * Every call's words land on `exec.calls`, and a register adds its name.
+ * @param {{ names: string[] }|null} account - The logged-in account.
+ * @param {{ missing?: boolean }} [options] - missing: snapcraft is not installed.
+ * @returns {function} An execFn `(file, args, options) => stdout`.
+ */
+function snapcraftWorld(account, { missing = false } = {}) {
+  const exec = (file, args) => {
+    if (file !== 'snapcraft') throw new Error(`fake snapcraft: only snapcraft runs here, got ${file}`);
+    const words = args.map(String);
+    exec.calls.push(words);
+    const fail = (message) => {
+      throw Object.assign(new Error(`Command failed: snapcraft ${words.join(' ')}\n${message}`), { status: 2, stdout: '', stderr: `${message}\n` });
+    };
+
+    if (missing) throw Object.assign(new Error('spawnSync snapcraft ENOENT'), { code: 'ENOENT' });
+    if (words[0] === '--version' || words[0] === 'version') return 'snapcraft 9.2.1\n';
+    if (!account) return fail('No valid credentials found. Have you run \'snapcraft login\'?');
+    if (words[0] === 'whoami') {
+      return 'email: owner@example.com\nusername: owner\nid: abc123\npermissions: no restrictions\nchannels: no restrictions\nexpires: 2027-01-01T00:00:00Z\n';
+    }
+    if (words[0] === 'names') {
+      // The real CLI prints this line, not JSON, for an account with no names
+      if (!words.includes('json') && !words.includes('--format=json')) return fail('fake snapcraft: names is read with --format json');
+      if (account.names.length === 0) return 'No registered snaps\n';
+      const snaps = account.names.map((name) => ({ name, since: '2026-01-01T00:00:00Z', visibility: 'public', notes: null }));
+      return `${JSON.stringify({ snaps }, null, 4)}\n`;
+    }
+    if (words[0] === 'register') {
+      if (!words.includes('--yes')) return fail('fake snapcraft: a register without --yes waits on a confirmation nobody can answer');
+      const name = words.slice(1).find((word) => !word.startsWith('-'));
+      if (account.names.includes(name)) return fail(`You already own the name '${name}'.`);
+      account.names.push(name);
+      return `Registered '${name}'\n`;
+    }
+    return fail(`fake snapcraft: no answer for snapcraft ${words.join(' ')}`);
+  };
+  exec.calls = [];
+  return exec;
+}
+
+/** Put a `snapcraft` first on PATH that only fails, so a step that skips the seam never reaches the real store. */
+function guardRealSnapcraft() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-snap-guard-'));
+  fs.writeFileSync(path.join(dir, 'snapcraft'), '#!/bin/sh\necho "a test never runs the real snapcraft" >&2\nexit 97\n', { mode: 0o755 });
+  const saved = process.env.PATH;
+  process.env.PATH = `${dir}${path.delimiter}${saved}`;
+  return () => {
+    process.env.PATH = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  };
+}
+
+const SNAP_ID = 'acme-app';
+
+/** A desktop brand that ships the snap (on by default) and no Windows installer. */
+const snapBrand = (linux = {}) => ({ brand: { id: SNAP_ID }, targets: { desktop: { type: 'desktop', platforms: { linux, windows: false } } } });
+
+/**
+ * One interactive publishing run of a snap brand whose login key is present.
+ * The Enter-gated page arrives through the `options.prompt` seam, and is recorded unopened.
+ * @param {function} world - From snapcraftWorld().
+ * @param {{ brandConfig?: object }} [options]
+ * @returns {Promise<{ result: object, printed: string, opened: string[] }>}
+ */
+async function runSnapBrand(world, { brandConfig = snapBrand() } = {}) {
+  cleanup();
+  process.env.SNAPCRAFT_STORE_CREDENTIALS = 'snap-blob';
+  const brandRoot = makeBrandRoot(`{\n  brand: { id: '${SNAP_ID}' },\n}\n`);
+  const tty = openTtyPrompt();
+  const browser = stubBrowser();
+  const restorePath = guardRealSnapcraft();
+  const lines = [];
+  const realConsole = { log: console.log, warn: console.warn, error: console.error };
+  for (const method of Object.keys(realConsole)) console[method] = (...args) => lines.push(args.join(' '));
+
+  const asked = [];
+  const prompt = { pressEnterToOpen: async (url) => { asked.push(url); return true; } };
+
+  try {
+    const result = await run({ ...context(brandRoot, brandConfig, { execFn: world, prompt }), brandId: SNAP_ID });
+    return { result, printed: lines.join('\n'), opened: [...asked, ...browser.opened] };
+  } finally {
+    Object.assign(console, realConsole);
+    restorePath();
+    tty.close();
+    browser.restore();
+    cleanup();
+    fs.rmSync(brandRoot, { recursive: true, force: true });
+  }
+}
+
+const registers = (world) => world.calls.filter((words) => words[0] === 'register');
 
 /** A brand whose only target is an extension shipping just the Edge store. */
 function edgeOnlyBrand() {
@@ -114,7 +217,10 @@ module.exports = defineCases({
 
         // It runs after certificates, which keeps the Apple material
         ctx.expect(SERVICE_ORDER[SERVICE_ORDER.indexOf('certificates') + 1]).toBe('publishing');
-        ctx.expect(OPERATIONS.publishing.map((operation) => operation.name)).toEqual(['keys', 'listings']);
+        // The snap name is registered with the login the keys step collects
+        const operations = OPERATIONS.publishing.map((operation) => operation.name);
+        ctx.expect([...operations].sort()).toEqual(['keys', 'listings', 'snap-name']);
+        ctx.expect(operations[0]).toBe('keys');
       },
     },
 
@@ -211,7 +317,7 @@ module.exports = defineCases({
         const tty = openTtyPrompt();
         const browser = stubBrowser();
         try {
-          const running = run(context(brandRoot, brandConfig));
+          const running = run(context(brandRoot, brandConfig, { execFn: snapcraftWorld({ names: ['b'] }) }));
           await tty.answer('Set up now?', '\r');                                     // Provide
           await tty.answer('Press Enter to open the Snap Store credentials page', '\r');
           await tty.answer('Paste SNAPCRAFT_STORE_CREDENTIALS', 'snap-blob\r');
@@ -413,6 +519,64 @@ module.exports = defineCases({
         } finally {
           fs.rmSync(brandRoot, { recursive: true, force: true });
         }
+      },
+    },
+
+    // ─── the snap name ───────────────────────────────────────────────────────────
+
+    {
+      name: 'publishing: a snap name the account already holds is checked and never registered again',
+      run: async (ctx) => {
+        const world = snapcraftWorld({ names: [SNAP_ID] });
+        const { result } = await runSnapBrand(world);
+
+        ctx.expect(result.status).toBe('success');
+        ctx.expect(world.calls.some((words) => words[0] === 'names'), 'the names the account holds are read').toBe(true);
+        ctx.expect(registers(world)).toEqual([]);
+      },
+    },
+
+    {
+      name: 'publishing: a snap name the account does not hold is registered as brand.id, once across two runs',
+      run: async (ctx) => {
+        // A new account holds nothing yet; an older one holds other brands' names
+        for (const held of [[], ['other-app']]) {
+          const world = snapcraftWorld({ names: [...held] });
+          const first = await runSnapBrand(world);
+          const second = await runSnapBrand(world);
+
+          ctx.expect(first.result.status, `holding ${JSON.stringify(held)}`).toBe('success');
+          ctx.expect(second.result.status, `holding ${JSON.stringify(held)}`).toBe('success');
+          ctx.expect(registers(world).length, `holding ${JSON.stringify(held)}`).toBe(1);
+          ctx.expect(registers(world)[0]).toContain(SNAP_ID);
+        }
+      },
+    },
+
+    {
+      name: 'publishing: snapcraft missing or logged out opens the login page behind Enter, prints the manual step and fails',
+      run: async (ctx) => {
+        const worlds = { 'logged out': snapcraftWorld(null), missing: snapcraftWorld({ names: [] }, { missing: true }) };
+
+        for (const [label, world] of Object.entries(worlds)) {
+          const { result, printed, opened } = await runSnapBrand(world);
+
+          ctx.expect(result.status, label).toBe('error');
+          ctx.expect(opened, `${label}: the Snap Store login page, once`).toEqual(['https://snapcraft.io/account']);
+          ctx.expect(`${printed}\n${result.error}`, `${label}: the manual step names the snap`).toContain(SNAP_ID);
+          ctx.expect(registers(world), label).toEqual([]);
+        }
+      },
+    },
+
+    {
+      name: 'publishing: a brand that drops the snap with `false` runs no snapcraft and registers no name',
+      run: async (ctx) => {
+        const world = snapcraftWorld({ names: [] });
+        const { result } = await runSnapBrand(world, { brandConfig: snapBrand({ formats: { snap: false } }) });
+
+        ctx.expect(result.status).toBe('success');
+        ctx.expect(world.calls).toEqual([]);
       },
     },
   ],

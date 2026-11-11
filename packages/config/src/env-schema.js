@@ -143,8 +143,8 @@ const GOOGLE_ASKS = asks({
   search: onUnlessOff('search.providers.searchConsole.enabled'),
   advertising: holds('advertising.providers.adsense.client'),
 });
-const CAMPAIGNS_ON = all(onUnlessOff('marketing.campaigns.enabled'), chosen('marketing.campaigns.providers', 'sendgrid'));
-const NEWSLETTER_ON = all(onUnlessOff('marketing.newsletter.enabled'), chosen('marketing.newsletter.providers', 'beehiiv'));
+const CAMPAIGNS_ON = all(onUnlessOff('marketing.campaigns.enabled'), chosen('marketing.campaigns.providers', require('./email-providers.js').emailProviderForRole('campaigns').id));
+const NEWSLETTER_ON = all(onUnlessOff('marketing.newsletter.enabled'), chosen('marketing.newsletter.providers', require('./email-providers.js').emailProviderForRole('newsletter').id));
 const APPLE_ASK = asks({ certificates: all(onUnlessOff('certificates.enabled'), hasTarget('desktop', 'mobile')) });
 const APPLE_SIGNING = holds('certificates.providers.apple');
 const GA4_STREAM = holds('analytics.providers.google.id');
@@ -754,7 +754,7 @@ const ENV_SCHEMA = [
     label:       'Snap Store credentials',
     url:         'https://snapcraft.io/account',
     hint:        'Log in, then run `snapcraft export-login -` locally and paste the whole blob it prints',
-    description: 'Snap Store credentials blob (`snapcraft export-login -`) the Linux publish job uses. Required when a desktop target ships the snap format, which is on by default: `false` at platforms.linux.formats.snap turns it off.',
+    description: 'Snap Store credentials blob (`snapcraft export-login -`): the snap login a Linux package or release refuses without, and the one the publishing walk registers the snap name (brand.id) with. Required when a desktop target ships the snap format, which is on by default: `false` at platforms.linux.formats.snap turns it off.',
   },
 
   // ── extension-stores — one credential set per browser store ──────────────

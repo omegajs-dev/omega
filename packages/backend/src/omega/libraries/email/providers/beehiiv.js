@@ -1,7 +1,8 @@
 /**
- * Beehiiv provider — shared API helpers for subscriber management
- *
- * Used by: marketing/index.js (sync, remove), cron/daily/marketing-prune.js (newsletter prune)
+ * Beehiiv provider: API helpers for subscribers and posts. It serves the
+ * newsletter role (its row in @omega.js/config's EMAIL_PROVIDERS lists the
+ * operations its callers use), reached through Marketing.roleProvider() by
+ * marketing/index.js and the daily prune.
  */
 const fetch = require('wonderful-fetch');
 // The one Omega instance, read at call time: this module first loads while
@@ -407,9 +408,9 @@ async function listSubscriptions({ status, expand } = {}, request = fetch) {
  * Resolves all field values, then maps to display names for Beehiiv.
  * Beehiiv matches custom fields by their display name.
  *
- * The catalog decides which fields Beehiiv owns (#695): a field the catalog
- * skips for Beehiiv is never provisioned there, so writing it would push a
- * value at a custom field that does not exist on every sync.
+ * The catalog decides which fields Beehiiv owns (fieldsForProvider): a field
+ * on its row's nativeFields is never provisioned there, so writing it would
+ * push a value at a custom field that does not exist on every sync.
  *
  * @param {object} userDoc - User document from Firestore
  * @returns {Array<{name: string, value: string}>} Custom fields in Beehiiv format
@@ -470,33 +471,28 @@ async function resolveSegmentIds() {
 
     return _segmentIdCache;
   } catch (e) {
+    // Thrown, not an empty map: an empty map reads as every key unknown, a coded
+    // 400 config fault, while an outage is a code-less failure (success: false)
     console.error('Beehiiv resolveSegmentIds error:', e);
-    return {};
+    throw e;
   }
 }
 
 // --- Campaigns (Posts) ---
 
 /**
- * Create a Beehiiv post (their equivalent of a campaign/newsletter).
+ * Create a Beehiiv post (their equivalent of a campaign/newsletter) on the
+ * brand's publication.
  *
- * @param {object} options
- * @param {string} options.title - Post title (required)
- * @param {string} [options.publicationId] - Explicit publication ID (bypasses getPublicationId lookup).
- *                                            Preferred when the caller already knows it (e.g. newsletter.js
- *                                            reads it from marketing.newsletter.providers.beehiiv.publicationId).
- * @param {string} [options.subject] - Email subject line (defaults to title)
- * @param {string} [options.preheader] - Email preview text
- * @param {string} [options.content] - HTML content body
- * @param {Array<string>} [options.contentTags] - Topical tags attached to the post (Beehiiv `content_tags`)
- * @param {string} [options.status] - 'draft' or 'confirmed' (default: confirmed = send)
- * @param {string} [options.sendAt] - ISO datetime to schedule, or null for immediate
- * @param {Array<string>} [options.segments] - Segment IDs to include
- * @param {Array<string>} [options.excludeSegments] - Segment IDs to exclude
+ * @param {object} options - title (required), subject (defaults to title),
+ *   preheader, content (HTML body), contentTags (Beehiiv `content_tags`),
+ *   status ('draft' or 'confirmed', the default, which sends), sendAt (an ISO
+ *   datetime to schedule, 'now', or none for immediate), and segments /
+ *   excludeSegments (Beehiiv segment IDs)
  * @returns {{ success: boolean, id?: string, scheduled?: boolean, error?: string }}
  */
 async function createPost(options) {
-  const publicationId = options.publicationId || getPublicationId();
+  const publicationId = getPublicationId();
 
   if (!publicationId) {
     return { success: false, error: 'Publication not found' };
@@ -507,7 +503,8 @@ async function createPost(options) {
   try {
     const body = {
       title,
-      status: sendAt ? 'confirmed' : (status || 'confirmed'),
+      // A draft stays a draft whatever sendAt says: a testing run never sends
+      status: status === 'draft' ? 'draft' : 'confirmed',
     };
 
     // Content
@@ -521,7 +518,7 @@ async function createPost(options) {
     }
 
     // Scheduling
-    if (sendAt && sendAt !== 'now') {
+    if (sendAt && sendAt !== 'now' && body.status !== 'draft') {
       body.scheduled_at = new Date(sendAt).toISOString();
     }
 
@@ -562,7 +559,7 @@ async function createPost(options) {
     });
 
     if (data.data?.id) {
-      const scheduled = !!sendAt;
+      const scheduled = !!sendAt && body.status !== 'draft';
       return { success: true, id: data.data.id, scheduled };
     }
 

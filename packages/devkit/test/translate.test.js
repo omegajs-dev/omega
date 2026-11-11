@@ -8,8 +8,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const { withoutCI } = require('@omega.js/devkit/test/without-ci');
 
 const {
+  translateCached,
   translateStrings,
   preserveWhitespace,
   CONTROL,
@@ -41,6 +43,12 @@ function fakeSend(calls = []) {
     return { text: JSON.stringify(out), usage: { input: 10, output: 20 } };
   };
 }
+
+// A provider any call to which fails the case: a warm or cache-only lookup never reaches it.
+const refuseSend = async () => { throw new Error('the provider must not be called'); };
+
+// The resolved settings the one cached call reads, translation on for es.
+const CACHED_SETTINGS = resolveTranslationSettings({ brand: { name: 'MiniCo' }, translation: { languages: ['es'] } });
 
 module.exports = defineCases({
   type: 'group',
@@ -350,6 +358,115 @@ module.exports = defineCases({
       },
     },
 
+    // ── the one cached call ────────────────────────────────────────────────────
+
+    {
+      name: 'translateCached: every string saved answers the saved text and calls no provider',
+      run: (ctx) => withoutCI(async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-tcached-'));
+        saveCache(root, 'es', 'messages', { [hashKey('Hello')]: 'Hola', [hashKey('Goodbye')]: 'Adiós' }, ['Hello', 'Goodbye']);
+
+        try {
+          const { translated, cold } = await translateCached({
+            strings: { greet: 'Hello', leave: 'Goodbye' },
+            language: 'es',
+            namespace: 'messages',
+            settings: CACHED_SETTINGS,
+            rootDir: root,
+            send: refuseSend,
+          });
+
+          ctx.expect(translated).toEqual({ greet: 'Hola', leave: 'Adiós' });
+          ctx.expect(cold).toEqual([]);
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      }),
+    },
+
+    {
+      name: 'translateCached: under cachedOnly a cold string keeps its source text, is named in cold, and is never saved',
+      run: (ctx) => withoutCI(async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-tcached-'));
+        saveCache(root, 'es', 'messages', { [hashKey('Hello')]: 'Hola' }, ['Hello']);
+
+        try {
+          const { translated, cold } = await translateCached({
+            strings: { greet: 'Hello', tip: 'Click to open' },
+            language: 'es',
+            namespace: 'messages',
+            settings: CACHED_SETTINGS,
+            cachedOnly: true,
+            rootDir: root,
+            send: refuseSend,
+          });
+
+          ctx.expect(translated).toEqual({ greet: 'Hola', tip: 'Click to open' });
+          ctx.expect(cold).toEqual(['tip']);
+          // The source text is a fallback for this build, never a translation to commit
+          ctx.expect(loadCache(root, 'es', 'messages')).toEqual({ [hashKey('Hello')]: 'Hola' });
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      }),
+    },
+
+    {
+      name: 'translateCached: without cachedOnly a cold string goes to the provider once and the result is saved',
+      run: (ctx) => withoutCI(async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-tcached-'));
+        saveCache(root, 'es', 'messages', { [hashKey('Hello')]: 'Hola' }, ['Hello']);
+        const calls = [];
+
+        try {
+          const { translated, cold } = await translateCached({
+            strings: { greet: 'Hello', tip: 'Click to open' },
+            language: 'es',
+            namespace: 'messages',
+            settings: CACHED_SETTINGS,
+            rootDir: root,
+            send: fakeSend(calls),
+          });
+
+          ctx.expect(calls.length).toBe(1);
+          const payload = JSON.parse(calls[0].user.slice(calls[0].user.indexOf('\n\n') + 2));
+          ctx.expect(payload, 'only the cold string rides the call').toEqual(['Click to open', CONTROL]);
+          ctx.expect(translated).toEqual({ greet: 'Hola', tip: 'Click to open·XX' });
+          ctx.expect(cold).toEqual([]);
+          ctx.expect(loadCache(root, 'es', 'messages')).toEqual({ [hashKey('Hello')]: 'Hola', [hashKey('Click to open')]: 'Click to open·XX' });
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      }),
+    },
+
+    {
+      name: 'translateCached: two keys sharing a cold source text send it once and both answer the one result',
+      run: (ctx) => withoutCI(async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-tcached-'));
+        const calls = [];
+
+        try {
+          const { translated, cold } = await translateCached({
+            strings: { appName: 'Staged', appNameShort: 'Staged' },
+            language: 'es',
+            namespace: 'messages',
+            settings: CACHED_SETTINGS,
+            rootDir: root,
+            send: fakeSend(calls),
+          });
+
+          const sent = calls.flatMap((call) => JSON.parse(call.user.slice(call.user.indexOf('\n\n') + 2)));
+          ctx.expect(sent.filter((text) => text === 'Staged').length, 'the shared text is sent once').toBe(1);
+          ctx.expect(translated).toEqual({ appName: 'Staged·XX', appNameShort: 'Staged·XX' });
+          ctx.expect(cold).toEqual([]);
+          ctx.expect(loadCache(root, 'es', 'messages'), 'one saved entry').toEqual({ [hashKey('Staged')]: 'Staged·XX' });
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      }),
+    },
+
     // ── languages + settings ───────────────────────────────────────────────────
 
     {
@@ -391,12 +508,11 @@ module.exports = defineCases({
         ctx.expect(off.default).toBe('en');
 
         // The engine is a KEY under translation.providers (#425) — presence picks it
-        const on = resolveTranslationSettings({ translation: { languages: ['es'], providers: { chatgpt: {} }, model: 'm', exclude: ['blog'] } });
+        const on = resolveTranslationSettings({ translation: { languages: ['es'], providers: { chatgpt: {} }, model: 'm' } });
         ctx.expect(on.enabled).toBe(true);
         ctx.expect(on.languages).toEqual(['es']);
         ctx.expect(on.provider).toBe('chatgpt');
         ctx.expect(on.model).toBe('m');
-        ctx.expect(on.exclude).toEqual(['blog']);
 
         // An empty providers block is no pick at all, so the claude default stands
         const empty = resolveTranslationSettings({ translation: { languages: ['es'], providers: {} } });

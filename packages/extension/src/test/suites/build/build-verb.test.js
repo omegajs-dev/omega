@@ -114,6 +114,21 @@ module.exports = defineCases({
       },
     },
     {
+      name: 'build --cached-only hands the flag to the gulp lane, and a plain build does not',
+      run: async (ctx) => {
+        const lanes = [];
+        const runners = { clean: () => {}, gulp: (options, step) => { lanes.push([step.task, ...step.args]); } };
+
+        await withEnv(async () => {
+          await build.runPlan(build.plan({ 'cached-only': true, cachedOnly: true }), {}, runners);
+          await build.runPlan(build.plan({}), {}, runners);
+        });
+
+        // The translate task reads the flag off the gulp lane's own command line
+        ctx.expect(lanes).toEqual([['build', '--cached-only'], ['build']]);
+      },
+    },
+    {
       name: 'every plan step type has a runner in the RUNNERS table',
       run: (ctx) => {
         const known = Object.keys(build.RUNNERS);

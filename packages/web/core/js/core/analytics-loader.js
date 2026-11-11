@@ -6,11 +6,8 @@
  * page whenever an id was configured, which meant every visitor was counted
  * before the banner had even finished animating in. The chrome still emits the
  * IDS (`window.OMEGA_BUILD_JSON.config.analytics`); the scripts themselves are injected
- * from here, and only for a category the visitor's consent allows:
- *
- *   ga4    → `analytics`
- *   meta   → `marketing`
- *   tiktok → `marketing`
+ * from here, and only for the consent category each provider's row names
+ * (`analytics.capabilities`, the rows the build bakes beside the ids).
  *
  * Google Consent Mode is wired for the GA4 half: the `consent default` command
  * is queued into dataLayer BEFORE gtag.js can load (denied-by-default in an
@@ -23,17 +20,10 @@
  * it takes effect on the next page load, while Consent Mode updates now.
  */
 import { createLogger } from '__main_assets__/js/libs/logger.js';
-import { event } from '__main_assets__/js/libs/analytics.js';
+import { event, getAnalyticsCapabilities } from '__main_assets__/js/libs/analytics.js';
 import { getTrackingConsent, onTrackingConsentChange } from '__main_assets__/js/libs/tracking-consent.js';
 
 const logger = createLogger('analytics-loader');
-
-// Which consent category each provider needs.
-const PROVIDER_CATEGORY = {
-  google: 'analytics',
-  meta: 'marketing',
-  tiktok: 'marketing',
-};
 
 const GTAG_SRC = 'https://www.googletagmanager.com/gtag/js';
 const META_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
@@ -59,12 +49,13 @@ export default function ({ omega }) {
     return;
   }
 
+  const capabilities = getAnalyticsCapabilities();
   const loaded = { google: false, meta: false, tiktok: false };
 
   // Inject every provider the consent allows and that is not already running.
   const load = (consent) => {
-    Object.keys(PROVIDER_CATEGORY).forEach((provider) => {
-      if (!ids[provider] || loaded[provider] || !consent[PROVIDER_CATEGORY[provider]]) {
+    Object.keys(LOADERS).forEach((provider) => {
+      if (!ids[provider] || loaded[provider] || !consent[capabilities[provider].consentCategory]) {
         return;
       }
 
@@ -211,10 +202,8 @@ function installTikTokQueue() {
  * no document to read — desktop and the extension fire the same canonical event
  * through @omega.js/client.
  *
- * @param {string} provider - The CATALOG's provider key for the pixel that just
- *   initialized ('meta' | 'tiktok'), not this file's loader key — the two agree
- *   on both marketing providers and disagree on Google ('google' here, `ga4`
- *   there), and a key the catalog does not know would skip in silence.
+ * @param {string} provider - The provider id of the pixel that just
+ *   initialized ('meta' | 'tiktok').
  * @returns {void}
  */
 function countPageView(provider) {

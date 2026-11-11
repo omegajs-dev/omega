@@ -16,7 +16,7 @@
  * additionally needs OMEGA_WEBHOOK_KEY, which the setup MINTS through the
  * shared contract (it is OMEGA's own key, #635). No API key → clean skip.
  */
-const { chosenProvider, defaultAddressReason } = require('@omega.js/config');
+const { chosenProvider, defaultAddressReason, emailProviderForRole } = require('@omega.js/config');
 
 const { serviceInputSpec } = require('../../config.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -40,7 +40,7 @@ module.exports.run = createServiceRunner({
     if (!provider) {
       return { skip: true, reason: 'no marketing.campaigns.providers entry' };
     }
-    if (provider !== 'sendgrid') {
+    if (provider !== emailProviderForRole('campaigns').id) {
       return { skip: true, reason: `marketing.campaigns.providers.${provider} is not a known email-marketing provider` };
     }
 
@@ -53,7 +53,7 @@ module.exports.run = createServiceRunner({
     if (pagesReason) return { skip: true, reason: pagesReason };
 
     if (!context.sendgridApi) {
-      const gate = await requestServiceInput(context, serviceInputSpec('campaigns', { names: ['SENDGRID_API_KEY'] }));
+      const gate = await requestServiceInput(context, serviceInputSpec('campaigns', { names: [emailProviderForRole('campaigns').envKey] }));
       if (gate) return gate;
     }
 

@@ -28,6 +28,7 @@ const os = require('node:os');
 const path = require('node:path');
 const esbuild = require('esbuild');
 const { get: _get, set: _set } = require('lodash');
+const { ANALYTICS_PROVIDERS, clientConfig } = require('@omega.js/config');
 
 const PKG = path.join(__dirname, '..');
 const ROOT = path.resolve(PKG, '..', '..');
@@ -109,7 +110,8 @@ async function boot({ timeZone, ids = IDS, storage = {} } = {}) {
   // The page's own analytics host reads the platform cookies at fire time.
   globalThis.document = { cookie: '' };
   globalThis.__omegaClient = {
-    config: {
+    // The build's own bake, so the provider rows ride it as analytics.capabilities
+    config: clientConfig({
       analytics: {
         providers: {
           google: ids.google ? { id: ids.google } : {},
@@ -117,7 +119,7 @@ async function boot({ timeZone, ids = IDS, storage = {} } = {}) {
           tiktok: ids.tiktok ? { id: ids.tiktok } : {},
         },
       },
-    },
+    }),
     dom: {
       loadScript: (options) => {
         injected.push(options.src);
@@ -281,6 +283,22 @@ module.exports = defineCases({
 
         ctx.expect(gate.loaded(), 'the marketing pair stays unloaded').toEqual(['google']);
         ctx.expect(gate.consentCommands().at(-1), 'the ad_* flags stay denied; only analytics_storage flips').toEqual(['consent', 'update', { ...DENIED, analytics_storage: 'granted' }]);
+      },
+    },
+
+    {
+      name: 'each provider loads on its own row\'s consent category, and no other',
+      run: async (ctx) => {
+        const rows = Object.values(ANALYTICS_PROVIDERS);
+
+        for (const row of rows) {
+          const gate = await boot({ timeZone: 'Europe/Berlin' });
+
+          gate.setTrackingConsent({ analytics: false, marketing: false, [row.consentCategory]: true });
+
+          const sameCategory = rows.filter((other) => other.consentCategory === row.consentCategory).map((other) => other.id).sort();
+          ctx.expect(gate.loaded().sort(), `granting ${row.consentCategory} alone loads ${row.id} and only the providers that share its category`).toEqual(sameCategory);
+        }
       },
     },
 

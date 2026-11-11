@@ -145,5 +145,5 @@ When `omega.isTesting()` (i.e. under `npx omega test`), every surfacing path in 
 
 ## Platform behavior
 
-- `window-all-closed` → `app.quit()` on Windows/Linux only. macOS apps are sticky (stay running with no windows).
+- `window-all-closed` → `omega.quit()` on Windows/Linux only, so a last window closed inside a `second-instance` handler still waits for the forwarding duplicate to exit ([deep-link.md](deep-link.md#quitting-from-a-second-instance-handler)). macOS apps are sticky (stay running with no windows).
 - All event listeners (`close` / `closed` / `resize` / `move` / `ready-to-show` / etc.) are attached **before** `await loadFile()` resolves, so the window is fully observable the moment it lands in the registry.

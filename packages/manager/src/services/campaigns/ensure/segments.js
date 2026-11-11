@@ -10,11 +10,12 @@
  * Segments @omega.js/backend doesn't own are never touched.
  */
 const chalk = require('chalk').default;
+const { emailProviderForRole } = require('@omega.js/config');
 const { segmentsFor } = require('../../../lib/backend-marketing.js');
 const { buildQueryDsl } = require('../lib/segment-query.js');
 const { dryRunPlan } = require('../../../lib/run-gates.js');
 
-const SENDGRID_SEGMENTS = segmentsFor('sendgrid');
+const SENDGRID_SEGMENTS = segmentsFor(emailProviderForRole('campaigns').id);
 
 module.exports = async function ensureSegments(context) {
   const { sendgridApi: api, options = {} } = context;

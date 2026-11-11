@@ -13,7 +13,7 @@ const attachLogFile = require('@omega.js/devkit/attach-log-file');
 const { createRunner } = require('@omega.js/devkit/test/runner');
 const { guardStdout } = require('@omega.js/devkit/test/guard-stdout');
 const { exitFlushed, guardEarlyExit } = require('@omega.js/devkit/test/exit');
-const { noMatchExitCode, FRAMEWORK_IDS } = require('@omega.js/devkit/test/scope');
+const { noMatchExitCode, frameworkIds } = require('@omega.js/devkit/test/scope');
 const { setEnvironment } = require('@omega.js/config/environment');
 const { ensureTarget } = require('./lib/ensure-target.js');
 const { electronDriver } = require('../test/runners/electron.js');
@@ -45,7 +45,7 @@ function runnerConfig({ projectRoot, selfTest }) {
     projectRoot,
     roots,
     packageName: '@omega.js/desktop',
-    frameworkAliases: FRAMEWORK_IDS['@omega.js/desktop'],
+    frameworkAliases: frameworkIds('@omega.js/desktop'),
     drivers: { main: electronDriver('main'), renderer: electronDriver('renderer'), boot: bootDriver },
     extendedModeLines: EXTENDED_MODE_LINES,
     defaultTimeout: 30000,

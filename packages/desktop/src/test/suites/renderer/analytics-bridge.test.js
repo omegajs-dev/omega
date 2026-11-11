@@ -61,7 +61,7 @@ module.exports = defineCases({
 
         const fired = sends.slice(baseline).filter((s) => s.name === 'vert_click');
         ctx.expect(fired.length).toBe(1);
-        ctx.expect(fired[0].provider).toBe('ga4');
+        ctx.expect(fired[0].provider).toBe('google');
         ctx.expect(fired[0].payload.vert_id).toBe('pin-411');
 
         // Main's identity, never a renderer-minted one — asserted on the WIRE

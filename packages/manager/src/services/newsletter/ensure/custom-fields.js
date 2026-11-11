@@ -2,18 +2,19 @@
  * Ensure @omega.js/backend's custom fields exist on the Beehiiv publication with the
  * right kinds.
  *
- * The field list comes from @omega.js/backend's marketing SSOT (honoring each
- * field's provider skip list — Beehiiv needs first/last name as custom
- * fields, but tracks country and UTM source natively). Beehiiv matches
+ * The field list comes from @omega.js/backend's marketing SSOT, less the
+ * provider row's nativeFields (Beehiiv needs first/last name as custom fields,
+ * but tracks country and UTM source natively). Beehiiv matches
  * subscriber values by display name, so fields are diffed by `display`. A
  * kind mismatch can't be patched — the field is deleted and recreated.
  * Fields @omega.js/backend doesn't own are never touched.
  */
 const chalk = require('chalk').default;
+const { emailProviderForRole } = require('@omega.js/config');
 const { fieldsFor } = require('../../../lib/backend-marketing.js');
 const { dryRunPlan } = require('../../../lib/run-gates.js');
 
-const BEEHIIV_FIELDS = fieldsFor('beehiiv');
+const BEEHIIV_FIELDS = fieldsFor(emailProviderForRole('newsletter').id);
 
 // @omega.js/backend type → Beehiiv kind
 const KIND_MAP = { text: 'string', number: 'integer', date: 'datetime' };

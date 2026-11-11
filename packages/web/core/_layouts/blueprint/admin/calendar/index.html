@@ -415,24 +415,24 @@ config:
 
           <div class="mb-3" id="email-targeting">
             <label class="form-label">Providers</label>
-            <small class="d-block text-muted mb-2">Which services to send through. Leave unchecked to use all enabled providers.</small>
+            <small class="d-block text-muted mb-2">Which roles to send through. Leave unchecked to use every enabled one.</small>
             <div class="d-flex gap-3">
               <div class="form-check">
                 <input class="form-check-input"
                        type="checkbox"
-                       id="campaign-provider-sendgrid"
-                       name="campaign.providers.sendgrid">
-                <label class="form-check-label" for="campaign-provider-sendgrid">
-                  SendGrid
+                       id="campaign-provider-campaigns"
+                       name="campaign.providers.campaigns">
+                <label class="form-check-label" for="campaign-provider-campaigns">
+                  Campaigns
                 </label>
               </div>
               <div class="form-check">
                 <input class="form-check-input"
                        type="checkbox"
-                       id="campaign-provider-beehiiv"
-                       name="campaign.providers.beehiiv">
-                <label class="form-check-label" for="campaign-provider-beehiiv">
-                  Beehiiv
+                       id="campaign-provider-newsletter"
+                       name="campaign.providers.newsletter">
+                <label class="form-check-label" for="campaign-provider-newsletter">
+                  Newsletter
                 </label>
               </div>
             </div>
@@ -445,14 +445,14 @@ config:
                    name="campaign.all">
             <label class="form-check-label" for="campaign-all">
               Target all contacts
-              <small class="text-muted fw-normal ms-1">(SendGrid only: overrides lists/segments)</small>
+              <small class="text-muted fw-normal ms-1">(Campaigns only: overrides lists/segments)</small>
             </label>
           </div>
 
           <div class="mb-3">
             <label for="campaign-lists" class="form-label">
               Lists
-              <small class="text-muted fw-normal ms-1">(SendGrid list IDs, comma-separated; empty = brand default list)</small>
+              <small class="text-muted fw-normal ms-1">(Campaigns list IDs, comma-separated; empty = brand default list)</small>
             </label>
             <input type="text"
                    class="form-control"

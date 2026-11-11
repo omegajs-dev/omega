@@ -36,7 +36,7 @@
 // browser-twinned events, `purchase` and `trial_start`, on the order — the only
 // id a browser can compute).
 import omega from '@omega.js/web/runtime';
-import { event } from '__main_assets__/js/libs/analytics.js';
+import { event, getAnalyticsCapabilities } from '__main_assets__/js/libs/analytics.js';
 import { FREQUENCIES, ONE_TIME_FREQUENCY } from '../../checkout/modules/state.js';
 
 // Build the canonical items array for the purchase.
@@ -72,6 +72,11 @@ export function buildItems(state, price = state.amount) {
   }];
 }
 
+// The providers whose row says they collapse two halves on the event id.
+function eventIdDedupers() {
+  return Object.values(getAnalyticsCapabilities()).filter((row) => row.dedupesOnEventId).map((row) => row.id);
+}
+
 // Fire the canonical conversion for this order — see the header for which.
 function trackPurchase(state) {
   const canonical = state.hasFreeTrial ? 'trial_start' : 'purchase';
@@ -90,9 +95,10 @@ function trackPurchase(state) {
     payment_frequency: state.frequency,
     is_trial: state.hasFreeTrial,
   }, {
-    // GA4 rides the purchase half (it dedupes on transaction_id) but never the
-    // trial half, where its event is custom and the server owns it outright.
-    providers: state.hasFreeTrial ? ['meta', 'tiktok'] : ['ga4', 'meta', 'tiktok'],
+    // This event's own rule: the purchase half goes to every provider (GA4
+    // dedupes it on transaction_id), the trial half only to the providers that
+    // dedupe on the event id, since GA4's trial_start is custom and the server's.
+    providers: state.hasFreeTrial ? eventIdDedupers() : undefined,
     eventId: `${canonical}.${state.orderId}`,
   });
 }

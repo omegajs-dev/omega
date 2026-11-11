@@ -159,6 +159,9 @@ The workflow's `env:` carries `GOOGLE_ANALYTICS_SECRET` beside the seven store c
 
 `npm run build` invokes the `translate` gulp task: reads `config/messages.json`, sends only the strings missing from the committed `translations/<lang>/` cache to the provider, and composes `dist/_locales/<lang>/messages.json` per language in `translation.languages` (omega.json5; unset = off). Existing translations are preserved. See [docs/extension/translations.md](translations.md).
 
+- **Cache-only builds**: on a CI runner, or with `omega build --cached-only`, the task reads the committed cache only and never calls a provider, so no AI key is needed. The build verb hands the flag to gulp, and a non-interactive manage run passes it to every extension build.
+- **Cold strings**: a message with no saved translation ships in English, a cold store description ships no translated listing, and the build prints one warning per language naming the namespace (`messages` or `description`) and the keys, then exits 0. Translate them with a plain `omega build` on your own machine and commit `translations/`.
+
 The English source is seeded from the brand: the scaffold renders `appName` / `appNameShort` / `btnTooltip` from `brand.name`, and `appDescription` from `brand.description` when it fits the 200-character store cap — otherwise "The official &lt;brand&gt; browser extension." ([#573](https://github.com/Omega-JS-Stack/omega/issues/573)). All four render through ONE escape — each lands inside a single-quoted JSON5 value, and the brand-name paths used to render raw, so a name carrying an apostrophe seeded an unparseable file ([#592](https://github.com/Omega-JS-Stack/omega/issues/592)). `config/messages.json` is copy-once, so the seed is a starting point, never a rewrite.
 
 ### Build hooks

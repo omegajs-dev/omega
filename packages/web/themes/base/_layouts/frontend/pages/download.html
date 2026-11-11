@@ -7,9 +7,10 @@ layout: frontend/core/base
 # detection JS; site.targets.desktop.downloads[platform][format] supplies the
 # desktop URLs (#610 — the curated targets view is the ONE home). Each is a
 # DIRECT download of a versionless asset (#620), so a button hands over the
-# file and a desktop release never touches this page. The platform/format keys
-# below are the format table's, the one vocabulary (#867: mac/dmg,
-# windows/nsis, linux/deb): a `type` with no derived URL renders no button.
+# file and a desktop release never touches this page. A desktop card's buttons
+# ARE that map's formats, in offer order, so a format the brand ships (the snap
+# included) gets a button and a dropped one gets none; `format_names` only
+# words them.
 # Mobile derives nothing while MAM is parked, so every mobile store stays on
 # the notify form.
 
@@ -37,34 +38,28 @@ downloads:
   not_available:
     headline: "Not available yet"
     description: "{{ resolved.config.brand.name }} is not currently available for this platform yet."
+  # The words on each desktop button, by format. WHICH buttons a card shows is
+  # never listed here: it is the formats the brand ships
+  # (site.targets.desktop.downloads).
+  format_names:
+    dmg: "Download for macOS"
+    nsis: "Download for Windows"
+    deb: "Debian package"
+    appimage: "AppImage"
+    snap: "Snap Store"
   platforms:
     - id: "mac"
       name: "macOS"
       icon: "fa-brands fa-apple"
       description: "macOS 10.15+ (Apple Silicon & Intel)"
-      types:
-        - type: "dmg"
-          name: "Download for macOS"
-          icon: "fa-brands fa-apple"
     - id: "windows"
       name: "Windows"
       icon: "fa-brands fa-windows"
       description: "Windows 10 and later"
-      types:
-        - type: "nsis"
-          name: "Download for Windows"
-          icon: "fa-brands fa-windows"
     - id: "linux"
       name: "Linux"
       icon: "fa-brands fa-linux"
       description: "Ubuntu 18.04+ and friends"
-      types:
-        - type: "deb"
-          name: "Debian package"
-          icon: "fa-brands fa-linux"
-        - type: "appimage"
-          name: "AppImage"
-          icon: "fa-brands fa-linux"
     - id: "ios"
       name: "iOS"
       icon: "fa-brands fa-apple"
@@ -209,11 +204,9 @@ bands below keep the reveal lane. {% endcomment %}
       {% for platform in resolved.downloads.platforms %}
         {% if platform.id == 'ios' or platform.id == 'android' %}{% continue %}{% endif %}
 
+        {% assign platform_downloads = site.targets.desktop.downloads[platform.id] %}
         {% assign download_count = 0 %}
-        {% for type in platform.types %}
-          {% assign config_url = site.targets.desktop.downloads[platform.id][type.type] %}
-          {% iftruthy config_url %}{% assign download_count = download_count | plus: 1 %}{% endiftruthy %}
-        {% endfor %}
+        {% for download in platform_downloads %}{% assign download_count = download_count | plus: 1 %}{% endfor %}
 
         <div class="col-md-6 col-lg-4 d-flex" data-omega-reveal>
           <div class="omega-dl-card omega-hover-lift" data-download-card data-platform="{{ platform.id }}">
@@ -228,14 +221,12 @@ bands below keep the reveal lane. {% endcomment %}
                  download twice (Ian #14). -->
             <div class="omega-dl-card__actions{% if download_count > 1 %} omega-dl-card__actions--split{% endif %}">
               {% if download_count > 0 %}
-                {% for type in platform.types %}
-                  {% assign config_url = site.targets.desktop.downloads[platform.id][type.type] %}
-                  {% iftruthy config_url %}
-                    <a href="{{ config_url }}" class="btn {% if forloop.first %}btn-adaptive{% else %}btn-outline-adaptive{% endif %}" data-download="true" data-download-name="{{ type.name }}">
-                      <i class="fa-solid fa-download fa-sm me-2"></i>
-                      {{ type.name }}
-                    </a>
-                  {% endiftruthy %}
+                {% for download in platform_downloads %}
+                  {% assign download_name = resolved.downloads.format_names[download[0]] | default: download[0] %}
+                  <a href="{{ download[1] }}" class="btn {% if forloop.first %}btn-adaptive{% else %}btn-outline-adaptive{% endif %}" data-download="true" data-download-name="{{ download_name }}" data-download-kind="{{ site.targets.desktop.downloadKinds[platform.id][download[0]] }}">
+                    <i class="fa-solid fa-download fa-sm me-2"></i>
+                    {{ download_name }}
+                  </a>
                 {% endfor %}
               {% else %}
                 <span class="omega-status w-100 justify-content-center">

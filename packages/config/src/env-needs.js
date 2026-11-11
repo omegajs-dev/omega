@@ -12,6 +12,7 @@
  */
 
 const { ENV_SCHEMA, envSchemaEntry } = require('./env-schema.js');
+const { hasValue } = require('./env-has-value.js');
 const { onUnlessOff, targetViews } = require('./env-when.js');
 const { PLATFORMS, FORMATS, enabledFormats, formatKeys } = require('./platforms.js');
 const { hasTargetOfType } = require('./targets.js');
@@ -40,18 +41,6 @@ const VERB_DELIVERY = {
 // The manager service that collects the ship keys, and its switch
 const SHIP_SERVICE = 'publishing';
 const SHIPPING_ON = onUnlessOff('publishing.enabled');
-
-/**
- * Whether a key has a value under its own name or the name it is delivered
- * under (a target's build holds `GOOGLE_ANALYTICS_SECRET`, never the brand's
- * `GOOGLE_ANALYTICS_SECRET_WEB`). An empty string is absent.
- * @param {object} env - Env var map.
- * @param {object} entry - The schema entry.
- * @returns {boolean}
- */
-function hasValue(env, entry) {
-  return Boolean(env[entry.name] || (entry.deliverAs && env[entry.deliverAs]));
-}
 
 /**
  * Whether the brand (or the one target asked about) reads a key at all.

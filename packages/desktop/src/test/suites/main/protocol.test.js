@@ -97,5 +97,33 @@ module.exports = defineCases({
         }
       },
     },
+    {
+      // The harness's parent process stands in for a holder still alive at launch
+      name: 'a launch that finds a live holder and gets the lock logs the takeover',
+      run: (ctx) => {
+        const fs = require('fs');
+        const path = require('path');
+        const { app } = require('electron');
+        const LoggerLite = require('../../../lib/logger-lite.js');
+        const protocol = ctx.omega.protocol;
+        const holderFile = path.join(app.getPath('userData'), 'single-instance-holder.pid');
+        const line = `single-instance lock taken over from a holder that exited (pid ${process.ppid})`;
+        const count = () => fs.readFileSync(LoggerLite.getLogFilePath(), 'utf8').split('\n').filter((l) => l.includes(line)).length;
+
+        const before = count();
+        fs.writeFileSync(holderFile, String(process.ppid));
+        protocol._initialized = false;
+        try {
+          protocol.initialize(ctx.omega);
+          ctx.expect(protocol.hasSingleInstanceLock()).toBe(true);
+          ctx.expect(count()).toBe(before + 1);
+          ctx.expect(fs.readFileSync(holderFile, 'utf8')).toBe(String(process.pid));
+        } finally {
+          fs.writeFileSync(holderFile, String(process.pid));
+          protocol._hasLock = true;
+          protocol._initialized = true;
+        }
+      },
+    },
   ],
 });

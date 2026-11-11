@@ -65,7 +65,7 @@ omega.deepLink.on('user/profile/:id', (ctx) => {
 |---|---|
 | `auth/token` | Calls `omega.auth.handleToken(query.authToken)`: the receiving end of the `omega.openAuthFlow()` sign-in round-trip. MODERN shape only (`?authToken=`, what the website's token page sends); other formats (`?token=`, `?payload=`) are ignored. In production the URL arrives via the OS scheme; in dev/test `lib/auth-flow.js`'s loopback listener dispatches the same URL manually (the scheme isn't OS-registered in dev: protocol.js registers only in production, and macOS can't runtime-register unlisted schemes at all) |
 | `app/show` | `omega.windows.show(query.window || 'main')` |
-| `app/quit` | `app.quit()` |
+| `app/quit` | `omega.quit()`, so a warm-start link waits for its forwarding duplicate to exit (see Single-instance behavior) |
 
 ### Overriding a built-in
 
@@ -142,9 +142,22 @@ Every dispatch is held until `omega.initialize()` completes (main.js calls `deep
 1. The new instance loses the lock.
 2. The OS forwards its argv to the original instance.
 3. The new instance's `omega.initialize()` halts (after `protocol.hasSingleInstanceLock() === false`): the duplicate quits and its promise never settles.
-4. The original instance's `app.on('second-instance')` fires with the Chromium-processed argv as its second argument AND the duplicate's real argv as its fourth, `additionalData` (@omega.js/desktop passes `{ argv, cwd }` to `app.requestSingleInstanceLock()` for you).
-5. @omega.js/desktop extracts the deep-link URL from that argv and dispatches normally — but as `source: 'warm-start'`.
-6. @omega.js/desktop also focuses the existing main window automatically (consumer can override by registering a route handler that does its own thing).
+4. The original instance's `app.on('second-instance')` fires with the Chromium-processed argv as its second argument AND the duplicate's real argv as its fourth, `additionalData` (@omega.js/desktop passes `{ argv, cwd, pid }` to `app.requestSingleInstanceLock()` for you).
+5. @omega.js/desktop's own listener runs first: `lib/deep-link.js` prepends it when the main module loads, so it is ahead of every brand listener, one registered before `require('@omega.js/desktop/main')` included.
+6. @omega.js/desktop extracts the deep-link URL from that argv and dispatches normally, but as `source: 'warm-start'`.
+7. @omega.js/desktop also focuses the existing main window automatically (consumer can override by registering a route handler that does its own thing).
+
+### Quitting from a `second-instance` handler
+
+A brand quits through `omega.quit()` (or `omega.relaunch()`), never `app.quit()`. Every `second-instance` event names its duplicate's pid to the framework, and while a named duplicate is still alive, `omega.quit()`, `omega.relaunch()`, the `app/quit` route and the Windows/Linux `window-all-closed` quit are held until it has exited, then quit. The duplicate waits on a handshake with the holder before it learns it lost the lock; a holder that exits first leaves the duplicate to take the lock as if it were a first launch, so the forwarded launch never exits as the duplicate it is. Held, the quit logs `quit held until the forwarded launch exits (pid <n>)`. The hold has a fixed limit of 5 seconds (no config key): a duplicate still alive then gets `quit held 5 s and the forwarded launch has not exited (pid <n>); quitting anyway`, and the app quits. With no named duplicate alive, `omega.quit()` quits at once.
+
+```js
+app.on('second-instance', (event, argv, cwd, additionalData) => {
+  if (lastNotificationEnded(additionalData.argv)) omega.quit();   // waits for the duplicate, then quits
+});
+```
+
+The holder records its pid in `single-instance-holder.pid` in the userData folder. A launch that finds a live holder there was launched to forward, so when it takes the lock instead (the holder exited before the handshake ended), it logs `single-instance lock taken over from a holder that exited (pid <n>)` and boots as the new holder. Every boot is also under the boot guard, so a takeover whose boot stalls ends by name instead of holding the lock in silence ([boot-sequence.md](boot-sequence.md#boot-guard)).
 
 Reading the duplicate's own flags (a CLI-shaped app, a `--open <file>` handler) means reading that fourth argument:
 

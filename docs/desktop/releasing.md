@@ -38,7 +38,7 @@ Every artifact name is **stable across releases** — no version in it:
 | windows | `nsis` | `<Product>-windows-nsis.exe` |
 | linux | `deb` | `<Product>-linux-deb.deb` |
 | linux | `appimage` | `<Product>-linux-appimage.AppImage` |
-| linux | `snap` | none: the Snap Store holds the file, so it is never a release asset |
+| linux | `snap` | none: the Snap Store holds the file under the snap name `brand.id`, so it is never a release asset. A Linux `package` or `release` refuses without `SNAPCRAFT_STORE_CREDENTIALS`; a plain build does not |
 
 `<Product>` is `app.productName` (← `brand.name`) with non-filename characters hyphenated. The platform and format words are the ONE vocabulary ([#867](https://github.com/Omega-JS-Stack/omega/issues/867)) and the rule has ONE home, `@omega.js/config`'s `platforms.js`, which `gulp/build-config` writes into `dist/electron-builder.yml`'s artifactName templates and the website reads to build its buttons. Never spell an asset name anywhere else.
 

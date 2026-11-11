@@ -1,8 +1,8 @@
 /**
- * GA4 adapter — Google Analytics 4.
+ * Google adapter: Google Analytics 4.
  *
  * The canonical param vocabulary IS GA4's, so every entry without a `map()`
- * passes straight through. Consent category: 'analytics'.
+ * passes straight through. Its consent category is its provider row's.
  */
 
 const { createAdapter, pick } = require('./resolve.js');
@@ -15,8 +15,7 @@ const { createAdapter, pick } = require('./resolve.js');
 const ATTRIBUTION_PARAMS = ['campaign_id', 'campaign', 'source', 'medium', 'term', 'content', 'gclid'];
 
 const adapter = createAdapter({
-  provider: 'ga4',
-  consentCategory: 'analytics',
+  provider: 'google',
   attach: (descriptor, attribution) => {
     Object.assign(descriptor.payload, pick(attribution, ATTRIBUTION_PARAMS));
   },

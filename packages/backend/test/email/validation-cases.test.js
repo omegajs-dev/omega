@@ -136,7 +136,7 @@ module.exports = defineCases({
         const result = await validate(email, { checks: FREE_CHECKS });
         const failedCheck = Object.entries(result.checks).find(([, v]) => v && !v.valid);
 
-        expect(result.valid, `Expected: ${expected}, Got: ${result.valid ? 'pass' : 'fail'}${failedCheck ? ` (${failedCheck[0]})` : ''}`).toBe(expected === 'pass');
+        expect(result.valid, `Expected: ${expected}, Got: ${result.valid ? 'pass' : 'fail'}${failedCheck ? ` (${[failedCheck[0], failedCheck[1].reason].filter(Boolean).join(': ')})` : ''}`).toBe(expected === 'pass');
 
         // A failing case must fail on the check it was written for.
         if (expectedCheck && !result.valid && failedCheck) {

@@ -40,6 +40,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const esbuild = require('esbuild');
+const { ANALYTICS_PROVIDERS, clientConfig } = require('@omega.js/config');
 
 const PKG = path.join(__dirname, '..');
 const ROOT = path.resolve(PKG, '..', '..');
@@ -88,7 +89,7 @@ function bundleOnce() {
 }
 
 /** A page with the pixels loaded and the visitor consented to everything. */
-function wirePage() {
+function wirePage(brandConfig) {
   const tracked = [];
   const stored = new Map([
     // The tracking-consent record the banner writes (#383). Without a granted
@@ -102,7 +103,8 @@ function wirePage() {
   };
   globalThis.document = { title: 'Confirmation', cookie: '' };
   globalThis.__omegaClient = {
-    config: { analytics: { providers: { meta: { id: 'META-1' } } } },
+    // The build's own bake, so the provider rows ride it as analytics.capabilities
+    config: clientConfig(brandConfig),
     storage: {
       get: (key, fallback) => (stored.has(key) ? stored.get(key) : fallback),
       set: (key, value) => stored.set(key, value),
@@ -114,6 +116,14 @@ function wirePage() {
   globalThis.ttq = { track: (...args) => tracked.push(['ttq', ...args]) };
 
   return { tracked, stored };
+}
+
+// The page global each provider row's pixel answers on
+const PIXEL_GLOBAL = { google: 'gtag', meta: 'fbq', tiktok: 'ttq' };
+
+/** The pixel globals of the rows a predicate picks, in row order */
+function pixelsOf(predicate) {
+  return Object.values(ANALYTICS_PROVIDERS).filter(predicate).map((row) => PIXEL_GLOBAL[row.id]);
 }
 
 function clearPage() {
@@ -137,10 +147,10 @@ function purchaseState(overrides = {}) {
   };
 }
 
-async function trackOnce(state) {
+async function trackOnce(state, brandConfig = { analytics: { providers: { meta: { id: 'META-1' } } } }) {
   await bundleOnce();
 
-  const page = wirePage();
+  const page = wirePage(brandConfig);
 
   delete require.cache[require.resolve(BUNDLE)];
   const tracking = require(BUNDLE);
@@ -161,7 +171,8 @@ module.exports = defineCases({
 
         const { tracked } = await trackOnce(purchaseState());
 
-        ctx.expect(tracked.map(([provider]) => provider), 'Meta and TikTok get the retargeting signal, and GA4 gets the browser attribution it deduplicates against the webhook on transaction_id (#656)').toEqual(['gtag', 'fbq', 'ttq']);
+        ctx.expect(tracked.map(([provider]) => provider), 'a purchase reaches every provider: GA4 deduplicates against the webhook on transaction_id (#656)').toEqual(pixelsOf(() => true));
+        ctx.expect(pixelsOf(() => true)).toEqual(['gtag', 'fbq', 'ttq']);
 
         const [google, meta, tiktok] = tracked;
         ctx.expect(google[1]).toBe('event');
@@ -197,7 +208,8 @@ module.exports = defineCases({
 
         const { tracked } = await trackOnce(purchaseState({ hasFreeTrial: true }));
 
-        ctx.expect(tracked.map(([provider]) => provider), 'the ad platforms only: GA4\'s trial_start is a custom event with no dedupe, and the webhook owns it').toEqual(['fbq', 'ttq']);
+        ctx.expect(tracked.map(([provider]) => provider), 'a trial reaches only the providers that dedupe on the event id: the webhook owns the rest').toEqual(pixelsOf((row) => row.dedupesOnEventId));
+        ctx.expect(pixelsOf((row) => row.dedupesOnEventId)).toEqual(['fbq', 'ttq']);
 
         const [meta, tiktok] = tracked;
 
@@ -226,6 +238,18 @@ module.exports = defineCases({
 
         ctx.expect(names.includes('Purchase'), `a $0 trial must book no purchase anywhere: ${names}`).toBe(false);
         ctx.expect(names.includes('19'), 'nor the plan price nobody was charged').toBe(false);
+      },
+    },
+
+    {
+      name: 'a trial confirmation on a brand with no analytics section tracks without throwing',
+      run: async (ctx) => {
+        ctx.after(clearPage);
+
+        // The bake carries the provider rows for every brand, so the trial's recipients resolve with nothing configured
+        const { tracked } = await trackOnce(purchaseState({ hasFreeTrial: true }), { brand: { id: 'acme' } });
+
+        ctx.expect(tracked.map(([provider]) => provider)).toEqual(pixelsOf((row) => row.dedupesOnEventId));
       },
     },
 

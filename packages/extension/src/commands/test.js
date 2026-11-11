@@ -11,7 +11,7 @@ const attachLogFile = require('@omega.js/devkit/attach-log-file');
 const { createRunner } = require('@omega.js/devkit/test/runner');
 const { guardStdout } = require('@omega.js/devkit/test/guard-stdout');
 const { exitFlushed, guardEarlyExit } = require('@omega.js/devkit/test/exit');
-const { noMatchExitCode, FRAMEWORK_IDS } = require('@omega.js/devkit/test/scope');
+const { noMatchExitCode, frameworkIds } = require('@omega.js/devkit/test/scope');
 const { setEnvironment } = require('@omega.js/config/environment');
 const build = require('../build.js');
 const { ensureTarget } = require('./lib/ensure-target.js');
@@ -38,7 +38,7 @@ function runnerConfig({ projectRoot, selfTest }) {
     projectRoot,
     roots,
     packageName: '@omega.js/extension',
-    frameworkAliases: FRAMEWORK_IDS['@omega.js/extension'],
+    frameworkAliases: frameworkIds('@omega.js/extension'),
     drivers: {
       background: chromiumDriver('background'),
       view: chromiumDriver('view'),

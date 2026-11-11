@@ -47,7 +47,7 @@ Auto-loaded from [src/gulp/tasks/](../../packages/extension/src/gulp/tasks/) via
 | `bundle` | [tasks/bundle.js](../../packages/extension/src/gulp/tasks/bundle.js) | Bundle JS per component entry point with esbuild |
 | `html` | [tasks/html.js](../../packages/extension/src/gulp/tasks/html.js) | Run views through the two-step templating system (see [templating.md](templating.md)) |
 | `icons` | [tasks/icons.js](../../packages/extension/src/gulp/tasks/icons.js) | Generate icon variants from `src/assets/images/icon.png` |
-| `translate` | [tasks/translate.js](../../packages/extension/src/gulp/tasks/translate.js) | Auto-translate `config/messages.json` to the configured `translation.languages` (see [translations.md](translations.md)) |
+| `translate` | [tasks/translate.js](../../packages/extension/src/gulp/tasks/translate.js) | Auto-translate `config/messages.json` and `config/description.md` to the configured `translation.languages`; cache-only on a CI runner or with `omega build --cached-only`, which the build verb hands to gulp as `--cached-only` (see [translations.md](translations.md)) |
 | `package` | [tasks/package.js](../../packages/extension/src/gulp/tasks/package.js) | Bundle dist/ into packaged/<browser>/raw + zip; runs `build:pre` / `build:post` hooks ([hooks.md](hooks.md)) |
 | `serve` | [tasks/serve.js](../../packages/extension/src/gulp/tasks/serve.js) | Dev server: WebSocket-based live reload, watches `src/` |
 | `audit` | [tasks/audit.js](../../packages/extension/src/gulp/tasks/audit.js) | Build-pipeline-specific checks (icons exist, manifest is valid, etc.) |

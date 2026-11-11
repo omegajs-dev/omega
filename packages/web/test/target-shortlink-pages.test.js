@@ -31,7 +31,7 @@ const DL = (asset) => `${RELEASES}/download/MiniCo-${asset}`;
 const DOWNLOADS = {
   mac: { dmg: DL('mac-dmg.dmg') },
   windows: { nsis: DL('windows-nsis.exe') },
-  linux: { deb: DL('linux-deb.deb'), appimage: DL('linux-appimage.AppImage'), snap: 'https://snapcraft.io/minico' },
+  linux: { deb: DL('linux-deb.deb'), appimage: DL('linux-appimage.AppImage'), snap: 'https://snapcraft.io/mini' },
 };
 
 // A brand that opted into desktop releases and listed three stores — the whole
@@ -106,7 +106,7 @@ module.exports = defineCases({
         ctx.expect(byUrl.get('/download/windows/universal')).toBe(byUrl.get('/download/windows/nsis'));
         ctx.expect(byUrl.get('/download/linux/debian')).toBe(byUrl.get('/download/linux/deb'));
         // And the one segment that IS a store page, never a release asset
-        ctx.expect(byUrl.get('/download/linux/snap')).toBe('https://snapcraft.io/minico');
+        ctx.expect(byUrl.get('/download/linux/snap')).toBe('https://snapcraft.io/mini');
       },
     },
 

@@ -4,6 +4,7 @@
  * SSOT for templates, ASM groups, and semantic senders.
  * Used by: transactional/index.js, marketing/index.js, providers/*
  */
+const { emailProvider } = require('@omega.js/config/email-providers');
 
 // Template shortcut map — callers use readable paths instead of SendGrid IDs
 // Paths mirror the email website structure: {category}/{subcategory}/{name}
@@ -325,42 +326,20 @@ function errorWithCode(message, code) {
   return err;
 }
 
-// Master field dictionary — SSOT for all marketing custom fields.
-//
-// SendGrid: `display` is the custom field name (created by OMEGA, resolved by ID at runtime).
-// Beehiiv: `display` is the custom field name (matched by display name).
-//
-// Source types:
-//   'user'     — read from user doc via _.get(userDoc, path)
-//   'resolved' — read from the User's subscription getters via path
-//   'config'   — read from omega.config via _.get(config, path)
-//
-// To add a new tracked marketing field:
-//   1. Add an entry here (key, display, source, path, type)
-//   2. Run OMEGA: npm start -- --service=sendgrid,beehiiv --brand=X
-//   3. @omega.js/backend resolves field IDs at runtime — no provider code changes needed
-//   4. If 'resolved' source, ensure resolveFieldValues() computes it
-//
-// Flags:
-//   skip — Array of provider names to skip field creation for (e.g., ['sendgrid'])
-//          A skipped field is never provisioned in that provider AND never
-//          written to it — fieldsForProvider() below is the ONE derivation the
-//          provisioning ensure AND every provider's buildFields() read, so the
-//          two lists can't drift (#695). The name fields skip SendGrid because
-//          SendGrid stores first/last name in its RESERVED contact columns,
-//          which addContact writes natively — the custom-field lane skips them,
-//          so the old "no SendGrid ID (skipped)" warn can't come back and no
-//          duplicate custom field is ever provisioned or written.
+// The SSOT of every marketing custom field (adding one: docs/backend/marketing-fields.md).
+// `source` reads `path` from the user doc ('user'), the User's subscription
+// getters ('resolved', computed in resolveFieldValues()) or omega.config ('config').
+// A field a provider stores natively is on its row's `nativeFields`, never here.
 const FIELDS = {
   // Brand
   brand_id:                              { display: 'Brand ID', source: 'config', path: 'brand.id', type: 'text' },
 
   // User identity
   user_auth_uid:                         { display: 'User UID', source: 'user', path: 'auth.uid', type: 'text' },
-  user_personal_name_first:              { display: 'First Name', source: 'user', path: 'personal.name.first', type: 'text', skip: ['sendgrid'] },
-  user_personal_name_last:               { display: 'Last Name', source: 'user', path: 'personal.name.last', type: 'text', skip: ['sendgrid'] },
+  user_personal_name_first:              { display: 'First Name', source: 'user', path: 'personal.name.first', type: 'text' },
+  user_personal_name_last:               { display: 'Last Name', source: 'user', path: 'personal.name.last', type: 'text' },
   user_personal_company:                 { display: 'Company', source: 'user', path: 'personal.company.name', type: 'text' },
-  user_personal_country:                 { display: 'Country', source: 'user', path: 'personal.location.country', type: 'text', skip: ['beehiiv'] },
+  user_personal_country:                 { display: 'Country', source: 'user', path: 'personal.location.country', type: 'text' },
   user_metadata_signup_date:             { display: 'Signup Date', source: 'user', path: 'metadata.created.timestamp', type: 'date' },
   user_metadata_last_activity:           { display: 'Last Activity', source: 'user', path: 'metadata.updated.timestamp', type: 'date' },
 
@@ -377,27 +356,13 @@ const FIELDS = {
   user_subscription_payment_last_date:   { display: 'Last Payment Date', source: 'user', path: 'subscription.payment.updatedBy.date.timestamp', type: 'date' },
 
   // Attribution
-  user_attribution_utm_source:           { display: 'UTM Source', source: 'user', path: 'attribution.last.tags.utm_source', type: 'text', skip: ['beehiiv'] },
+  user_attribution_utm_source:           { display: 'UTM Source', source: 'user', path: 'attribution.last.tags.utm_source', type: 'text' },
 };
 
-// Master segment dictionary — SSOT for all marketing segments.
-//
-// Segments are created in each provider by OMEGA (like custom fields).
-// @omega.js/backend references them by key. Provider-specific IDs are resolved at runtime.
-//
-// Condition types:
-//   'field'      — custom field condition (uses FIELDS above)
-//   'engagement' — provider built-in engagement tracking (opens, clicks)
-//
-// To add a new segment:
-//   1. Add an entry here
-//   2. Add matching entry in the manager's campaigns/newsletter segment
-//      services (packages/manager/src/services/*/ensure/segments.js)
-//   3. Run the manage cycle for the brand (services: sendgrid, beehiiv)
-//
-// Providers:
-//   skip — Array of provider names to skip segment creation for
-//          (e.g., engagement segments may not be supported on all providers)
+// The SSOT of every marketing segment: OMEGA creates each one in every provider
+// not on its optional `skip` list (the manager's ensure/segments.js), and the backend
+// resolves a key to the provider's id at runtime. A condition is a 'field' (from
+// FIELDS above) or 'engagement' (the provider's own open and click tracking).
 const SEGMENTS = {
   // Subscription
   subscription_free:          { display: 'Free Users', conditions: [{ field: 'user_subscription_plan', op: '==', value: 'basic' }] },
@@ -430,21 +395,25 @@ const SEGMENTS = {
 };
 
 /**
- * The catalog's view of ONE provider — the field names it provisions, and so
+ * The catalog's view of ONE provider: the field names it provisions, and so
  * the exact set its contact sync may write ([#695](https://github.com/Omega-JS-Stack/omega/issues/695)).
  *
- * The ONE derivation of the skip flag: OMEGA's custom-fields ensure provisions
- * this list (through the manager's lib/backend-marketing.js) and the provider's
- * buildFields() writes this list, so a field the catalog omits can never become
- * a runtime "no field ID (skipped)" surprise.
+ * Derived from the provider's row: every catalog field but its `nativeFields`.
+ * OMEGA's custom-fields ensure provisions this list (through the manager's
+ * lib/backend-marketing.js) and the provider's buildFields() writes it, so a
+ * field the catalog omits can never become a runtime "no field ID" surprise.
  *
- * @param {string} provider - Provider name ('sendgrid', 'beehiiv')
+ * @param {string} provider - Provider id (a row of @omega.js/config's EMAIL_PROVIDERS)
  * @returns {string[]} The field names that provider owns
  */
 function fieldsForProvider(provider) {
-  return Object.entries(FIELDS)
-    .filter(([, field]) => !(field.skip || []).includes(provider))
-    .map(([name]) => name);
+  const row = emailProvider(provider);
+
+  if (!row) {
+    throw new Error(`fieldsForProvider: "${provider}" is not an email provider (@omega.js/config's EMAIL_PROVIDERS)`);
+  }
+
+  return Object.keys(FIELDS).filter((name) => !row.nativeFields.includes(name));
 }
 
 /**

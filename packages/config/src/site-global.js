@@ -44,7 +44,7 @@
  * page itself ([#867](https://github.com/Omega-JS-Stack/omega/issues/867)).
  */
 
-const { enabledFormats, desktopProductName, desktopArtifactNames, sanitizeProductName } = require('./platforms.js');
+const { FORMATS, enabledFormats, desktopProductName, desktopArtifactNames, snapName } = require('./platforms.js');
 const { releasesRepo } = require('./repo.js');
 
 // Keys that are resolution machinery, not site content
@@ -117,18 +117,38 @@ function desktopDownloads(desktop, config, releasesUrl) {
   const downloads = {};
   for (const { platform, format } of enabledFormats(desktop, 'desktop')) {
     // An asset links its file; the one store format (the snap) links the Snap
-    // Store listing, whose slug is the snap's own name, which electron-builder
-    // derives from the executable name: the sanitized product name, lowercased.
+    // Store listing, whose slug is the name the build pins and the publishing
+    // walk registers (snapName).
     const filename = names[platform]?.[format];
     const url = filename
       ? `${releasesUrl}/download/${filename}`
-      : `https://snapcraft.io/${sanitizeProductName(productName).toLowerCase()}`;
+      : `https://snapcraft.io/${snapName(config)}`;
 
     downloads[platform] = downloads[platform] || {};
     downloads[platform][format] = url;
   }
 
   return Object.keys(downloads).length ? downloads : undefined;
+}
+
+/**
+ * What each linked format IS, keyed like `downloads`: the format table's
+ * `kind` (`asset` | `store`), so the page hands a store link over as a plain
+ * link and an asset with its install walkthrough. It reads the curated
+ * downloads alone, so the second toSiteGlobal pass derives the same map.
+ * @param {object} downloads - the curated downloads map
+ * @returns {object}
+ */
+function desktopDownloadKinds(downloads) {
+  const kinds = {};
+  for (const [platform, formats] of Object.entries(downloads)) {
+    kinds[platform] = {};
+    for (const format of Object.keys(formats)) {
+      kinds[platform][format] = FORMATS.desktop[platform][format].kind;
+    }
+  }
+
+  return kinds;
 }
 
 /**
@@ -161,7 +181,10 @@ function curateTarget(entry, config) {
     if (releasesUrl) {
       view.releasesUrl = releasesUrl;
       const downloads = desktopDownloads(entry, config, releasesUrl);
-      if (downloads) view.downloads = downloads;
+      if (downloads) {
+        view.downloads = downloads;
+        view.downloadKinds = desktopDownloadKinds(downloads);
+      }
     }
   }
 

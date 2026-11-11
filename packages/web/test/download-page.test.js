@@ -38,6 +38,17 @@ const sectionOf = (html, id) => {
   return html.slice(start, end > -1 ? end : html.length);
 };
 
+// The Linux card, up to the next card or row that carries data-download-card
+const linuxCardOf = (html) => {
+  const start = html.indexOf('data-download-card data-platform="linux"');
+  expect(start > -1, 'the Linux card is on the page').toBeTruthy();
+  const end = html.indexOf('data-download-card', start + 1);
+  return html.slice(start, end > -1 ? end : html.length);
+};
+
+// Every anchor that points at the Snap Store
+const snapStoreLinks = (html) => html.match(/<a\b[^>]*href="https:\/\/snapcraft\.io\/[^"]*"[^>]*>/g) || [];
+
 module.exports = defineCases({
   type: 'group',
   description: 'download-page',
@@ -201,6 +212,26 @@ module.exports = defineCases({
         // deb + AppImage are the only linux artifacts there have ever been.
         ctx.expect(!download.includes('sudo rpm -i'), 'no rpm instruction — no rpm artifact exists').toBeTruthy();
         ctx.expect(!download.includes('Fedora/RHEL'), 'its label went with it').toBeTruthy();
+      },
+    },
+
+    {
+      name: 'a brand that ships the snap gets a plain Snap Store link on the Linux card, and dropping the snap drops it',
+      run: async (ctx) => {
+        const shipped = (await buildWith(withDownloads)).get('/download');
+        const links = snapStoreLinks(linuxCardOf(shipped));
+
+        ctx.expect(links.length, 'one Snap Store link on the Linux card').toBe(1);
+        ctx.expect(links[0]).toContain('href="https://snapcraft.io/mini"');
+        // The page script opens the install modal for a card's [data-download] links, except a store kind's
+        const opensModal = /\sdata-download(?=[\s=>])/.test(links[0]) && !links[0].includes('data-download-kind="store"');
+        ctx.expect(opensModal, `a plain link to the store: ${links[0]}`).toBe(false);
+
+        const dropped = (await buildWith({
+          ...withDownloads,
+          targets: { ...withDownloads.targets, desktop: { type: 'desktop', releases: {}, platforms: { linux: { formats: { snap: false } } } } },
+        })).get('/download');
+        ctx.expect(snapStoreLinks(dropped)).toEqual([]);
       },
     },
 

@@ -208,7 +208,9 @@
             // build and publishes to the Snap Store on release. Needs
             // SNAPCRAFT_STORE_CREDENTIALS in your `.env` (the manage walk asks
             // for it; `snapcraft export-login -` mints it, then `omega deploy`
-            // flows it to GH Actions). `snap: false` drops it.
+            // flows it to GH Actions), and a Linux package or release refuses
+            // without it (a plain build does not).
+            // `snap: false` drops it.
             snap: {
               confinement: 'strict',
               grade:       'stable',
@@ -283,7 +285,7 @@
       // Deep links: scheme is automatically `<brand.id>://...`. Built-in routes:
       //   auth/token  → @omega.js/client auth token handoff
       //   app/show    → omega.windows.show(query.window || 'main')
-      //   app/quit    → app.quit()
+      //   app/quit    → omega.quit()
       // Add custom routes at runtime: omega.deepLink.on('my-route', (ctx) => {...}) in main.
       //
       // Single-instance lock: a second launch hands its argv (and any deep link) to the

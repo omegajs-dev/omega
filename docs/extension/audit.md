@@ -45,7 +45,7 @@ Mirrored across all four OMEGA frameworks — same ID means the same check every
 | EXT-02 | HIGH | B | Component structure — views are HTML FRAGMENTS (not full documents); three parts at conventional paths (view + styles + script) ([components.md](components.md)) |
 | EXT-03 | HIGH | B | Service-worker-safe background — no DOM/`window`/`document` APIs in `background`; DOM-needing work goes to an offscreen document ([components.md](components.md), [offscreen.md](offscreen.md), [common-mistakes.md](common-mistakes.md)) |
 | EXT-04 | MED | C | Permissions justified — every manifest permission maps to a feature actually used (`offscreen` ↔ offscreen component, `tabs` ↔ auth sync, …); remove unused ones ([components.md](components.md), [auth.md](auth.md), [offscreen.md](offscreen.md)) |
-| EXT-05 | MED | C | Store listing — `config/description.md` follows the listing format (Bonus/Privacy sections intact); stale translation caches cleared after description changes ([publishing.md](publishing.md), [translations.md](translations.md)) |
+| EXT-05 | MED | C | Store listing — `config/description.md` follows the listing format (Bonus/Privacy sections intact); after a description change, a local `omega build` retranslated it and the updated `translations/<lang>/description.json` is committed ([publishing.md](publishing.md), [translations.md](translations.md)) |
 | EXT-06 | MED | B | Accessibility basics in popup/options/sidepanel/pages views — meaningful `alt` text, labeled form fields, real `<button>`/`<a>` elements (no clickable `div`s) |
 
 ## Framework-repo checks (F-xx)

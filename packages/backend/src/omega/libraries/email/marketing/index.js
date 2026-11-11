@@ -9,7 +9,7 @@
  *   // Add a new contact (newsletter subscribe, lightweight)
  *   await email.add({ email, firstName, lastName, source });
  *
- *   // Sync a user's full data to SendGrid/Beehiiv (all custom fields)
+ *   // Sync a user's full data to every role's provider (all custom fields)
  *   await email.sync(userDoc);
  *
  *   // Remove a contact from all providers
@@ -35,9 +35,13 @@ const _ = require('lodash');
 const { tagLinks } = require('../utm.js');
 const { validate } = require('../validation.js');
 const prepare = require('../prepare.js');
-const sendgridProvider = require('../providers/sendgrid.js');
-const beehiivProvider = require('../providers/beehiiv.js');
+const { errorWithCode } = require('../constants.js');
+const { providerModule } = require('../providers/index.js');
+const { EMAIL_PROVIDERS, emailProviderForRole } = require('@omega.js/config/email-providers');
 const env = require('../../env.js');
+
+// The role words (campaigns, newsletter), one per provider row
+const ROLES = Object.values(EMAIL_PROVIDERS).map((row) => row.role);
 
 function Marketing(ctx) {
   const self = this;
@@ -46,14 +50,33 @@ function Marketing(ctx) {
   self.omega = ctx.omega;
   self.admin = self.omega.firebase.admin;
 
-  const marketing = self.omega.config?.marketing || {};
-
-  self.providers = {
-    campaigns: marketing.campaigns?.enabled !== false && env.has('SENDGRID_API_KEY'),
-    newsletter: marketing.newsletter?.enabled !== false && env.has('BEEHIIV_API_KEY'),
-  };
+  self.providers = Object.fromEntries(ROLES.map((role) => [role, roleOn(self.omega.config, role)]));
 
   return self;
+}
+
+/**
+ * A role is on unless its config switch is off, and only when the env key on
+ * its provider's row is set.
+ *
+ * @param {object} config - omega.config
+ * @param {string} role - The role word (`campaigns`, `newsletter`)
+ * @returns {boolean}
+ */
+function roleOn(config, role) {
+  return config?.marketing?.[role]?.enabled !== false && env.has(emailProviderForRole(role).envKey);
+}
+
+/**
+ * The provider module serving a role, from the registry (providers/index.js)
+ * by its row id. Callers read its functions at call time, so the module stays
+ * one object.
+ *
+ * @param {string} role - The role word (`campaigns`, `newsletter`)
+ * @returns {object} The provider module
+ */
+function roleProvider(role) {
+  return providerModule(emailProviderForRole(role).id);
 }
 
 // ============================================================
@@ -104,6 +127,8 @@ async function findUserByEmail(admin, ctx, email) {
 Marketing.isMarketingRevoked = isMarketingRevoked;
 Marketing.findUserByEmail = findUserByEmail;
 Marketing.providerFailure = providerFailure;
+Marketing.roleOn = roleOn;
+Marketing.roleProvider = roleProvider;
 
 Marketing.prototype.add = async function (options) {
   const self = this;
@@ -148,10 +173,10 @@ Marketing.prototype.add = async function (options) {
 
   if (self.providers.campaigns) {
     promises.push(
-      sendgridProvider.addContact({ email, firstName, lastName, company, customFields })
+      roleProvider('campaigns').addContact({ email, firstName, lastName, company, customFields })
         .then((r) => { results.campaigns = r; })
         .catch((e) => {
-          ctx.error('Marketing.add(): SendGrid failed:', e);
+          ctx.error('Marketing.add(): campaigns failed:', e);
           results.campaigns = { success: false, error: e.message };
         })
     );
@@ -159,10 +184,10 @@ Marketing.prototype.add = async function (options) {
 
   if (self.providers.newsletter) {
     promises.push(
-      beehiivProvider.addContact({ email, firstName, lastName, company, source })
+      roleProvider('newsletter').addContact({ email, firstName, lastName, company, source })
         .then((r) => { results.newsletter = r; })
         .catch((e) => {
-          ctx.error('Marketing.add(): Beehiiv failed:', e);
+          ctx.error('Marketing.add(): newsletter failed:', e);
           results.newsletter = { success: false, error: e.message };
         })
     );
@@ -170,9 +195,9 @@ Marketing.prototype.add = async function (options) {
 
   await Promise.all(promises);
 
-  // Each provider answers with its own payload — a SendGrid contact record, a
-  // Beehiiv subscriber — and every one carries the address back. The verdict per
-  // provider is what the line is for (#710); the payloads are at debug.
+  // Each provider answers with its own payload (a contact record, a
+  // subscriber), and every one carries the address back. The verdict per
+  // provider is what the line is for; the payloads are at debug.
   ctx.log('Marketing.add() result:', summarizeResults(results));
   ctx.debug('Marketing.add() result:', results);
 
@@ -239,11 +264,11 @@ Marketing.prototype.sync = async function (userDocOrUid) {
 
   if (self.providers.campaigns) {
     promises.push(
-      sendgridProvider.buildFields(userDoc).then((customFields) =>
-        sendgridProvider.addContact({ email, firstName, lastName, customFields })
+      roleProvider('campaigns').buildFields(userDoc).then((customFields) =>
+        roleProvider('campaigns').addContact({ email, firstName, lastName, customFields })
       ).then((r) => { results.campaigns = r; })
         .catch((e) => {
-          ctx.error('Marketing.sync(): SendGrid failed:', e);
+          ctx.error('Marketing.sync(): campaigns failed:', e);
           results.campaigns = { success: false, error: e.message };
         })
     );
@@ -251,12 +276,12 @@ Marketing.prototype.sync = async function (userDocOrUid) {
 
   if (self.providers.newsletter) {
     promises.push(
-      beehiivProvider.addContact({
+      roleProvider('newsletter').addContact({
         email, firstName, lastName, source,
-        customFields: beehiivProvider.buildFields(userDoc),
+        customFields: roleProvider('newsletter').buildFields(userDoc),
       }).then((r) => { results.newsletter = r; })
         .catch((e) => {
-          ctx.error('Marketing.sync(): Beehiiv failed:', e);
+          ctx.error('Marketing.sync(): newsletter failed:', e);
           results.newsletter = { success: false, error: e.message };
         })
     );
@@ -301,10 +326,10 @@ Marketing.prototype.remove = async function (email) {
 
   if (self.providers.campaigns) {
     promises.push(
-      sendgridProvider.removeContact(email)
+      roleProvider('campaigns').removeContact(email)
         .then((r) => { results.campaigns = r; })
         .catch((e) => {
-          ctx.error('Marketing.remove(): SendGrid failed:', e);
+          ctx.error('Marketing.remove(): campaigns failed:', e);
           results.campaigns = { success: false, error: e.message };
         })
     );
@@ -312,10 +337,10 @@ Marketing.prototype.remove = async function (email) {
 
   if (self.providers.newsletter) {
     promises.push(
-      beehiivProvider.removeContact(email)
+      roleProvider('newsletter').removeContact(email)
         .then((r) => { results.newsletter = r; })
         .catch((e) => {
-          ctx.error('Marketing.remove(): Beehiiv failed:', e);
+          ctx.error('Marketing.remove(): newsletter failed:', e);
           results.newsletter = { success: false, error: e.message };
         })
     );
@@ -323,10 +348,9 @@ Marketing.prototype.remove = async function (email) {
 
   await Promise.all(promises);
 
-  // Each provider answers with its own payload — a SendGrid contact record, a
-  // Beehiiv subscriber — and every one of them carries the address back. The
-  // verdict per provider is what the line is for (#710); the payloads are at
-  // debug.
+  // Each provider answers with its own payload (a contact record, a
+  // subscriber), and every one of them carries the address back. The
+  // verdict per provider is what the line is for; the payloads are at debug.
   ctx.log('Marketing.remove() result:', summarizeResults(results));
   ctx.debug('Marketing.remove() result:', results);
 
@@ -364,31 +388,15 @@ function summarizeResults(results) {
 // ============================================================
 
 /**
- * Create and optionally schedule a marketing campaign across enabled providers.
+ * Create and optionally schedule a marketing campaign across the roles that are on:
+ * resolve template variables, render the content (markdown in data.content.message,
+ * or the internal `contentHtml`), resolve the segment keys on each role's provider
+ * and then the campaigns audience, and dispatch. A key or an audience that resolves
+ * to nothing fails the campaign with a coded 400 naming it, and nothing is sent.
  *
- * Steps:
- *   1. Resolve template variables ({brand.name}, {season.name}, etc.)
- *   2. Render content (markdown → HTML, UTM tagging)
- *   3. Resolve segments per provider
- *   4. Dispatch to provider-specific senders (SendGrid, Beehiiv)
- *
- * @param {object} settings
- * @param {string} settings.name - Campaign name
- * @param {string} settings.subject - Email subject line
- * @param {string} [settings.preheader] - Preview text
- * @param {string} [settings.template] - Template name ('card', 'plain', etc.)
- * @param {object} [settings.data] - Template data (content goes in data.content: { title, message, button, discountCode })
- * @param {string} [settings.contentHtml] - Pre-rendered HTML (newsletter generator only — skips markdown)
- * @param {string} [settings.sender] - Sender category
- * @param {Array<string>} [settings.segments] - Segment keys to target
- * @param {Array<string>} [settings.excludeSegments] - Segment keys to exclude
- * @param {Array<string>} [settings.lists] - SendGrid list IDs
- * @param {boolean} [settings.all] - Target all contacts
- * @param {string} [settings.sendAt] - ISO datetime, 'now', or omit for draft
- * @param {string|number} [settings.group] - ASM unsubscribe group
- * @param {Array<string>} [settings.categories] - Analytics categories
- * @param {boolean} [settings.test] - Test mode (targets test_admin only)
- * @param {Array<string>} [settings.providers] - Override which providers to use
+ * @param {object} settings - name, subject, preheader, template, data, sender,
+ *   segments/excludeSegments (keys), lists, all, sendAt ('now', a date, or none
+ *   for a draft), group, categories, test, and providers (the roles to send through)
  * @returns {{ campaigns?: object, newsletter?: object }}
  */
 Marketing.prototype.sendCampaign = async function (settings) {
@@ -396,7 +404,15 @@ Marketing.prototype.sendCampaign = async function (settings) {
   const omega = self.omega;
   const ctx = self.ctx;
 
-  const useProviders = settings.providers || Object.keys(self.providers).filter(p => self.providers[p]);
+  const roles = (settings.providers || ROLES).filter((role) => self.providers[role]);
+  const notRoles = (settings.providers || []).filter((word) => !ROLES.includes(word));
+
+  // A word that is no role would quietly narrow the send, so nothing is sent
+  if (notRoles.length) {
+    const fault = providerFailure(errorWithCode(`Campaign "${settings.name}": ${notRoles.join(', ')} is not a role (${ROLES.join(', ')})`, 400));
+    ctx.log('Marketing.sendCampaign() results:', fault.error);
+    return Object.fromEntries(notRoles.map((word) => [word, fault]));
+  }
 
   // --- 1. Resolve template variables ---
   const brand = omega.config?.brand;
@@ -432,69 +448,42 @@ Marketing.prototype.sendCampaign = async function (settings) {
       },
     );
 
-  // --- 3. Resolve segments per provider ---
-  const resolvedSegments = {};
-
-  if (useProviders.includes('campaigns') && self.providers.campaigns) {
-    const segmentIdMap = await sendgridProvider.resolveSegmentIds();
-    resolvedSegments.campaigns = {
-      segments: (resolved.segments || []).map(key => segmentIdMap[key] || key).filter(Boolean),
-      excludeSegments: (resolved.excludeSegments || []).map(key => segmentIdMap[key] || key).filter(Boolean),
-    };
-  }
-
-  if (useProviders.includes('newsletter') && self.providers.newsletter) {
-    const segmentIdMap = await beehiivProvider.resolveSegmentIds();
-    resolvedSegments.newsletter = {
-      segments: (resolved.segments || []).map(key => segmentIdMap[key] || key).filter(Boolean),
-      excludeSegments: (resolved.excludeSegments || []).map(key => segmentIdMap[key] || key).filter(Boolean),
-    };
-  }
-
   ctx.log('Marketing.sendCampaign():', {
     name: resolved.name,
-    providers: useProviders,
+    providers: roles,
     sendAt: settings.sendAt || 'draft',
   });
 
-  // --- 4. Dispatch to providers ---
+  // --- 3. Resolve each role's audience before anything is sent ---
+  const audiences = {};
   const results = {};
-  const promises = [];
 
-  if (useProviders.includes('campaigns') && self.providers.campaigns) {
-    const sgSettings = {
-      ...resolved,
-      segments: resolvedSegments.campaigns?.segments || [],
-      excludeSegments: resolvedSegments.campaigns?.excludeSegments || [],
-    };
-
-    promises.push(
-      _sendCampaignSendGrid(omega, sgSettings, contentHtml)
-        .then((r) => { results.campaigns = r; })
-        .catch((e) => { results.campaigns = providerFailure(e); })
-    );
+  for (const role of roles) {
+    await ROLE_LEGS[role].audience(resolved, brand?.id)
+      .then((audience) => { audiences[role] = audience; })
+      .catch((e) => { results[role] = providerFailure(e); });
   }
 
-  if (useProviders.includes('newsletter') && self.providers.newsletter) {
-    promises.push(
-      beehiivProvider.createPost({
-        title: resolved.name,
-        subject: resolved.subject,
-        preheader: resolved.preheader,
-        content: contentHtml,
-        sendAt: settings.sendAt,
-        segments: resolvedSegments.newsletter?.segments || [],
-        excludeSegments: resolvedSegments.newsletter?.excludeSegments || [],
-      })
-        .then((r) => { results.newsletter = r; })
-        .catch((e) => { results.newsletter = providerFailure(e); })
-    );
+  // --- 4. Dispatch: a coded 400 (a bad key, an audience of nobody) holds every
+  // role, while a code-less failure fails its own role and the others send ---
+  const held = Object.values(results).some((result) => result.code === 400);
+
+  try {
+    if (!held) {
+      await Promise.all(Object.keys(audiences).map((role) => ROLE_LEGS[role].send(ctx, resolved, contentHtml, audiences[role])
+        .then((r) => { results[role] = r; })
+        .catch((e) => { results[role] = providerFailure(e); })));
+    }
+  } finally {
+    for (const audience of Object.values(audiences)) {
+      if (audience.cleanup) {
+        await audience.cleanup();
+      }
+    }
   }
 
-  await Promise.all(promises);
-
-  // The SendGrid result carries the Single Send id and, on a failure, whatever
-  // the provider said — verdict at log, the payloads at debug (#710).
+  // A provider's result carries its send id and, on a failure, whatever the
+  // provider said: verdict at log, the payloads at debug.
   ctx.log('Marketing.sendCampaign() results:', summarizeResults(results));
   ctx.debug('Marketing.sendCampaign() results:', results);
 
@@ -503,19 +492,19 @@ Marketing.prototype.sendCampaign = async function (settings) {
 
 Marketing.prototype.cancelCampaign = async function (campaignId) {
   this.ctx.log('Marketing.cancelCampaign():', campaignId);
-  return sendgridProvider.cancelSingleSend(campaignId);
+  return roleProvider('campaigns').cancelSingleSend(campaignId);
 };
 
 Marketing.prototype.getCampaign = async function (campaignId) {
-  return sendgridProvider.getSingleSend(campaignId);
+  return roleProvider('campaigns').getSingleSend(campaignId);
 };
 
 Marketing.prototype.listCampaigns = async function (options) {
-  return sendgridProvider.listSingleSends(options);
+  return roleProvider('campaigns').listSingleSends(options);
 };
 
 // ============================================================
-// SendGrid campaign delivery (private)
+// Campaign delivery per role (private)
 // ============================================================
 
 /**
@@ -539,28 +528,29 @@ function providerFailure(error) {
 }
 
 /**
- * SendGrid-specific: prepare → render → audience → create Single Send → schedule.
+ * The campaigns role: prepare → render → create Single Send → schedule.
  *
- * @param {object} omega
+ * @param {object} ctx - The Marketing instance's ctx (its `omega` resolves the brand)
  * @param {object} settings - Resolved campaign settings
  * @param {string} contentHtml - Pre-rendered HTML body
+ * @param {object} audience - campaignsAudience()'s `{ sendTo, excludeSegments }`
  * @returns {{ success: boolean, id?: string, scheduled?: boolean, error?: string }}
  */
-async function _sendCampaignSendGrid(omega, settings, contentHtml) {
+async function sendCampaignsEmail(ctx, settings, contentHtml, audience) {
   // --- Prepare ---
-  const { brand, brandDomain, company } = prepare.resolveBrand(omega);
+  const { brand, brandDomain, company } = prepare.resolveBrand(ctx.omega);
   const { from, groupId } = prepare.resolveSender(
     { sender: settings.sender || 'marketing', from: settings.from, group: settings.group },
     brand,
     brandDomain,
-    omega,
+    ctx.omega,
   );
   const categories = prepare.buildCategories('marketing', brand.id, settings.categories);
   const signoff = prepare.resolveSignoff(settings.signoff);
 
   // --- Render ---
   // Marketing Single Sends can't use per-recipient HMAC links (one HTML for all recipients).
-  // Use SendGrid's ASM tag instead — replaced with a real per-recipient URL at delivery time.
+  // Use the provider's ASM tag instead: replaced with a real per-recipient URL at delivery time.
   const unsubscribeUrl = '<%asm_group_unsubscribe_raw_url%>';
 
   const templateData = prepare.buildTemplateData({
@@ -582,100 +572,162 @@ async function _sendCampaignSendGrid(omega, settings, contentHtml) {
     utm: { campaign: settings.name || settings.template || 'campaign', type: 'marketing' },
   });
 
-  // --- Audience ---
-  const { sendTo, excludeSegments, cleanup } = await _resolveAudience(settings, brand);
+  // --- Create Single Send ---
+  const provider = roleProvider('campaigns');
+  const createResult = await provider.createSingleSend({
+    name: settings.name,
+    subject: settings.subject,
+    from,
+    sendTo: audience.sendTo,
+    excludeSegments: audience.excludeSegments,
+    asmGroupId: groupId,
+    categories,
+    htmlContent: rendered.html,
+  });
 
-  try {
-    // --- Create Single Send ---
-    const createResult = await sendgridProvider.createSingleSend({
-      name: settings.name,
-      subject: settings.subject,
-      from,
-      sendTo,
-      excludeSegments,
-      asmGroupId: groupId,
-      categories,
-      htmlContent: rendered.html,
-    });
-
-    if (!createResult.success) {
-      return createResult;
-    }
-
-    // --- Schedule ---
-    if (!settings.sendAt) {
-      return { success: true, id: createResult.id, scheduled: false };
-    }
-
-    const sendAt = settings.sendAt === 'now' ? 'now' : new Date(settings.sendAt).toISOString();
-    const scheduleResult = await sendgridProvider.scheduleSingleSend(createResult.id, sendAt);
-
-    if (!scheduleResult.success) {
-      return { success: false, id: createResult.id, error: scheduleResult.error };
-    }
-
-    return { success: true, id: createResult.id, scheduled: true };
-  } finally {
-    await cleanup();
+  if (!createResult.success) {
+    return createResult;
   }
+
+  // --- Schedule ---
+  if (!settings.sendAt) {
+    return { success: true, id: createResult.id, scheduled: false };
+  }
+
+  const sendAt = settings.sendAt === 'now' ? 'now' : new Date(settings.sendAt).toISOString();
+  const scheduleResult = await provider.scheduleSingleSend(createResult.id, sendAt);
+
+  if (!scheduleResult.success) {
+    return { success: false, id: createResult.id, error: scheduleResult.error };
+  }
+
+  return { success: true, id: createResult.id, scheduled: true };
 }
 
 /**
- * Resolve SendGrid audience targeting (lists, segments, brand-scoped dynamic segments).
+ * The newsletter role: one post, sent or scheduled, and only ever a draft on a
+ * testing run. Its title is the subject (else the name), and the settings'
+ * `contentTags` ride along as the post's tags.
  *
+ * @param {object} ctx - The Marketing instance's ctx (`isTesting()`)
  * @param {object} settings - Resolved campaign settings
- * @param {object} brand - Resolved brand
- * @returns {{ sendTo: object, excludeSegments: string[], cleanup: Function }}
+ * @param {string} contentHtml - Pre-rendered HTML body
+ * @param {object} audience - newsletterAudience()'s `{ segments, excludeSegments }` ids
+ * @returns {{ success: boolean, id?: string, scheduled?: boolean, error?: string }}
  */
-async function _resolveAudience(settings, brand) {
-  const sendTo = {};
-  const cleanupFns = [];
-  const isTest = settings.test;
+async function sendNewsletterPost(ctx, settings, contentHtml, audience) {
+  return roleProvider('newsletter').createPost({
+    title: settings.subject || settings.name,
+    subject: settings.subject,
+    preheader: settings.preheader,
+    content: contentHtml,
+    contentTags: settings.contentTags,
+    status: ctx.isTesting() ? 'draft' : 'confirmed',
+    sendAt: settings.sendAt,
+    segments: audience.segments,
+    excludeSegments: audience.excludeSegments,
+  });
+}
 
-  if (settings.all) {
-    sendTo.all = true;
-  } else if (settings.segments?.length) {
-    const tempInclude = await sendgridProvider.createBrandScopedSegment(
-      settings.segments,
-      brand.id,
-      { skipBrandFilter: isTest },
-    );
+/**
+ * A role's segment keys as its provider's ids. A key the provider does not know
+ * throws a coded 400 naming it; a campaign with no keys never lists segments.
+ *
+ * @param {string} role - The role word
+ * @param {object} settings - Resolved campaign settings (segment keys)
+ * @returns {Promise<{ segments: string[], excludeSegments: string[] }>}
+ */
+async function segmentIds(role, settings) {
+  const keys = { segments: settings.segments || [], excludeSegments: settings.excludeSegments || [] };
+  const all = [...keys.segments, ...keys.excludeSegments];
 
-    if (tempInclude) {
-      sendTo.segment_ids = [tempInclude.segmentId];
-      cleanupFns.push(tempInclude.cleanup);
-    }
-  } else if (settings.lists?.length) {
-    sendTo.list_ids = settings.lists;
-  } else {
-    const brandListId = sendgridProvider.getListId();
-    if (brandListId) {
-      sendTo.list_ids = [brandListId];
-    }
+  if (!all.length) {
+    return keys;
   }
 
-  let excludeSegments = [];
-  if (settings.excludeSegments?.length && !isTest) {
-    const tempExclude = await sendgridProvider.createBrandScopedSegment(
-      settings.excludeSegments,
-      brand.id,
-      { skipBrandFilter: true },
-    );
+  const idMap = await roleProvider(role).resolveSegmentIds();
+  const unknown = all.filter((key) => !idMap[key]);
 
-    if (tempExclude) {
-      excludeSegments = [tempExclude.segmentId];
-      cleanupFns.push(tempExclude.cleanup);
-    }
+  if (unknown.length) {
+    throw errorWithCode(`Campaign "${settings.name}": segment ${unknown.join(', ')} resolves to nothing on the ${role} provider`, 400);
   }
 
+  return { segments: keys.segments.map((key) => idMap[key]), excludeSegments: keys.excludeSegments.map((key) => idMap[key]) };
+}
+
+/**
+ * The newsletter role's audience: its segment ids, nothing to clean up.
+ *
+ * @param {object} settings - Resolved campaign settings (segment keys)
+ * @returns {Promise<{ segments: string[], excludeSegments: string[] }>}
+ */
+function newsletterAudience(settings) {
+  return segmentIds('newsletter', settings);
+}
+
+/**
+ * The campaigns role's audience: its segments scoped to the brand (temp
+ * segments, removed by `cleanup`), else the lists, else the brand list. An
+ * audience that resolves to nobody throws a coded 400 naming its keys.
+ *
+ * @param {object} settings - Resolved campaign settings (segment keys)
+ * @param {string} brandId
+ * @returns {Promise<{ sendTo: object, excludeSegments: string[], cleanup: Function }>}
+ */
+async function campaignsAudience(settings, brandId) {
+  const provider = roleProvider('campaigns');
+  const keys = { segments: settings.segments || [], excludeSegments: settings.excludeSegments || [] };
+  const ids = await segmentIds('campaigns', settings);
+  const cleanups = [];
   const cleanup = async () => {
-    for (const fn of cleanupFns) {
+    for (const fn of cleanups) {
       await fn();
     }
   };
+  // One temp segment ANDing the given ones with the brand; none means nobody
+  const scoped = async (providerIds, segmentKeys, skipBrandFilter) => {
+    const temp = await provider.createBrandScopedSegment(providerIds, brandId, { skipBrandFilter });
 
-  return { sendTo, excludeSegments, cleanup };
+    if (!temp) {
+      throw errorWithCode(`Campaign "${settings.name}": segment ${segmentKeys.join(', ')} resolves to no audience`, 400);
+    }
+
+    cleanups.push(temp.cleanup);
+    return temp.segmentId;
+  };
+
+  try {
+    const sendTo = {};
+
+    if (settings.all) {
+      sendTo.all = true;
+    } else if (ids.segments.length) {
+      sendTo.segment_ids = [await scoped(ids.segments, keys.segments, settings.test)];
+    } else if (settings.lists?.length) {
+      sendTo.list_ids = settings.lists;
+    } else if (provider.getListId()) {
+      sendTo.list_ids = [provider.getListId()];
+    } else {
+      throw errorWithCode(`Campaign "${settings.name}" resolves to no audience: no segments, no lists, and no brand list`, 400);
+    }
+
+    const excludeSegments = ids.excludeSegments.length && !settings.test
+      ? [await scoped(ids.excludeSegments, keys.excludeSegments, true)]
+      : [];
+
+    return { sendTo, excludeSegments, cleanup };
+  } catch (e) {
+    await cleanup();
+    throw e;
+  }
 }
+
+// Each role's legs: `audience(settings, brandId)` builds what its sender reads
+// before anything is sent, then `send(ctx, settings, contentHtml, audience)`
+const ROLE_LEGS = {
+  campaigns: { audience: campaignsAudience, send: sendCampaignsEmail },
+  newsletter: { audience: newsletterAudience, send: sendNewsletterPost },
+};
 
 // ============================================================
 // Campaign template variable resolution

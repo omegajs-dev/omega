@@ -11,6 +11,7 @@ const {
   WINDOWS_SIGNING_STRATEGIES, DEFAULT_WINDOWS_SIGNING_STRATEGY, WINDOWS_CLOUD_PROVIDERS, windowsSigningStrategy, windowsCloudProviderKeys, validateConfig,
   desktopProductName, sanitizeProductName, desktopArtifactName, desktopArtifactNames,
 } = require('../src/index.js');
+const { snapName, formatKeysSet } = require('../src/platforms.js');
 const { ENV_SCHEMA } = require('../src/env-schema.js');
 const { SHARED_SCHEMA, TARGET_SCHEMAS } = require('../src/schema.js');
 
@@ -288,6 +289,56 @@ module.exports = defineCases({
         ctx.expect(unknownProvider.length).toBe(1);
         ctx.expect(unknownProvider[0]).toMatch(/platforms\.windows\.signing\.cloud\.provider "imaginary"/);
         ctx.expect(unknownProvider[0].includes(WINDOWS_CLOUD_PROVIDERS.join(', '))).toBeTruthy();
+      },
+    },
+
+    // ─── the snap ────────────────────────────────────────────────────────────────
+
+    {
+      name: 'the snap is named brand.id, whatever the product is called',
+      run: (ctx) => {
+        ctx.expect(snapName({ brand: { id: 'acme-app', name: 'Acme Studio' }, app: { productName: 'Acme Studio Pro' } })).toBe('acme-app');
+      },
+    },
+
+    {
+      name: 'a brand.id holding `.` or `+` fails validation while the snap ships, naming both, and passes with the snap off',
+      run: (ctx) => {
+        // The brand's omega.json5: a desktop target, which ships the snap by default
+        const brandConfig = (id, desktop = {}) => ({ brand: { id, name: 'Acme' }, targets: { desktop: { type: 'desktop', ...desktop } } });
+
+        for (const id of ['acme.app', 'acme+app']) {
+          const shipping = validateConfig(brandConfig(id)).errors;
+          ctx.expect(shipping.length, id).toBe(1);
+          ctx.expect(shipping[0], id).toContain('brand.id');
+          ctx.expect(shipping[0], id).toContain('platforms.linux.formats.snap');
+
+          const off = brandConfig(id, { platforms: { linux: { formats: { snap: false } } } });
+          ctx.expect(validateConfig(off).errors, `${id} with the snap off`).toEqual([]);
+        }
+      },
+    },
+
+    {
+      name: 'a store other than the snap is checked against its own keys, never the snap login',
+      run: (ctx) => {
+        const snapLogin = { SNAPCRAFT_STORE_CREDENTIALS: 'snap-blob' };
+        const edgeKeys = { EDGE_CLIENT_ID: 'edge-client', EDGE_API_KEY: 'edge-key' };
+
+        ctx.expect(formatKeysSet('extension', 'edge', 'store', snapLogin), 'the snap login sets no other store').toBe(false);
+        ctx.expect(formatKeysSet('extension', 'edge', 'store', edgeKeys), 'its own keys set it, with no snap login').toBe(true);
+        ctx.expect(formatKeysSet('desktop', 'linux', 'snap', edgeKeys), 'another store\'s keys never set the snap').toBe(false);
+      },
+    },
+
+    {
+      name: 'the snap login is set only by a non-empty SNAPCRAFT_STORE_CREDENTIALS',
+      run: (ctx) => {
+        const loggedIn = (env) => formatKeysSet('desktop', 'linux', 'snap', env);
+
+        ctx.expect(loggedIn({})).toBe(false);
+        ctx.expect(loggedIn({ SNAPCRAFT_STORE_CREDENTIALS: '' })).toBe(false);
+        ctx.expect(loggedIn({ SNAPCRAFT_STORE_CREDENTIALS: 'snap-blob' })).toBe(true);
       },
     },
 

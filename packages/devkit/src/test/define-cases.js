@@ -77,16 +77,17 @@ function loadedToRun(file) {
 function frameworkOf(file) {
   const fs = require('fs');
   const { nearestManifest } = require('../scaffold-guard.js');
-  const { FRAMEWORKS, OMEGA_SCOPE, frameworksOf } = require('../omega-bin.js');
-  const { FRAMEWORK_IDS } = require('./scope.js');
+  const { OMEGA_SCOPE, frameworksOf } = require('../omega-bin.js');
+  const { frameworkIds } = require('./scope.js');
 
   const found = nearestManifest(path.dirname(file));
   if (!found) return 'node';
   const pkg = JSON.parse(fs.readFileSync(found.manifestPath, 'utf8'));
-  if (FRAMEWORKS.includes(pkg.name)) return FRAMEWORK_IDS[pkg.name][0];
+  const [ownId] = frameworkIds(pkg.name);
+  if (ownId) return ownId;
   if (typeof pkg.name === 'string' && pkg.name.startsWith(OMEGA_SCOPE)) return 'node';
   const dependedOn = frameworksOf(pkg)[0];
-  return dependedOn ? FRAMEWORK_IDS[dependedOn][0] : 'node';
+  return dependedOn ? frameworkIds(dependedOn)[0] : 'node';
 }
 
 /**

@@ -26,13 +26,9 @@ const cheerio = require('cheerio');
 const {
   resolveProvider,
   resolveTranslationSettings,
-  translateStrings,
-  languageName,
+  translateCached,
   ogLocale,
   isRTL,
-  hashKey,
-  loadCache,
-  saveCache,
   LANGUAGE_NAMES,
 } = require('@omega.js/devkit/translate');
 const { collectTextNodes } = require('./collect-text-nodes.js');
@@ -529,64 +525,49 @@ async function translateSite(options) {
       done++;
       const logTag = `[${done}/${total}] [${lang}] /${route}`;
 
-      // Cache lookup per string
-      const cache = loadCache(cacheRoot, lang, namespace);
-      const translated = new Array(strings.length);
-      const missIndices = [];
-
-      strings.forEach((text, i) => {
-        const hit = cache[hashKey(text)];
-        if (hit !== undefined) {
-          translated[i] = hit;
-          stats.cachedStrings++;
-        } else {
-          missIndices.push(i);
-        }
-      });
-
-      // Cold strings under cachedOnly: no translated copy for this pair, since
-      // a partially translated page is worse than an untranslated one
-      if (options.cachedOnly && missIndices.length) {
-        stats.skippedCold.push(`${lang} /${route}`);
-        logger.log(`⊘ ${logTag}: ${missIndices.length} cold string(s), shipped untranslated`);
+      // Keyed by position, so the answer lines up with the collector's walk
+      let outcome;
+      try {
+        outcome = await translateCached({
+          strings: { ...strings },
+          language: lang,
+          namespace,
+          settings,
+          cachedOnly: options.cachedOnly,
+          rootDir: cacheRoot,
+          send: provider.send,
+          brand,
+        });
+      } catch (e) {
+        // Ship the pair untranslated, exactly like a cold cache under
+        // cachedOnly: a half-translated copy would ship silently behind full
+        // language chrome, and no copy at all is a dead link
+        stats.failures.push(`${lang} /${route}: ${e.message}`);
+        logger.warn(`✗ ${logTag}: ${e.message}; ${lang} copy shipped untranslated`);
         writeUntranslated(lang);
         continue;
       }
 
-      // Translate the misses
-      if (missIndices.length) {
-        try {
-          const { result, usage } = await translateStrings({
-            strings: missIndices.map((i) => strings[i]),
-            language: lang,
-            languageName: languageName(lang),
-            brand,
-            send: provider.send,
-          });
+      const { translated, cold, fresh, usage } = outcome;
+      stats.cachedStrings += strings.length - cold.length - fresh.length;
 
-          missIndices.forEach((origIndex, j) => {
-            translated[origIndex] = result[j];
-            cache[hashKey(strings[origIndex])] = result[j];
-          });
-
-          stats.newStrings += missIndices.length;
-          stats.usage.input += usage.input;
-          stats.usage.output += usage.output;
-          logger.log(`✓ ${logTag} — ${missIndices.length} new + ${strings.length - missIndices.length} cached`);
-        } catch (e) {
-          // Ship the pair untranslated, exactly like a cold cache under
-          // cachedOnly: a half-translated copy would ship silently behind full
-          // language chrome, and no copy at all is a dead link
-          stats.failures.push(`${lang} /${route}: ${e.message}`);
-          logger.warn(`✗ ${logTag}: ${e.message}; ${lang} copy shipped untranslated`);
-          writeUntranslated(lang);
-          continue;
-        }
-      } else {
-        logger.log(`✓ ${logTag} — all ${strings.length} strings cached`);
+      // Cold strings under cachedOnly: no translated copy for this pair, since
+      // a partially translated page is worse than an untranslated one
+      if (cold.length) {
+        stats.skippedCold.push(`${lang} /${route}`);
+        logger.log(`⊘ ${logTag}: ${cold.length} cold string(s), shipped untranslated`);
+        writeUntranslated(lang);
+        continue;
       }
 
-      saveCache(cacheRoot, lang, namespace, cache, strings);
+      if (fresh.length) {
+        stats.newStrings += fresh.length;
+        stats.usage.input += usage.input;
+        stats.usage.output += usage.output;
+        logger.log(`✓ ${logTag}: ${fresh.length} new + ${strings.length - fresh.length} cached`);
+      } else {
+        logger.log(`✓ ${logTag}: all ${strings.length} strings cached`);
+      }
 
       copies.push({
         targetRel: copyTargetRel(relPath, lang),
@@ -665,4 +646,19 @@ async function translateSite(options) {
   return stats;
 }
 
-module.exports = { translateSite, routeOf, collectTextNodes, SYSTEM_EXCLUDED_FOLDERS };
+/**
+ * The one cold warning a cache-only pass prints, for `omega build` and
+ * `omega translate` alike: the page-language pairs shipped untranslated.
+ * @param {object} stats - translateSite's answer
+ * @param {object} logger - devkit logger
+ */
+function warnSkippedCold(stats, logger) {
+  if (!stats.skippedCold.length) return;
+
+  const preview = stats.skippedCold.slice(0, 10).join(', ');
+  const more = stats.skippedCold.length > 10 ? ` (+${stats.skippedCold.length - 10} more)` : '';
+  logger.warn(`translation: ${stats.skippedCold.length} page-language pair(s) shipped untranslated (cold cache): ${preview}${more}`);
+  logger.warn('translation: run `omega translate` on your own machine (or a local build without --cached-only) and commit translations/ to fill them');
+}
+
+module.exports = { translateSite, warnSkippedCold, routeOf, collectTextNodes, SYSTEM_EXCLUDED_FOLDERS };

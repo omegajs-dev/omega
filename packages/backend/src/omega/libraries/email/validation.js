@@ -22,11 +22,8 @@
  */
 const path = require('path');
 const dns = require('dns');
-const { promisify } = require('util');
 const neverbounceProvider = require('./validation-provider-neverbounce');
 const zerobounceProvider = require('./validation-provider-zerobounce');
-
-const resolveMx = promisify(dns.resolveMx);
 
 // All data lives in ./data/ — domains and local-part blocklists are co-located JSON files.
 const DATA_DIR = path.join(__dirname, 'data');
@@ -151,7 +148,7 @@ async function validate(email, options = {}) {
   // 6. DNS — guaranteed-fail checks (no MX, null MX, loopback MX, domain not found)
   if (checks.has('dns') && domain) {
     try {
-      const records = await resolveMx(domain);
+      const records = await dns.promises.resolveMx(domain);
 
       if (!records || records.length === 0) {
         result.valid = false;
@@ -182,7 +179,7 @@ async function validate(email, options = {}) {
 
       result.checks.dns = { valid: true, mxCount: records.length };
     } catch (e) {
-      if (e.code === 'ENOTFOUND' || e.code === 'ENODATA' || e.code === 'ESERVFAIL') {
+      if (e.code === 'ENOTFOUND' || e.code === 'ENODATA') {
         result.valid = false;
         result.checks.dns = { valid: false, domain, reason: `DNS lookup failed: ${e.code}` };
         return result;

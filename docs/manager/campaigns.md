@@ -19,7 +19,7 @@ share the account.
 | `sender-identity` | The verified sender Single Sends require: `offers@{contact domain}` with the brand's name. It auto-verifies because `domain-auth` ran first. |
 | `list` | The brand's marketing list, resolved config id → exact-name lookup → create, with the id written back to `marketing.campaigns.providers.sendgrid.listId`. |
 | `unsubscribe-groups` | The account's ASM groups (below). |
-| `custom-fields` | `@omega.js/backend`'s custom fields, from its marketing SSOT, honoring each field's provider skip list (SendGrid has first/last name built in) — ONE derivation (`fieldsForProvider()`), the same one the backend's contact sync writes through, so a skipped field is neither provisioned here nor sent there ([#695](https://github.com/Omega-JS-Stack/omega/issues/695)). A type mismatch cannot be patched in SendGrid, so the field is deleted and recreated. |
+| `custom-fields` | `@omega.js/backend`'s custom fields, from its marketing SSOT, less the provider row's `nativeFields` (SendGrid has first/last name built in): ONE derivation (`fieldsForProvider()`), the same one the backend's contact sync writes through, so a native field is neither provisioned here nor sent there. A type mismatch cannot be patched in SendGrid, so the field is deleted and recreated. |
 | `segments` | `@omega.js/backend`'s segments, each one's `query_dsl` rebuilt from its conditions and compared against the live segment; stale ones are PATCHed, falling back to delete + recreate. Orphaned `__temp_` segments (leaked by a brand-scoped campaign send that crashed) are swept. |
 | `event-webhook` | The account-global Event Webhook pointed at the PARENT backend's forwarder, with the consent toggles (`bounce`, `dropped`, `spam_report`, `unsubscribe`, `group_unsubscribe`) enabled and drift patched by minimum diff. |
 
@@ -59,6 +59,9 @@ send time. A dry run names the groups it would create and writes nothing.
   sender domain to authenticate.
 - `marketing.campaigns.providers.sendgrid` — the vendor is a KEY under `providers`
   ([#425](https://github.com/Omega-JS-Stack/omega/issues/425)): no entry means none chosen.
+  The service runs only for the provider whose row serves the `campaigns` role
+  (`emailProviderForRole('campaigns')` in `@omega.js/config`), and its field and segment
+  views take that row's id.
 - `marketing.campaigns.providers.sendgrid.listId` — written back by `list`.
 - `marketing.campaigns.providers.sendgrid.groups.<key>` — written back by `unsubscribe-groups`.
 - `brand.address` — the physical mailing address CAN-SPAM requires on a sender. omega-manager

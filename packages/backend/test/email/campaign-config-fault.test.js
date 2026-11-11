@@ -29,6 +29,7 @@ const newsletter = require('../../dist/omega/libraries/email/generators/newslett
 const Marketing = require('../../dist/omega/libraries/email/marketing/index.js');
 const { getNextFutureOccurrence } = require('../../dist/omega/libraries/email/constants.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
+const { memoryAdmin } = require('./_campaign-harness.js');
 
 // The config-hole message the email library actually throws (prepare.js).
 const EMAIL_CONFIG_HOLE = 'Missing brand.contact.email in config/omega.json5';
@@ -46,56 +47,11 @@ function stamp(now) {
   return { timestamp: new Date(now * 1000).toISOString(), timestampUNIX: now };
 }
 
-/**
- * Minimal in-memory Firestore stand-in: the queries, the claim transaction, and
- * the merge writes the cron actually makes. Merge is top-level (the cron only
- * ever merges whole top-level fields).
- */
-function buildAdmin(seed) {
-  const store = new Map(Object.entries(seed));
-
-  const ref = (id) => ({
-    id,
-    set: async (data, options) => {
-      store.set(id, { ...(options?.merge ? store.get(id) || {} : {}), ...data });
-    },
-  });
-
-  const matches = (data, { field, op, value }) => {
-    const actual = data[field];
-    return op === '<=' ? actual <= value : actual === value;
-  };
-
-  const query = (filters) => ({
-    where: (field, op, value) => query([...filters, { field, op, value }]),
-    limit: () => query(filters),
-    get: async () => {
-      const ids = [...store.keys()].filter(id => filters.every(f => matches(store.get(id), f)));
-
-      return {
-        empty: ids.length === 0,
-        size: ids.length,
-        docs: ids.map(id => ({ id, data: () => ({ ...store.get(id) }), ref: ref(id) })),
-      };
-    },
-  });
-
-  const admin = {
-    firestore: () => ({
-      collection: () => query([]),
-      doc: (path) => ref(path.split('/').pop()),
-      runTransaction: async (fn) => fn({
-        get: async (r) => ({ exists: store.has(r.id), data: () => store.get(r.id) }),
-        set: (r, data, options) => { r.set(data, options); },
-      }),
-    }),
-  };
-
-  return { admin, store };
-}
+const COLLECTION = 'marketing-campaigns';
 
 /**
- * Run one cron pass over the seeded campaigns and return the resulting docs.
+ * Run one cron pass over the seeded campaigns (keyed by id, in the harness's
+ * in-memory Firestore) and return the resulting docs as a Map of id to doc.
  *
  * `sendCampaign` defaults to a throw so an accidental email dispatch on the
  * push cases is loud rather than silently passing; the email cases pass their
@@ -104,7 +60,7 @@ function buildAdmin(seed) {
  * always restored.
  */
 async function runCron(seed, { sendCampaign, generate } = {}) {
-  const { admin, store } = buildAdmin(seed);
+  const { admin, docs } = memoryAdmin(Object.fromEntries(Object.entries(seed).map(([id, doc]) => [`${COLLECTION}/${id}`, doc])));
   const logs = [];
   const errors = [];
 
@@ -137,6 +93,10 @@ async function runCron(seed, { sendCampaign, generate } = {}) {
   } finally {
     newsletter.generate = original;
   }
+
+  const store = new Map([...docs.entries()]
+    .filter(([docPath]) => docPath.startsWith(`${COLLECTION}/`))
+    .map(([docPath, doc]) => [docPath.slice(COLLECTION.length + 1), doc]));
 
   return { store, logs, errors };
 }

@@ -30,6 +30,7 @@
  * Protocol carrying the campaign params and gclid as event params.
  */
 const fetch = require('wonderful-fetch');
+const { ANALYTICS_PROVIDERS, analyticsProvider } = require('@omega.js/config/analytics-providers');
 const env = require('../env.js');
 
 // @omega.js/analytics is a private workspace package: in the monorepo the bare
@@ -41,14 +42,14 @@ let adapters;
 let entryFor;
 try {
   adapters = {
-    ga4: require('@omega.js/analytics/adapters/ga4'),
+    google: require('@omega.js/analytics/adapters/google'),
     meta: require('@omega.js/analytics/adapters/meta'),
     tiktok: require('@omega.js/analytics/adapters/tiktok'),
   };
   ({ entryFor } = require('@omega.js/analytics/catalog'));
 } catch (e) {
   adapters = {
-    ga4: require('../../../../dist/vendor/analytics/adapters/ga4.js'),
+    google: require('../../../../dist/vendor/analytics/adapters/google.js'),
     meta: require('../../../../dist/vendor/analytics/adapters/meta.js'),
     tiktok: require('../../../../dist/vendor/analytics/adapters/tiktok.js'),
   };
@@ -57,21 +58,6 @@ try {
 
 // Meta's Graph version the Conversions API is called on.
 const META_API_VERSION = 'v21.0';
-
-// Every match parameter each platform ACCEPTS on a website conversion, in its
-// own vocabulary and the order the fire log reads them out
-// ([#577](https://github.com/Omega-JS-Stack/omega/issues/577)). The log names
-// which of them went and which the fire had nothing for, so a brand can see its
-// match quality without opening an ads manager — KEY NAMES ONLY, because a match
-// value is personal data whether it is hashed or not.
-//
-// GA4 has no row: its match block is the Measurement Protocol helper's
-// `user_data` (`services/analytics.js`), built from the request's own user and
-// logged in full by that helper in development.
-const MATCH_KEYS = {
-  meta: ['em', 'ph', 'fn', 'ln', 'ct', 'st', 'zp', 'country', 'db', 'ge', 'external_id', 'client_ip_address', 'client_user_agent', 'fbc', 'fbp'],
-  tiktok: ['email', 'phone', 'external_id', 'ttclid', 'ttp', 'ip', 'user_agent'],
-};
 
 /**
  * Resolve the consent snapshot into the two category answers.
@@ -123,10 +109,19 @@ function deliverConversion({ event, params = {}, attribution = {}, identity = {}
   if (!entryFor(event)) {
     ctx.error(`deliverConversion: [unknown canonical event] ${event} — not in the catalog; nothing sent (event_id=${eventId})`);
 
-    return Object.keys(adapters).map((provider) => ({ provider, outcome: 'skipped (unknown event)' }));
+    return Object.keys(ANALYTICS_PROVIDERS).map((provider) => ({ provider, outcome: 'skipped (unknown event)' }));
   }
 
-  for (const [provider, adapter] of Object.entries(adapters)) {
+  // An id no row has selects nothing. It is said out loud, never thrown: the
+  // caller may be a webhook that has already taken the money.
+  const unknown = (providers || []).filter((id) => !analyticsProvider(id));
+  if (unknown.length) {
+    ctx.warn(`deliverConversion: [unknown provider] ${unknown.join(', ')} in the providers of ${event}, selects nothing (event_id=${eventId})`);
+  }
+
+  for (const { id: provider, consentCategory } of Object.values(ANALYTICS_PROVIDERS)) {
+    const adapter = adapters[provider];
+
     // Selection comes before consent: a provider this half does not own was
     // never going to be asked, whatever the visitor consented to.
     if (providers && !providers.includes(provider)) {
@@ -134,8 +129,8 @@ function deliverConversion({ event, params = {}, attribution = {}, identity = {}
       continue;
     }
 
-    if (!granted[adapter.CONSENT_CATEGORY]) {
-      results.push({ provider, outcome: `skipped (consent: ${adapter.CONSENT_CATEGORY})` });
+    if (!granted[consentCategory]) {
+      results.push({ provider, outcome: `skipped (consent: ${consentCategory})` });
       continue;
     }
 
@@ -196,7 +191,7 @@ function deliverConversion({ event, params = {}, attribution = {}, identity = {}
  *
  * https://developers.google.com/analytics/devguides/collection/protocol/ga4
  */
-function sendGA4({ descriptor, identity, ctx, omega }) {
+function sendGoogle({ descriptor, identity, ctx, omega }) {
   ctx.analytics.forUser(identity.externalId).event(descriptor.name, descriptor.payload);
 
   return 'sent';
@@ -406,17 +401,18 @@ function sendTikTok({ descriptor, identity, eventId, ctx, omega }) {
   return 'sent';
 }
 
-// The provider key → its transport. A new platform joins here, in the catalog,
-// and as an adapter — nothing else in the backend changes.
+// The provider id → its transport: one per row whose `serverSender` is true. A
+// new platform joins here, as an adapter, and as a row in @omega.js/config's
+// analytics-providers; nothing else in the backend changes.
 const SENDERS = {
-  ga4: sendGA4,
+  google: sendGoogle,
   meta: sendMeta,
   tiktok: sendTikTok,
 };
 
-// The provider key → its match block, read out of the body the transport would
+// The provider id → its match block, read out of the body the transport would
 // send. Built here rather than tracked alongside, so the log can never claim a
-// key the wire does not actually carry.
+// key the wire does not actually carry. One per row with match keys.
 const MATCH_BLOCKS = {
   meta: ({ descriptor, identity, eventId }) => buildMetaBody({ descriptor, identity, eventId }).data[0].user_data,
   tiktok: ({ descriptor, identity, eventId }) => buildTikTokBody({ descriptor, identity, eventId, pixelCode: null }).data[0].user,
@@ -435,9 +431,9 @@ const MATCH_BLOCKS = {
  *   this module does not build (GA4 — the Measurement Protocol helper owns it).
  */
 function matchSummary(provider, fire) {
-  const accepted = MATCH_KEYS[provider];
+  const accepted = ANALYTICS_PROVIDERS[provider].matchKeys;
 
-  if (!accepted) {
+  if (!accepted.length) {
     return null;
   }
 
@@ -475,4 +471,8 @@ module.exports = {
   buildMetaBody,
   buildTikTokBody,
   adapters,
+  // Pinned against the provider rows: a sender per serverSender row, a match
+  // block per row with match keys
+  SENDERS,
+  MATCH_BLOCKS,
 };

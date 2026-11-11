@@ -23,7 +23,7 @@ Tracking is MECHANISM, not call sites: one catalog declares every event, one cal
 3. **Placement follows the rule.** Money and account truth fires server-side (purchase, refund, trial, the subscription transitions, deletion); UI actions fire client-side; `sign_up` fires BOTH halves, carrying the same event id so the platforms deduplicate. A revenue event fired from a browser, or a click event fired from a Cloud Function, is misplaced.
 4. **No hand-rolled attribution or consent reads.** Attribution rides the facade's `context` slot and each adapter attaches it its own way; consent is the gate the facade asks per provider, per fire. A call site that reads storage for utm values, or checks a consent flag before firing, is duplicating a mechanism that already ran.
 5. **Unmapped providers stay unmapped.** A provider absent from an entry's `providers` is a decision — the adapter skips and the dev log says so. Never invent a junk custom event so a platform "has coverage".
-6. **Verify by the fire-log, not the template.** Drive the flow and read the one dev line per event (`[@omega.js/analytics:events] <event> → ga4 sent, meta …`); for a live drive, the platform debuggers. Reading the code you just wrote proves nothing about what fired.
+6. **Verify by the fire-log, not the template.** Drive the flow and read the one dev line per event (`[@omega.js/analytics:events] <event> → google sent, meta …`); for a live drive, the platform debuggers. Reading the code you just wrote proves nothing about what fired.
 
 ## Verifying
 

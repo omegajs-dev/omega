@@ -87,8 +87,9 @@ function sendTikTok(descriptor) {
   return true;
 }
 
+// The provider id → its sender: one per row whose `browserSender` is true.
 const SENDERS = {
-  ga4: sendGoogle,
+  google: sendGoogle,
   meta: sendMeta,
   tiktok: sendTikTok,
 };
@@ -107,4 +108,4 @@ function send(descriptor) {
   return sender(descriptor);
 }
 
-module.exports = { send };
+module.exports = { send, SENDERS };

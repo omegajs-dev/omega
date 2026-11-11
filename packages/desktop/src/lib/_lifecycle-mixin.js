@@ -3,10 +3,10 @@
 // `omega.quit()` and `omega.relaunch()` on the instance.
 
 module.exports = {
-  // Force a real quit, bypassing per-window `hideOnClose`. Use this anywhere the
-  // app legitimately wants to exit (tray Quit, Cmd+Q from menu role:'quit',
-  // auto-updater install). Without `{ force: true }`, the close events still get
-  // trapped by hide-on-close handlers and the app stays running.
+  // The app's quit (a brand's own exit, the app/quit route, window-all-closed).
+  // `{ force: true }` bypasses per-window `hideOnClose`. While a duplicate a
+  // second-instance event named is alive, it waits (5 s at most) for that one to
+  // exit first, so it exits as a duplicate (protocol.afterForwardedExit).
   quit(options) {
     options = options || {};
 
@@ -14,14 +14,16 @@ module.exports = {
       this._allowQuit = true;
     }
 
-    try {
-      require('electron').app.quit();
-    } catch (e) { /* electron not available: no-op in test/headless */ }
+    this.protocol.afterForwardedExit(() => {
+      try {
+        require('electron').app.quit();
+      } catch (e) { /* electron not available: no-op in test/headless */ }
+    });
   },
 
-  // Force a relaunch: same gating as quit, but tells electron to start back up
-  // after exit. If an update has been downloaded, prefers `quitAndInstall()` so
-  // the user lands on the new version instead of the old one.
+  // Force a relaunch: same gating and the same hold as quit, but tells electron to
+  // start back up after exit. If an update has been downloaded, prefers
+  // `quitAndInstall()` so the user lands on the new version instead of the old one.
   relaunch(options) {
     options = options || {};
 
@@ -31,15 +33,18 @@ module.exports = {
 
     const electron = require('electron');
 
-    // If updater downloaded a fresh build, install + relaunch via electron-updater
-    // (which calls `app.quit()` internally with the right post-quit script). Falls
-    // back to plain relaunch if updater hasn't downloaded anything.
-    const updaterStatus = this.autoUpdater.getStatus();
-    if (updaterStatus.code === 'downloaded') {
-      return this.autoUpdater.installNow();
-    }
+    this.protocol.afterForwardedExit(() => {
+      // If updater downloaded a fresh build, install + relaunch via electron-updater
+      // (which calls `app.quit()` internally with the right post-quit script). Falls
+      // back to plain relaunch if updater hasn't downloaded anything.
+      const updaterStatus = this.autoUpdater.getStatus();
+      if (updaterStatus.code === 'downloaded') {
+        this.autoUpdater.installNow();
+        return;
+      }
 
-    electron.app.relaunch();
-    electron.app.quit();
+      electron.app.relaunch();
+      electron.app.quit();
+    });
   },
 };

@@ -15,10 +15,9 @@ const path = require('node:path');
 const jetpack = require('fs-jetpack');
 const chalk = require('chalk').default;
 
-const { TARGET_FRAMEWORKS } = require('../config.js');
 // The environment vocabulary is @omega.js/config's — the same three names the
 // overlay files are suffixed with and every runtime's environment() answers
-const { ENV_ENVIRONMENTS, envLayerFiles } = require('@omega.js/config');
+const { ENV_ENVIRONMENTS, envLayerFiles, targetType } = require('@omega.js/config');
 // The stub is the marker template every .env writer converges onto, with
 // the generated keys minted: a scaffolded .env is already converged.
 const { renderEnvTemplate } = require('./env-order.js');
@@ -309,7 +308,7 @@ function renderEnvOverlayStub(environment) {
 function renderReadme(answers) {
   const targetList = answers.targets
     .map((entry) => {
-      const framework = TARGET_FRAMEWORKS[entry.type];
+      const framework = targetType(entry.type)?.framework;
       return `- \`targets/${entry.name}/\`: the ${entry.name} target${framework ? ` (framework: \`${framework}\`)` : ''}`;
     })
     .join('\n') || '- `targets/`: none yet (`npx omega onboard --targets=web` adds one)';
@@ -343,7 +342,7 @@ ${targetList}
 }
 
 function renderTargetPackageJson(answers, entry) {
-  const framework = TARGET_FRAMEWORKS[entry.type];
+  const framework = targetType(entry.type)?.framework;
   // The exact family pin (#794): satisfied by a workspace link in-monorepo,
   // `mgr i local` pre-publish (which flips the spec to `file:`), and the npm
   // registry once @omega.js/* publish — where the pin is what keeps every

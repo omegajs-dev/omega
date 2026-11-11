@@ -2,7 +2,85 @@
 // from @omega.js/desktop defaults + consumer config + override merging.
 
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const jetpack = require('fs-jetpack');
+const yaml = require('js-yaml');
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const { toSiteGlobal } = require('@omega.js/config/site-global');
+const { copyDefaults } = require('../../../commands/lib/ensure-target.js');
+
+const QUIET = { log() {}, warn() {}, error() {} };
+const SNAP_LOGIN = { SNAPCRAFT_STORE_CREDENTIALS: 'fake-creds-blob' };
+const TASKS = path.join(__dirname, '..', '..', '..', 'gulp', 'tasks');
+
+/**
+ * Run `fn` as a process on `platform`, in `cwd`, with `env` laid over process.env
+ * (undefined unsets a name), then put all of it back. The tasks read the host
+ * platform, the cwd's config and process.env, and take no seam for any of them.
+ * @param {{ platform: string, cwd?: string, env: object }} host - Node's platform word, the cwd, the variables.
+ * @param {function} fn - The body, sync or async.
+ * @returns {Promise<*>} What `fn` returns.
+ */
+async function inProcess({ platform, cwd, env }, fn) {
+  const saved = { cwd: process.cwd(), platform: Object.getOwnPropertyDescriptor(process, 'platform') };
+  const savedEnv = Object.fromEntries(Object.keys(env).map((name) => [name, process.env[name]]));
+  const setEnv = (values) => {
+    for (const [name, value] of Object.entries(values)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  };
+
+  if (cwd) process.chdir(cwd);
+  Object.defineProperty(process, 'platform', { ...saved.platform, value: platform });
+  setEnv(env);
+  try {
+    return await fn();
+  } finally {
+    setEnv(savedEnv);
+    Object.defineProperty(process, 'platform', saved.platform);
+    process.chdir(saved.cwd);
+  }
+}
+
+/**
+ * Run one gulp task's own entry in a scratch desktop project on `platform`.
+ * Only electron-builder's `build` is replaced: it would package for real.
+ * @param {string} task - The task file's name under gulp/tasks.
+ * @param {{ platform: string, login: boolean, snap?: object|false }} world - Node's platform word,
+ *   whether SNAPCRAFT_STORE_CREDENTIALS is set, and the snap format's declaration.
+ * @returns {Promise<{ error: Error|null, built: object[] }>} What the task ended with, and each build it asked for.
+ */
+async function driveTask(task, { platform, login, snap = {} }) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-snap-task-'));
+  const desktop = { type: 'desktop', platforms: { linux: { formats: { snap } } } };
+  jetpack.write(path.join(root, 'config', 'omega.json5'), JSON.stringify({ brand: { id: 'acme-app', name: 'Acme' }, targets: { desktop } }, null, 2));
+  jetpack.write(path.join(root, 'dist', 'electron-builder.yml'), 'appId: dev.acme.app\nproductName: Acme\n');
+
+  // The same module record the task's own require('electron-builder') answers from
+  const resolved = require.resolve('electron-builder', { paths: [TASKS] });
+  require(resolved);
+  const entry = require.cache[resolved];
+  const realExports = entry.exports;
+  const built = [];
+  entry.exports = { ...realExports, build: async (options) => { built.push(options); return []; } };
+
+  const env = { SNAPCRAFT_STORE_CREDENTIALS: login ? SNAP_LOGIN.SNAPCRAFT_STORE_CREDENTIALS : undefined, OMEGA_BUILD_OUTPUT: undefined };
+  try {
+    return await inProcess({ platform, cwd: root, env }, async () => {
+      const error = await new Promise((resolve) => require(path.join(TASKS, `${task}.js`))((ended) => resolve(ended || null)));
+      return { error, built };
+    });
+  } finally {
+    entry.exports = realExports;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// electron-builder names the snap after the Linux executable: linux.executableName,
+// else executableName, else the app's package name, which extraMetadata.name overrides
+const builtSnapName = (out) => String(out.linux.executableName ?? out.executableName ?? out.extraMetadata?.name ?? '').toLowerCase();
 
 module.exports = defineCases({
   type: 'suite',
@@ -355,17 +433,105 @@ module.exports = defineCases({
       },
     },
     {
-      name: 'baseConfig: snap declared but no creds, auto-skipped',
+      name: 'baseConfig: the snap is named brand.id, the same name the Snap Store link ends in',
       run: (ctx) => {
         const { baseConfig } = require(path.join(__dirname, '..', '..', '..', 'gulp', 'tasks', 'build-config.js'));
-        const saved = process.env.SNAPCRAFT_STORE_CREDENTIALS;
-        delete process.env.SNAPCRAFT_STORE_CREDENTIALS;
+        // No name or product name spells the id, so only brand.id can answer it
+        const brand = { id: 'acme-app', name: 'Zephyr' };
+        const app = { productName: 'Zephyr Studio' };
+
+        const out = baseConfig({ brand, app }, { logger: QUIET });
+        const site = toSiteGlobal({ brand, repo: { owner: 'Acme-Org' }, targets: { desktop: { type: 'desktop', app, releases: {} } } });
+
+        ctx.expect(builtSnapName(out)).toBe('acme-app');
+        ctx.expect(site.targets.desktop.downloads.linux.snap.endsWith('/acme-app')).toBe(true);
+      },
+    },
+    {
+      name: 'baseConfig: a Linux build in build mode with the snap on and no snap login goes on',
+      run: async (ctx) => {
+        const { baseConfig } = require(path.join(__dirname, '..', '..', '..', 'gulp', 'tasks', 'build-config.js'));
+
+        // Build mode as the real getMode() reads it, the way `omega build` and the boot runner set it
+        const env = { OMEGA_BUILD_MODE: 'true', OMEGA_IS_PUBLISH: undefined, SNAPCRAFT_STORE_CREDENTIALS: undefined };
+        const out = await inProcess({ platform: 'linux', env }, () => baseConfig({}, { logger: QUIET }));
+
+        ctx.expect(out.linux.target.map((t) => t.target)).toContain('deb');
+      },
+    },
+    {
+      name: 'baseConfig: a Linux build with the snap dropped by `false` builds deb and AppImage',
+      run: (ctx) => {
+        const { baseConfig } = require(path.join(__dirname, '..', '..', '..', 'gulp', 'tasks', 'build-config.js'));
+        const out = baseConfig({ platforms: { linux: { formats: { snap: false } } } }, { logger: QUIET });
+
+        ctx.expect(out.linux.target.map((t) => t.target)).toEqual(['deb', 'AppImage']);
+        ctx.expect(out.snap).toBeUndefined();
+      },
+    },
+    {
+      name: 'the package task on Linux refuses the snap with no snap login, naming the format and the key, and packages with it',
+      run: async (ctx) => {
+        const refused = await driveTask('package', { platform: 'linux', login: false });
+        ctx.expect(refused.error === null, 'no login: refused').toBe(false);
+        ctx.expect(refused.error.message).toContain('platforms.linux.formats.snap');
+        ctx.expect(refused.error.message).toContain('SNAPCRAFT_STORE_CREDENTIALS');
+        ctx.expect(refused.built, 'nothing was packaged').toEqual([]);
+
+        const packaged = await driveTask('package', { platform: 'linux', login: true });
+        ctx.expect(packaged.error).toBe(null);
+        ctx.expect(packaged.built.length).toBe(1);
+      },
+    },
+    {
+      name: 'the package task goes on with no snap login on mac and Windows, and on Linux with the snap dropped by `false`',
+      run: async (ctx) => {
+        for (const world of [{ platform: 'darwin' }, { platform: 'win32' }, { platform: 'linux', snap: false }]) {
+          const { error, built } = await driveTask('package', { ...world, login: false });
+          ctx.expect(error, JSON.stringify(world)).toBe(null);
+          ctx.expect(built.length, JSON.stringify(world)).toBe(1);
+        }
+      },
+    },
+    {
+      name: 'the release task on Linux refuses the snap with no snap login, naming the format and the key, and releases with it',
+      run: async (ctx) => {
+        const refused = await driveTask('release', { platform: 'linux', login: false });
+        ctx.expect(refused.error === null, 'no login: refused').toBe(false);
+        ctx.expect(refused.error.message).toContain('platforms.linux.formats.snap');
+        ctx.expect(refused.error.message).toContain('SNAPCRAFT_STORE_CREDENTIALS');
+        ctx.expect(refused.built, 'nothing was released').toEqual([]);
+
+        const released = await driveTask('release', { platform: 'linux', login: true });
+        ctx.expect(released.error).toBe(null);
+        ctx.expect(released.built.length).toBe(1);
+      },
+    },
+    {
+      name: 'the package-quick task on Linux with the snap on and no snap login does not refuse',
+      run: async (ctx) => {
+        const { error, built } = await driveTask('package-quick', { platform: 'linux', login: false });
+
+        ctx.expect(error).toBe(null);
+        ctx.expect(built.length).toBe(1);
+      },
+    },
+    {
+      name: 'the generated build workflow installs snapcraft on the Linux job',
+      run: async (ctx) => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-snap-workflow-'));
         try {
-          const out = baseConfig({ platforms: { linux: { formats: { snap: {} } } } });
-          ctx.expect(out.linux.target.find((t) => t.target === 'snap')).toBeUndefined();
-          ctx.expect(out.snap).toBeUndefined();
+          await copyDefaults(tmp);
+          const workflow = yaml.load(jetpack.read(path.join(tmp, '.github', 'workflows', 'build.yml')));
+
+          const installs = Object.values(workflow.jobs).flatMap((job) => (job.steps || [])
+            .filter((step) => /snap install snapcraft/.test(step.run || '') || /snapcraft/i.test(step.uses || ''))
+            .map((step) => ({ job, step })));
+          ctx.expect(installs.length).toBe(1);
+          const { job, step } = installs[0];
+          ctx.expect(`${job.if || ''} ${step.if || ''} ${JSON.stringify(job['runs-on'])}`).toMatch(/linux|ubuntu/i);
         } finally {
-          if (saved !== undefined) process.env.SNAPCRAFT_STORE_CREDENTIALS = saved;
+          fs.rmSync(tmp, { recursive: true, force: true });
         }
       },
     },

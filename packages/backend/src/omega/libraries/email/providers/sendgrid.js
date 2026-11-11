@@ -1,7 +1,8 @@
 /**
- * SendGrid provider — shared API helpers for contacts and Single Sends
- *
- * Used by: marketing/index.js (sync, remove, campaigns)
+ * SendGrid provider: API helpers for contacts and Single Sends. It serves the
+ * campaigns role (its row in @omega.js/config's EMAIL_PROVIDERS lists the
+ * operations its callers use), reached through Marketing.roleProvider() by
+ * marketing/index.js and the daily prune.
  */
 const fetch = require('wonderful-fetch');
 // The one Omega instance, read at call time: this module first loads while
@@ -133,8 +134,10 @@ async function resolveSegmentIds() {
 
     return _segmentIdCache;
   } catch (e) {
+    // Thrown, not an empty map: an empty map reads as every key unknown, a coded
+    // 400 config fault, while an outage is a code-less failure (success: false)
     console.error('SendGrid resolveSegmentIds error:', e);
-    return {};
+    throw e;
   }
 }
 
@@ -187,18 +190,17 @@ async function createBrandScopedSegment(segmentIds, brandId, options = {}) {
     const query = await getSegmentQuery(id);
     console.log(`SendGrid createBrandScopedSegment: segment ${id} query_dsl:`, query || '(empty)');
 
-    if (!query) {
-      console.warn(`SendGrid createBrandScopedSegment: segment ${id} has no query_dsl, skipping`);
-      continue;
+    // A segment with no condition would drop out of the AND and widen the
+    // audience to the whole brand, so the scoped segment resolves to nothing
+    const whereMatch = query && query.match(/WHERE\s+(.+)$/is);
+
+    if (!whereMatch) {
+      console.warn(`SendGrid createBrandScopedSegment: segment ${id} has no WHERE clause, returning null`);
+      return null;
     }
 
-    const whereMatch = query.match(/WHERE\s+(.+)$/i);
-    if (whereMatch) {
-      whereParts.push(`(${whereMatch[1]})`);
-      console.log(`SendGrid createBrandScopedSegment: extracted WHERE clause from ${id}:`, whereMatch[1]);
-    } else {
-      console.warn(`SendGrid createBrandScopedSegment: segment ${id} query has no WHERE clause, skipping`);
-    }
+    whereParts.push(`(${whereMatch[1].trim()})`);
+    console.log(`SendGrid createBrandScopedSegment: extracted WHERE clause from ${id}:`, whereMatch[1]);
   }
 
   if (whereParts.length === 0) {
@@ -659,9 +661,9 @@ async function addContact({ email, firstName, lastName, company, customFields })
  * Build SendGrid custom_fields object from a user doc.
  * Resolves all field values, maps to display names, then resolves SendGrid IDs.
  *
- * The catalog decides which fields SendGrid owns (#695): a field the catalog
- * skips for SendGrid is never written here, so the only fields that can come
- * back unmapped are ones OMEGA has yet to provision — a real, actionable warn.
+ * The catalog decides which fields SendGrid owns (fieldsForProvider): a field
+ * on its row's nativeFields is never written here, so the only fields that can
+ * come back unmapped are ones OMEGA has yet to provision, a real, actionable warn.
  *
  * @param {object} userDoc - User document from Firestore
  * @returns {object} Custom fields keyed by SendGrid field ID (e.g., { e1_T: 'basic' })

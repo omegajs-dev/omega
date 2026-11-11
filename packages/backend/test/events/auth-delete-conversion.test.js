@@ -104,7 +104,7 @@ module.exports = defineCases({
           }
 
           // An account with no snapshot at all is still counted.
-          expect(delivery[0].includes('ga4 skipped (consent'), `an absent snapshot grants: ${delivery[0]}`).toBe(false);
+          expect(delivery[0].includes('google skipped (consent'), `an absent snapshot grants: ${delivery[0]}`).toBe(false);
           expect(await firestore.exists(`users/${uid}`), 'the handler still deletes the doc').toBe(false);
         } finally {
           await firestore.delete(`users/${uid}`);
@@ -128,7 +128,7 @@ module.exports = defineCases({
           });
 
           expect(delivery.length, delivery.join(' | ')).toBe(1);
-          expect(delivery[0].includes('ga4 skipped (consent: analytics)'), `the snapshot the doc carried still gates the fire after the doc is gone: ${delivery[0]}`).toBe(true);
+          expect(delivery[0].includes('google skipped (consent: analytics)'), `the snapshot the doc carried still gates the fire after the doc is gone: ${delivery[0]}`).toBe(true);
         } finally {
           await firestore.delete(`users/${uid}`);
         }

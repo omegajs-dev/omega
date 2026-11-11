@@ -188,6 +188,27 @@ targets: {
   standalone project, whose dir name is arbitrary). `targetEntries(config)` is the ONE
   enumeration, `{ name, type, ...entry }` in config order; `targetsOfType(config, 'web')`
   filters it. Nothing derives a folder any other way.
+- **One row per type is the one home of every per-type rule** (`src/target-types.js`, also the
+  `@omega.js/config/target-types` subpath). `TARGET_TYPE_ROWS` holds one frozen row per type in
+  the schema's order (web, backend, desktop, extension, mobile), and `targetType(id)` answers a
+  row or null. A row carries `id`; `framework` (the package that runs it, null for a reserved
+  type); `walkRank` (its place in the order every `each` verb walks, lowest first: backend, web,
+  extension, desktop, mobile); `deploy` (`'direct'`: the target's deploy script run from this
+  machine, `'verb'`: the framework's deploy verb, null: none); `publishes` (its deploy ships an
+  artifact somebody installs); `verify` (the live checks `omega pipeline` runs after its deploy:
+  web's `site`, `domain`, `cloudflare`); `onboardDefault` (onboarding with no pick writes it:
+  web); `devDefault` (`omega dev` with no pick boots it: web, backend); `reserved` (a slot
+  with no framework yet: `mobile`, which the onboarding picker labels reserved); and
+  `translates` (its build translates, so a non-interactive `omega update` build passes it
+  `--cached-only`: web, extension). Every reader derives from the rows: the schema's `TARGETS`
+  (and so `TARGET_TYPES`), the manager's framework lookups, the pipeline's deploy and publish
+  gate, the verify sweep, the publishing service's ship set (the rows that publish), the update
+  service's cached-only builds, and both default lists. The pipeline keeps the command for each
+  deploy mode; the rows say only which mode. `custom` is no row: it carries no rules. The
+  dispatcher cannot depend on this package, so `@omega.js/devkit`'s `src/verbs.js` keeps a
+  stdlib twin of the `id`, `framework` and `walkRank` facts, `TARGET_TYPE_TWIN` (its
+  `TARGET_ORDER` derives from it), which `omega-bin.js`, `test/scope.js` and
+  `test/journey-harness.js` read and a test pins against the rows.
 - **The merge chain is by NAME**: `defaults ← company ← brand shared ← brand targets.<name> ←
   local shared ← local targets.<name>`. A shared key inside an entry still overrides the shared
   value for that surface, exactly as before.
@@ -328,6 +349,13 @@ targets: {
   self-hosted Windows keys, until the format is turned off with `false`. The schema is also where each key's
   `label`, `url` (the page that mints it) and `hint` live: one home for what a key is and
   where it comes from (see "The env schema" below).
+- **The snap's two facts live beside the table.** `snapName(config)` answers `brand.id`: the
+  name the desktop build pins, the `publishing` walk registers on the Snap Store, and the
+  site's `/download/linux/snap` link ends in, so `snapNameError(config)` fails a brand that
+  ships the snap with a `brand.id` no snap name allows (`.`, `+`). `formatKeysSet(target,
+  platform, format, env)` answers whether every key one format requires holds a value (the
+  one presence test, `env-has-value.js`): a Linux desktop `package` or `release` checks each
+  `store` format against its own keys and refuses, naming the format and the key.
 - **The one translation points.** Node's `darwin`/`win32` becomes OMEGA's word in
   @omega.js/desktop's `utils/platform.js`; electron-builder's `mac`/`win`/`AppImage`/`nsis`
   is spelled only in its `gulp/tasks/build-config.js`; GitHub's runner labels only in the
@@ -1492,6 +1520,9 @@ the strict load, and `omega migrate` names the block it derives from and drops i
   `targets.desktop.app.productName` → `brand.name`; no product name, no `downloads` (a
   guessed filename is a dead button). A platform or format the brand dropped is absent
   here too, so the site never renders a button for something nobody builds.
+  `downloadKinds.<platform>.<format>` beside it is the format table's `kind` (`asset` or
+  `store`), derived from `downloads` alone, so the page hands a store link over as a plain
+  link with no install walkthrough.
 - **Extension listings**: `targets.extension.listings.<store>.{url,state}` for the six
   stores the theme renders (chrome, firefox, edge, opera, safari, brave) —
   schema-declared; url must be http(s). Entries with neither url nor state stay absent.
@@ -2238,6 +2269,8 @@ const {
   apiAddress,          // (url, projectId, region = FUNCTIONS_REGION) → https://api.<hostname> | the functions address of omega_api on a *.github.io host (the backend passes its project.resourceZone) | '' (no url, or Pages with no project id). Home: `src/api-address.js`, browser-safe, also the `@omega.js/config/api-address` subpath and `@omega.js/client/modules/api-address.js`
   FUNCTIONS_REGION,    // 'us-central1': the region apiAddress, the client's and desktop's getFunctionsUrl and the client's local functions url name (the backend reads its own `project.resourceZone`)
   TARGET_NAME_PATTERN, TARGET_TYPES, // the name slug rule and [web, backend, desktop, extension, mobile, custom]
+  TARGET_TYPE_ROWS,    // one frozen row per target type, every per-type rule (target-types.js; see Targets)
+  targetType,          // (id) → that type's row | null (`custom`, an unknown id)
   // The browser subset (#894): what a browser surface may see, and the one wrapper it is baked in
   clientConfig,        // (resolved + this build's facts) → the blob every browser surface bakes as OMEGA_BUILD_JSON.config
   CLIENT_FACT_KEYS,    // the build facts that ride beside the client sections (runtime, environment, version, buildTime, target, url, dev)

@@ -165,6 +165,7 @@ const OPERATIONS = {
   publishing: [
     { name: 'keys', ensure: true },     // Every developer key the declared formats need, asked through the shared setup contract (#867)
     { name: 'listings', ensure: true }, // The per-listing store ids a human creates (config, #893), asked with a "not yet" skip
+    { name: 'snap-name', ensure: true }, // The Snap Store name brand.id, registered once when the brand ships the snap
   ],
 
   ai: [

@@ -19,7 +19,6 @@ const BACKEND_FIELDS = Object.entries(FIELDS).map(([name, field]) => ({
   name,
   display: field.display,
   type: field.type,
-  skip: field.skip || [],
 }));
 
 const BACKEND_SEGMENTS = Object.entries(SEGMENTS).map(([name, segment]) => ({
@@ -33,9 +32,9 @@ const BACKEND_SEGMENTS = Object.entries(SEGMENTS).map(([name, segment]) => ({
 const BACKEND_FIELDS_BY_NAME = Object.fromEntries(BACKEND_FIELDS.map((field) => [field.name, field]));
 
 /**
- * Fields a given provider should provision — @omega.js/backend's OWN view of its
- * catalog (#695), so what OMEGA creates and what the backend's contact sync
- * writes can never be two different lists.
+ * Fields a given provider id should provision: @omega.js/backend's OWN view of
+ * its catalog (every field but the provider row's nativeFields), so what OMEGA
+ * creates and what the backend's contact sync writes are never two lists.
  */
 function fieldsFor(provider) {
   return fieldsForProvider(provider).map((name) => BACKEND_FIELDS_BY_NAME[name]);

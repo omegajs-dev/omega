@@ -212,6 +212,7 @@ module.exports = async ({ ctx, omega }) => {
         structure: _structure,
         contentMarkdown: _contentMarkdown,
         article: _article,
+        report,
         assets,
         meta,
         ...generatedSettings
@@ -231,8 +232,18 @@ module.exports = async ({ ctx, omega }) => {
           throw e;
         }
 
+        // The report still goes out, carrying the fault as the post's failure
+        if (report) {
+          await generators[generator].sendReport(omega, ctx, report, { success: false, error: e.message, code: e.code });
+        }
+
         await failConfigFault(doc, ctx, campaignId, e.message);
         return;
+      }
+
+      // The report names the post this send published, so it waits for the send
+      if (report) {
+        await generators[generator].sendReport(omega, ctx, report, campaignResults.newsletter);
       }
 
       const generatorFault = findConfigFault(campaignResults);

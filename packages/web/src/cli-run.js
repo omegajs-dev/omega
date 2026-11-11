@@ -8,7 +8,7 @@
 // declares the same.
 const BOOLEAN_FLAGS = [
   'extended', 'dry-run', 'local', 'direct', 'secrets', 'list', 'a',
-  'major', 'force-fresh', 'https',
+  'major', 'force-fresh', 'https', 'cached-only',
 ];
 
 async function run() {

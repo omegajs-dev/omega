@@ -38,6 +38,7 @@ const { freshnessSweep, linkLocalPackages, resolveLinkedMonorepo, resolveMonorep
 const { mkcertCaRootPem } = require('@omega.js/devkit/local-https');
 const { missingMachineTools, machineToolLine } = require('@omega.js/devkit/machine-tools');
 const { STOP_SIGNALS } = require('@omega.js/devkit/stop-signals');
+const { TARGET_TYPE_ROWS } = require('@omega.js/config');
 
 // Local
 const { runManage } = require('../manage.js');
@@ -86,9 +87,10 @@ const stopChild = (child, killGroup = (pid, signal) => process.kill(pid, signal)
   }
 };
 
-// Booted without flags: the local web loop. These are target NAMES (#886), so
-// a brand that names its web target something else boots it with `--target=`.
-const DEFAULT_TARGETS = ['web', 'backend'];
+// Booted without flags: the local web loop, the rows marked devDefault. Matched
+// as target NAMES, so a brand that names its web target something else boots
+// it with `--target=`.
+const DEV_TARGETS = TARGET_TYPE_ROWS.filter((row) => row.devDefault).map((row) => row.id);
 
 /**
  * Pure target selection — which legs boot for a given flag set.
@@ -115,7 +117,7 @@ function selectDevTargets({ available, custom = [], target, all }) {
   // only a token when a target answers to it, so `--target=web` on a brand
   // whose web target is named `site` is a typo, never a silent skip.
   const legs = [...new Set([...names, ...custom])];
-  const defaults = [...DEFAULT_TARGETS, ...custom].filter((name) => names.includes(name));
+  const defaults = [...DEV_TARGETS, ...custom].filter((name) => names.includes(name));
 
   const tokens = parseTargetTokens(target);
   const requested = tokens.length > 0
@@ -452,4 +454,3 @@ module.exports.selectDevTargets = selectDevTargets;
 module.exports.createLineDeduper = createLineDeduper;
 module.exports.stopChild = stopChild;
 module.exports.DEV_LEG = DEV_LEG;
-module.exports.DEFAULT_TARGETS = DEFAULT_TARGETS;

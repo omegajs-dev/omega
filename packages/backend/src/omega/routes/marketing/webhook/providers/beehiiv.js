@@ -1,26 +1,13 @@
 /**
- * Beehiiv webhook provider
+ * Beehiiv webhook provider: one event per POST, each carrying a `publication_id`.
+ * The parent fans every event to each child, and only a brand whose configured
+ * publication matches processes it; any other is a silent skip.
  *
- * Beehiiv sends one event per POST (unlike SendGrid's batched array).
- * Each event includes a `publication_id` so the provider can decide whether
- * the event belongs to THIS brand or a sibling brand sharing the same parent.
+ * Revoking events (anything else is ignored): 'subscription.unsubscribed',
+ * 'subscription.deleted', and 'subscription.paused' (a pause reads as a revoke).
  *
- * Supported event types (anything else is silently ignored):
- *   - 'subscription.unsubscribed' — user clicked unsubscribe in a Beehiiv email
- *   - 'subscription.deleted'      — admin or API removed the subscriber
- *   - 'subscription.paused'       — user paused delivery (treat as revoke; we
- *                                    can't differentiate "pause" semantics)
- *
- * Publication routing:
- *   - If the event's publication_id doesn't match this brand's configured
- *     publication, silent skip. This is how the shared-devbeans publication
- *     case works: the parent fans the event to every child, and only the
- *     brand(s) sharing that publication actually process it.
- *   - getPublicationId() reads from config.marketing.newsletter.providers.beehiiv.publicationId
- *     or fuzzy-matches by brand name against the Beehiiv API.
- *
- * No idempotency ledger — the revoke + cross-provider remove are idempotent, so a
- * provider retry re-runs safely with the same end state.
+ * No idempotency ledger: the revoke and the cross-provider remove are idempotent,
+ * so a provider retry re-runs safely with the same end state.
  */
 
 const REVOKE_EVENT_TYPES = new Set([
@@ -98,22 +85,12 @@ async function handleEvent({ omega, ctx, parsed }) {
     return { handled: false, reason: 'missing-email' };
   }
 
-  // Publication filter — silent skip if the event isn't for our publication.
-  // This is THE mechanism that routes shared-publication events (e.g. devbeans
-  // across 6 brands) to only the brands that share that publication.
-  // beehiivProvider.getPublicationId() reads omega.config.marketing.newsletter.providers.beehiiv.publicationId
-  // first, then falls back to fuzzy-match against the Beehiiv API by brand name.
+  // Publication filter: silent skip when the event isn't for our publication, which
+  // routes a shared publication's events to only the brands that share it. The
+  // publication id is config's, read by the provider's getPublicationId(), an
+  // operation its row pins.
   if (publicationId) {
-    let ourPublicationId = null;
-    try {
-      const beehiivProvider = require('../../../../libraries/email/providers/beehiiv.js');
-      if (typeof beehiivProvider.getPublicationId === 'function') {
-        ourPublicationId = await beehiivProvider.getPublicationId();
-      }
-    } catch (e) {
-      ctx.error('beehiiv webhook: failed to resolve our publication ID:', e);
-      return { handled: false, reason: 'publication-resolve-failed' };
-    }
+    const ourPublicationId = require('../../../../libraries/email/providers/beehiiv.js').getPublicationId();
 
     if (!ourPublicationId) {
       ctx.log(`beehiiv webhook: no publication configured for this brand, skipping event ${eventId}`);

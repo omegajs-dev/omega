@@ -18,6 +18,7 @@ const { buildQueryDsl } = require('../src/services/campaigns/lib/segment-query.j
 const service = require('../src/services/campaigns/index.js');
 const { GROUP_DEFINITIONS } = require('../src/services/campaigns/ensure/unsubscribe-groups.js');
 const { openTtyPrompt } = require('./lib/interactive.js');
+const { emailProviderForRole } = require('@omega.js/config');
 
 const DOWN = '\x1B[B';
 
@@ -259,15 +260,6 @@ module.exports = defineCases({
     // ─── Setup / skip semantics ──────────────────────────────────────────────────
 
     {
-      name: 'campaigns: skips without SENDGRID_API_KEY in .env',
-      run: async (ctx) => {
-        const result = await runService(brandConfig()); // no injected api → the creds check applies
-        ctx.expect(result.status).toBe('skipped');
-        ctx.expect(result.reason).toMatch(/SENDGRID_API_KEY/);
-      },
-    },
-
-    {
       name: 'campaigns: marketing.campaigns.enabled = false skips the service',
       run: async (ctx) => {
         const result = await runService(brandConfig({ campaigns: { enabled: false } }), { sendgrid: fakeSendgrid() });
@@ -291,6 +283,23 @@ module.exports = defineCases({
         const result = await runService(brandConfig({ campaigns: { providers: {} } }), { sendgrid: fakeSendgrid() });
         ctx.expect(result.status).toBe('skipped');
         ctx.expect(result.reason).toMatch(/no marketing\.campaigns\.providers entry/);
+      },
+    },
+
+    {
+      name: 'campaigns: the service answers to the provider row of the campaigns role',
+      run: async (ctx) => {
+        const row = emailProviderForRole('campaigns');
+        const otherRole = emailProviderForRole('newsletter');
+
+        const unkeyed = await runService(brandConfig()); // no injected api, so the credential check applies
+        ctx.expect(unkeyed.status).toBe('skipped');
+        ctx.expect(unkeyed.reason, 'the missing credential is the row\'s env key').toContain(row.envKey);
+
+        // The newsletter role's provider chosen under campaigns is not this service's
+        const misrouted = await runService(brandConfig({ campaigns: { providers: { [otherRole.id]: {} } } }), { sendgrid: fakeSendgrid() });
+        ctx.expect(misrouted.status).toBe('skipped');
+        ctx.expect(misrouted.reason).toContain(`marketing.campaigns.providers.${otherRole.id}`);
       },
     },
 
@@ -912,16 +921,14 @@ module.exports = defineCases({
     // ─── custom-fields ───────────────────────────────────────────────────────────
 
     {
-      name: 'campaigns: the catalog skips the two name fields SendGrid stores itself (#695)',
+      name: 'campaigns: the two name fields SendGrid stores natively are never custom fields (#695)',
       run: async (ctx) => {
-        // SendGrid keeps first/last name in its RESERVED contact columns, which the
-        // backend's addContact writes natively — so the custom-field lane skips them
-        // on BOTH sides (one `fieldsForProvider()` derivation): never provisioned
-        // here, never written by the contact sync, so the old "no SendGrid ID
-        // (skipped)" warn cannot come back and no duplicate field is ever created.
+        // First/last name live in SendGrid's RESERVED contact columns, native on its
+        // provider row, so the one `fieldsForProvider()` derivation leaves them out on
+        // BOTH sides: never provisioned here, never written by the contact sync.
         const names = SENDGRID_FIELDS.map((field) => field.name);
-        ctx.expect(!names.includes('user_personal_name_first'), `the catalog skips the first-name field, got ${names.join(', ')}`).toBeTruthy();
-        ctx.expect(!names.includes('user_personal_name_last'), `the catalog skips the last-name field, got ${names.join(', ')}`).toBeTruthy();
+        ctx.expect(!names.includes('user_personal_name_first'), `the first-name field is native, got ${names.join(', ')}`).toBeTruthy();
+        ctx.expect(!names.includes('user_personal_name_last'), `the last-name field is native, got ${names.join(', ')}`).toBeTruthy();
 
         // And an account carrying that view converges with nothing created — the two
         // names are not missing fields, they are fields SendGrid owns

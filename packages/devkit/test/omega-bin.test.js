@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { findTarget, isBrandRoot, verbOf, isBoxVerbArgv, TARGET_SUBDIRS, FRAMEWORKS, MANAGER, run } = require('../src/omega-bin.js');
+const { findTarget, isBrandRoot, verbOf, isBoxVerbArgv, TARGET_SUBDIRS, MANAGER, run } = require('../src/omega-bin.js');
 
 const FIXTURES = path.join(__dirname, 'fixtures', 'local');
 const BRAND = path.join(FIXTURES, 'brand');
@@ -199,15 +199,37 @@ module.exports = defineCases({
   description: 'omega-bin',
   tests: [
     {
-      name: 'FRAMEWORKS covers exactly the four target frameworks',
+      name: 'the dispatcher\'s frameworks are the target type rows\' frameworks: each one is a target, a package no row names is not',
       run: (ctx) => {
-        ctx.expect(FRAMEWORKS).toEqual([
-          '@omega.js/web',
-          '@omega.js/backend',
-          '@omega.js/desktop',
-          '@omega.js/extension',
-        ]);
+        // The dispatcher stays stdlib-only, so its framework list is a twin of the rows
+        const { TARGET_TYPE_ROWS } = require('@omega.js/config/target-types');
+        const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-bin-rows-'));
+        const stage = (dir, framework) => {
+          const targetDir = path.join(scratch, dir);
+          fs.mkdirSync(path.join(targetDir, '.git'), { recursive: true }); // bound the walk
+          fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify({ name: dir, devDependencies: { [framework]: '*' } }));
+          return targetDir;
+        };
+
+        for (const row of TARGET_TYPE_ROWS.filter((entry) => entry.framework)) {
+          const targetDir = stage(row.id, row.framework);
+          ctx.expect(findTarget(targetDir), row.id).toEqual({ kind: 'framework', name: row.framework, dir: targetDir });
+        }
+        for (const other of ['@omega.js/client', '@omega.js/mobile']) {
+          ctx.expect(findTarget(stage(other.split('/')[1], other)), `${other} is no target framework`).toBe(null);
+        }
         ctx.expect(MANAGER).toBe('@omega.js/manager');
+      },
+    },
+
+    {
+      name: 'the verb table\'s twin of the target type rows matches config\'s rows: id, framework and walkRank, row for row',
+      run: (ctx) => {
+        const pick = (row) => ({ id: row.id, framework: row.framework, walkRank: row.walkRank });
+        const twin = require('../src/verbs.js').TARGET_TYPE_TWIN;
+        const rows = require('@omega.js/config/target-types').TARGET_TYPE_ROWS;
+
+        ctx.expect(twin.map(pick)).toEqual(rows.map(pick));
       },
     },
 

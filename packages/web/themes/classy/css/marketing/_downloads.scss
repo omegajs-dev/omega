@@ -88,11 +88,16 @@
     }
   }
 
-  // Two artifacts (Linux: .deb + snap) sit SIDE BY SIDE, equal width — the
-  // outline button under a filled one read as a second primary download.
+  // Two artifacts sit SIDE BY SIDE, equal width: the outline button under a
+  // filled one read as a second primary download.
   .omega-dl-card__actions--split > * {
     flex: 1 1 0;
     min-width: 0;
+  }
+
+  // Three or more: the first takes its own row, so no label wraps.
+  .omega-dl-card__actions--split > :first-child:nth-last-child(n + 3) {
+    flex: 1 1 100%;
   }
 }
 

@@ -620,14 +620,14 @@ async function deployStoreAssets() {
     logger.log('Store asset: description/en.md');
   }
 
-  // Write translated descriptions (committed translations/, source marker stripped)
+  // Write translated descriptions: the committed translations/ cache's entry for the current source
   const translationsDir = path.join(process.cwd(), 'translations');
   if (jetpack.exists(translationsDir)) {
     const { readTranslatedDescription } = require('./translate.js');
     const descDir = path.join(assetsDir, 'description');
 
     let count = 0;
-    for (const file of jetpack.find(translationsDir, { matching: '*/description.md' })) {
+    for (const file of jetpack.find(translationsDir, { matching: '*/description.json' })) {
       const lang = path.basename(path.dirname(file));
       const content = readTranslatedDescription(lang);
 

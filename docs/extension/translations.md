@@ -12,12 +12,18 @@ Exactly the codes listed in `translation.languages` — there is no fixed set. U
 
 [src/gulp/tasks/translate.js](../../packages/extension/src/gulp/tasks/translate.js):
 
-1. Reads `config/messages.json` (source of truth — author all your strings here).
+1. Reads `config/messages.json` (source of truth: author all your strings here).
 2. For each configured language, loads the committed cache at `translations/<lang>/messages.json` (source-string hash → translated message).
 3. Sends ONLY the uncached strings to the translation provider (per-key incremental).
-4. Saves the results back into the cache, then composes `dist/_locales/<lang>/messages.json` from source + cache — a miss falls back to English so the file is always complete.
+4. Saves the results back into the cache, then composes `dist/_locales/<lang>/messages.json` from source + cache: a miss falls back to English so the file is always complete.
 
-`config/description.md` translates the same way, whole-document, cached as `translations/<lang>/description.md` with a source-hash marker — editing the source retranslates it.
+`config/description.md` translates the same way, whole-document, cached in `translations/<lang>/description.json`: editing the source retranslates it.
+
+Both passes are the shared `translateCached` call in `@omega.js/devkit/translate` (docs/shared/translation.md in the Omega repo).
+
+## Cache-only builds (CI and `--cached-only`)
+
+On a CI runner, or with `omega build --cached-only`, the build reads the committed cache only and never calls a provider, so no AI key is needed. A string with no saved translation ships in English, and the build prints one warning per language naming the namespace (`messages` or `description`) and the cold keys, then exits 0. A cold description ships no translated store listing for that language. Translate on your own machine with a plain `omega build`, then commit `translations/`.
 
 Existing translations are NEVER overwritten — once a string is translated, it stays until the source string changes. Edit the cache file directly if you want to change a translation.
 
@@ -65,7 +71,7 @@ Leave `translation.languages` unset (or empty) in omega.json5 — translation is
 
 ## Cost / API key
 
-The default provider is `claude`: it rides the locally-installed Claude Code via `@anthropic-ai/claude-agent-sdk` (declared by this framework), billed to your Claude subscription — no API key. `translation.provider: 'chatgpt'` uses the OpenAI API instead (needs `OPENAI_API_KEY`). Either way the cost is one-time per language per changed string — typically pennies.
+The default provider is `claude`: it rides the locally-installed Claude Code via `@anthropic-ai/claude-agent-sdk` (declared by this framework), billed to your Claude subscription — no API key. `translation.providers: { chatgpt: {} }` uses the OpenAI API instead (needs `OPENAI_API_KEY`). Either way the cost is one-time per language per changed string — typically pennies.
 
 ## See also
 

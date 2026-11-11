@@ -37,17 +37,6 @@ const { schemaDefaults, deepMerge, envSchemaEntry, ENV_SCHEMA, generatedEnvKeys,
 const { shipCredentials } = require('./services/publishing/lib/ship-list.js');
 const { OPERATIONS } = require('./operations.js');
 
-// Framework package per target — used by the testing service to compare each
-// target's installed framework against the npm latest. Names flip to their
-// @omega.js/* successors at each rename cutover; mobile is reserved (MAM
-// parked, no framework to check).
-const TARGET_FRAMEWORKS = {
-  web: '@omega.js/web',
-  backend: '@omega.js/backend',
-  extension: '@omega.js/extension',
-  desktop: '@omega.js/desktop',
-};
-
 // =============================================================================
 // DEFAULT SETTINGS - The manager defaults layer under every brand config
 // =============================================================================
@@ -774,7 +763,6 @@ function templateObject(obj, data) {
 }
 
 module.exports = {
-  TARGET_FRAMEWORKS,
   MANAGER_DEFAULTS,
   DEFAULTS,
   SERVICE_ORDER,
