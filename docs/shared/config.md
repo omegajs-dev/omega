@@ -209,13 +209,32 @@ targets: {
   override. On a default Pages host `targetUrl` itself gives a sibling WEB target its own Pages
   address (`admin` → `https://<owner>.github.io/<brand.id>-admin`, since
   `admin.<owner>.github.io` is no site), so the loader and every direct caller read one rule; a
-  non-web sibling keeps the name-as-subdomain derivation. Readers that manage a DOMAIN (the manager's
-  `edge`, `domain`, `search`, `cloud`, `account`, `campaigns` and `captcha` services, the verify
+  `backend` target answers the brand's API address (below), and any other non-web target answers
+  null. Readers that manage a DOMAIN (the manager's
+  `edge`, `domain`, `search`, `cloud`, `account`, `campaigns`, `captcha` and `advertising` services, the verify
   sweep's live gate, the web purge) each ask
   `defaultAddressReason(url)` once and skip with its answer, `brand.url is the hosting
   provider's default address (<host>): no domain to manage`, before any credential or registrar
   ask; every other reader takes the address like any declared url. Buying a
   domain later is one line: `brand.url` becomes it.
+- **One API address, and no derived email, on a host the brand does not own**
+  ([#1148](https://github.com/Omega-JS-Stack/omega/issues/1148)). `apiAddress(url, projectId)`
+  (`src/api-address.js`, browser-safe, also the `@omega.js/config/api-address` subpath and
+  `@omega.js/client/modules/api-address.js`) is the one derivation every surface reads: the
+  client's, desktop's and extension's `getApiUrl`, the backend's `getApiUrl`/`getParentApiUrl`,
+  its webhook forwarder and target checks, and the manager's account, payment webhook, bookmark,
+  analytics stream and company webhook readers. An owned host answers `https://api.<hostname>`
+  (path and port dropped); a default Pages host answers the Cloud Functions address of the
+  project's `omega_api` function, `https://us-central1-<projectId>.cloudfunctions.net/omega_api`
+  (`FUNCTIONS_REGION`), and `''` with no project id, where the client's, desktop's and extension's
+  `getApiUrl` throw naming `cloud.config.projectId`. A Pages host derives no email: onboarding's
+  `deriveEmail` answers `''` (the account ask offers no default), and the Stripe account step
+  with no `brand.contact.email` skips with the default-address reason. The analytics streams step
+  creates no stream for a target whose `targetUrl` is null, one skip line each. The manager's
+  company webhooks read a Pages parent's project id from the company layer (the brand's own when
+  it is its parent) and skip with the reason without one. The backend knows only its own project
+  id, so its `getParentApiUrl` answers `''` for a sub-brand's Pages-hosted parent, and its
+  forwarder reaches no Pages-hosted child (a `brands` registry doc carries no project id).
 - **Validator rules**: a key must be a dir-safe slug (`/^[a-z][a-z0-9-]*$/`, because it is a
   folder name), an entry must be a plain object, and its `type` must be one of the six. An ARRAY
   is the retired multi-instance form and names its replacement, a sibling key
@@ -947,14 +966,17 @@ byte-identical to the pre-N7 behavior (no bumping, no artifacts).
 - **`resolvePorts({ wanted, pins, claimed })`** — each wanted port keeps its value when
   free, bumps +1 until free when taken (shared `claimed` set prevents two names landing
   on one port). `pins` (the config `ports` section) never bump — a busy pin throws.
-  The free-check is a QUADRUPLE bind-probe (127.0.0.1, ::1 when the host has IPv6,
-  the IPv4 wildcard 0.0.0.0, and the `::` wildcard) — on macOS/BSD, wildcard and
+  The free-check is a SIX-bind probe. Four are TCP (127.0.0.1, ::1 when the host has
+  IPv6, the IPv4 wildcard 0.0.0.0, and the `::` wildcard): on macOS/BSD, wildcard and
   specific-address listeners COEXIST on one port, and the two wildcard FAMILIES
   coexist with each other, so any single-surface probe false-positives against a
   sibling brand's stack and the real bind crashes later (found live at cp186: the
   playground's https proxy holds IPv6 `*:5002`; a 127.0.0.1-only probe handed 5002
   to the second brand's functions emulator — and again at #345: a foreign `0.0.0.0`
   squatter read free to the `::` probe and the auth emulator died with no bump).
+  Two are UDP (the 0.0.0.0 wildcard, and the `::` wildcard when the host has IPv6):
+  firebase-tools' macOS check runs `lsof -i :<port> -sTCP:LISTEN`, which still lists
+  a UDP socket, so it reads a UDP-held port as taken and the probe must agree.
 - **Ports file** — `writePortsFile(projectDir, ports, facts)` /
   `readPortsFile/clearPortsFile(projectDir)`: `<projectDir>/.temp/ports.json`
   (pid-stamped; readers ignore dead-pid leftovers). The allocator (the backend emulator
@@ -1646,7 +1668,7 @@ file from it, so the two can never claim different domains for one site.
 `https://<owner lowercased>.github.io/<websiteRepo name>` for a GitHub-hosted web target, null
 whenever `websiteRepo` is. The loader fills an unset `brand.url` from it and the web direct
 deploy's project-site plan falls back to it, so the two never spell the address apart.
-`isDefaultPagesHost(host)` is the one test for a default Pages host, read by `pagesHost` and by
+`isDefaultPagesHost(host)` (`src/api-address.js`) is the one test for a default Pages host, read by `pagesHost`, `apiAddress` and
 `defaultAddressReason(url)`, which answers the skip reason for a url on a default Pages host and
 null for anything else, so every domain-managing reader skips with one call.
 
@@ -2206,13 +2228,15 @@ const {
   targetsOfType,       // (config, 'web') → the same entries, that type only
   targetPath,          // (config, 'community') → 'targets/community'; an undeclared name throws with the declared list
   targetNameFromDir,   // (projectDir) → the target root's basename inside a brand (functions//dist/ normalize up); null standalone
-  targetUrl,           // (config, name) → entry url → entry brand.url → brand.url when name IS the type → pagesAddress(config, name) for a web target on a *.github.io brand → https://<name>.<brand host> | null
+  targetUrl,           // (config, name) → entry url → entry brand.url → on a *.github.io brand: apiAddress for a backend, null for any other non-web target → brand.url when name IS the type → pagesAddress(config, name) for a web target on a *.github.io brand → https://<name>.<brand host> | null
   targetPortOffset,    // (config, name) → position among the SAME-type targets (dev-port offsets)
   brandHost,           // (url) → the host exactly as brand.url states it (www kept, path dropped, port kept)
   // The GitHub Pages address (repo.js, #1145)
   pagesAddress,        // (config, name) → https://<owner lowercased>.github.io/<brand.id>-<name> for a GitHub-hosted web target | null; an unset brand.url resolves to pagesAddress(config, 'web')
-  isDefaultPagesHost,  // (host) → whether it is a GitHub default Pages host (`*.github.io`): an address, never a domain
-  defaultAddressReason, // (url) → the ONE skip reason of every domain-managing reader (edge, domain, search, cloud, account, campaigns, captcha, verify live gate, web purge) for a default Pages host | null
+  isDefaultPagesHost,  // (host) → whether it is a GitHub default Pages host (`*.github.io`): an address, never a domain (home: `src/api-address.js`)
+  defaultAddressReason, // (url) → the ONE skip reason of every domain-managing reader (edge, domain, search, cloud, account, campaigns, captcha, advertising, verify live gate, web purge) for a default Pages host | null
+  apiAddress,          // (url, projectId, region = FUNCTIONS_REGION) → https://api.<hostname> | the functions address of omega_api on a *.github.io host (the backend passes its project.resourceZone) | '' (no url, or Pages with no project id). Home: `src/api-address.js`, browser-safe, also the `@omega.js/config/api-address` subpath and `@omega.js/client/modules/api-address.js`
+  FUNCTIONS_REGION,    // 'us-central1': the region apiAddress, the client's and desktop's getFunctionsUrl and the client's local functions url name (the backend reads its own `project.resourceZone`)
   TARGET_NAME_PATTERN, TARGET_TYPES, // the name slug rule and [web, backend, desktop, extension, mobile, custom]
   // The browser subset (#894): what a browser surface may see, and the one wrapper it is baked in
   clientConfig,        // (resolved + this build's facts) → the blob every browser surface bakes as OMEGA_BUILD_JSON.config

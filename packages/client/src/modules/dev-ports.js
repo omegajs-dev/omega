@@ -10,6 +10,7 @@
  * neither is a broken build and throws, naming the step that writes the map.
  */
 import { devFactMissing, envName, parsePort } from '@omega.js/config/dev-facts';
+import { FUNCTIONS_REGION } from './api-address.js';
 
 // A browser context has no `process`; only Node-side contexts carry the channel.
 function envPort(name) {
@@ -71,7 +72,7 @@ export function localApiUrl(ports, writer) {
  * @returns {string} the local functions base URL.
  */
 export function localFunctionsUrl(ports, projectId, writer) {
-  return `http://127.0.0.1:${requiredPort(ports, 'functions', writer)}/${projectId}/us-central1`;
+  return `http://127.0.0.1:${requiredPort(ports, 'functions', writer)}/${projectId}/${FUNCTIONS_REGION}`;
 }
 
 /**

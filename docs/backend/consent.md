@@ -175,7 +175,7 @@ The parent forwarder:
 
 1. Validates `?provider=X&key=Y` (same `OMEGA_WEBHOOK_KEY` env var — shared across all brands).
 2. Reads the `brands` collection from the parent's own Firestore.
-3. For each brand: derives the child API URL by inserting `api.` into the brand's URL (`https://somiibo.com` → `https://api.somiibo.com/omega/marketing/webhook?provider=X&key=Y`).
+3. For each brand: derives the child API URL as the `apiAddress` of the brand's URL (`https://somiibo.com` → `https://api.somiibo.com/omega/marketing/webhook?provider=X&key=Y`). A child on a default Pages host has no address there (a registry doc carries no project id), so it counts as a failed forward.
 4. POSTs the raw provider body to every child in parallel via `Promise.allSettled`.
 5. Returns 200 even if some children fail — idempotent child handlers make provider retries (and re-fans) safe.
 
@@ -273,12 +273,12 @@ Every other brand:
 }
 ```
 
-**Convention:** `parent` stores the parent's brand URL (matching the format of `brand.url`), NOT the API URL. The `api.` subdomain is inserted at call time by `omega.getParentApiUrl()`. This keeps stored config in one consistent format and lets the deployment convention (`api.` subdomain) live in one place.
+**Convention:** `parent` stores the parent's brand URL (matching the format of `brand.url`), NOT the API URL. The API address is derived at call time by `omega.getParentApiUrl()` (`apiAddress`). This keeps stored config in one consistent format and lets the deployment convention live in one place.
 
 **Three helpers** on the instance for working with this:
 
 - `omega.getParentUrl()`: returns the parent's website URL, `config.company.url`, else this brand's own `config.brand.url`.
-- `omega.getParentApiUrl()`: returns the parent's API URL (`https://api.{host}`). **Always live**: it does NOT redirect to localhost in dev mode, because you can't run two Firebase emulators simultaneously. The parent's API is always the production URL regardless of which environment THIS brand is in.
+- `omega.getParentApiUrl()`: returns the parent's API URL, its `apiAddress`: `https://api.{host}` on an owned host, the project's `omega_api` functions url on a default Pages host. Only a brand that IS its parent knows that project id, so a sub-brand's Pages-hosted parent answers `''`. **Always live**: it does NOT redirect to localhost in dev mode, because you can't run two Firebase emulators simultaneously. The parent's API is always the production URL regardless of which environment THIS brand is in.
 - `omega.isParent()`: boolean, true when the config names no company or `company: { id: 'self' }`.
 
 Only the @omega.js/backend where `omega.isParent()` returns true exposes `/marketing/webhook/forward`. Everywhere else, the route is invisible (404).

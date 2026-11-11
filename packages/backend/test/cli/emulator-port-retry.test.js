@@ -1,17 +1,19 @@
 /**
  * Test: a port taken between the allocator's probe and firebase-tools' bind bumps and retries ONCE, against the
  * real firebase-tools child on a throwaway project far from the classic ports. Node's own EADDRINUSE wording is
- * parse-level only: firebase-tools' pre-bind check always reports first. Run: npx omega test backend:cli/emulator-port-retry
+ * parse-level only: firebase-tools' pre-bind check always reports first.
+ * Run: cd brands/sandbox-brand/targets/backend && npx omega test backend:cli/emulator-port-retry
  */
 const fs = require('fs');
 const os = require('os');
 const net = require('net');
+const dgram = require('dgram');
 const path = require('path');
 const { spawn } = require('child_process');
 const jetpack = require('fs-jetpack');
 
 const EmulatorCommand = require('../../dist/cli/commands/emulator.js');
-const { isPortFree } = require('../../dist/vendor/config/index.js');
+const { isPortFree, CLASSIC_PORTS } = require('../../dist/vendor/config/index.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const frameworkPackage = require('../../package.json');
 
@@ -20,23 +22,33 @@ const frameworkPackage = require('../../package.json');
 const ALLOCATED_NAMES = ['auth', 'functions', 'firestore', 'database', 'hosting', 'storage', 'pubsub', 'ui'];
 const DECLARED_NAMES = [...ALLOCATED_NAMES, 'hub', 'logging', 'eventarc', 'tasks'];
 
-// Each project takes the first free 70-port window inside 49100-49499 from a random start, so no case boots
-// onto a port the last one used, or one a leftover on this machine still holds.
-let nextWindow = Math.floor(Math.random() * 5);
+// Each project takes the first free 70-port window inside 21100-21449 from a random start, so no case boots
+// onto a port the last one used, or one a leftover on this machine still holds. The windows sit below every
+// machine's short-lived socket range and clear of the classic ports, so no stray socket lands in one.
+const WINDOW_BASE = 21100;
+const WINDOW_COUNT = 5;
+let nextWindow = Math.floor(Math.random() * WINDOW_COUNT);
 
 const REALLOCATING = 'was taken while the stack came up; reallocating';
 
+/** The ports window `slot` (0 to WINDOW_COUNT - 1) declares: every declared name, and the websocket port. */
+function windowPorts(slot) {
+  const base = WINDOW_BASE + slot * 70;
+  const ports = Object.fromEntries(DECLARED_NAMES.map((name, index) => [name, base + index * 5]));
+  ports.websocket = base + 60;
+
+  return ports;
+}
+
 /** The declared ports of the first window, from the random start, that nothing on this machine holds. */
 async function freeWindowPorts() {
-  for (let tried = 0; tried < 5; tried++) {
-    const base = 49100 + (nextWindow++ % 5) * 70;
-    const ports = Object.fromEntries(DECLARED_NAMES.map((name, index) => [name, base + index * 5]));
-    ports.websocket = base + 60;
+  for (let tried = 0; tried < WINDOW_COUNT; tried++) {
+    const ports = windowPorts(nextWindow++ % WINDOW_COUNT);
 
     if ((await heldOf(Object.values(ports))).length === 0) return ports;
   }
 
-  throw new Error('every 70-port window in 49100-49499 has a held port, so no case has a place to boot');
+  throw new Error(`every 70-port window in ${WINDOW_BASE}-${WINDOW_BASE + WINDOW_COUNT * 70 - 1} has a held port, so no case has a place to boot`);
 }
 
 /**
@@ -116,6 +128,16 @@ function listen(port) {
 
     server.once('error', reject);
     server.listen({ port, host: '127.0.0.1' }, () => resolve(server));
+  });
+}
+
+/** A real UDP socket on the IPv4 wildcard at `port`, the way a stray short-lived socket would sit; returns close(). */
+function holdUdp(port) {
+  return new Promise((resolve, reject) => {
+    const socket = dgram.createSocket('udp4');
+
+    socket.once('error', reject);
+    socket.bind({ port }, () => resolve(() => new Promise((done) => socket.close(() => done()))));
   });
 }
 
@@ -217,13 +239,15 @@ require('net').createServer().listen(Number(port), '127.0.0.1', () => fs.writeFi
 // The run that dies: it starts the survivor in its own group and exits, so the survivor orphans to PID 1.
 const LAUNCHER_SOURCE = `require('child_process').spawn(process.execPath, process.argv.slice(1), { detached: true, stdio: 'ignore' }).unref();`;
 
-/** A port in 49480-49499 that nothing holds. */
+/** A port nothing holds, from the 20 that start 380 above the window base, clear of every window. */
 async function freeHighPort() {
-  for (let port = 49480; port < 49500; port++) {
+  const first = WINDOW_BASE + 380;
+
+  for (let port = first; port < first + 20; port++) {
     if (await isPortFree(port)) return port;
   }
 
-  throw new Error('every port in 49480-49499 is held, so the reap case has nowhere to listen');
+  throw new Error(`every port in ${first}-${first + 19} is held, so the reap case has nowhere to listen`);
 }
 
 module.exports = defineCases({
@@ -268,6 +292,37 @@ module.exports = defineCases({
           });
         } finally {
           await auth.release();
+          project.cleanup();
+        }
+      },
+    },
+
+    {
+      name: 'a-udp-socket-on-a-wanted-port-moves-that-name-before-the-first-attempt',
+      async run({ expect }) {
+        // firebase-tools on macOS counts a UDP socket as a taken port, so the allocator moves off it up front and
+        // the boot never spends its one retry on it.
+        const project = await makeProject();
+        const releaseUdp = await holdUdp(project.ports.auth);
+
+        try {
+          await withBumpedBoot(project, async ({ command }) => {
+            const stack = await command.startEmulators({ https: false });
+
+            try {
+              // Storage is the hold withBumpedBoot keeps, so it moves too.
+              const kept = ALLOCATED_NAMES.filter((name) => name !== 'auth' && name !== 'storage');
+              const keptPorts = (map) => Object.fromEntries(kept.map((name) => [name, map[name]]));
+
+              expect(command.activeAttempt, 'the stack came up on its first attempt').toBe(1);
+              expect(stack.emulatorPorts.auth, 'auth moved off the held UDP port').not.toBe(project.ports.auth);
+              expect(keptPorts(stack.emulatorPorts), 'every other name kept its wanted port').toEqual(keptPorts(project.ports));
+            } finally {
+              await stack.shutdown();
+            }
+          });
+        } finally {
+          await releaseUdp();
           project.cleanup();
         }
       },
@@ -364,6 +419,18 @@ module.exports = defineCases({
         expect(EmulatorCommand.addressInUsePort(nodeWording, [9099, 9001]), "node's own bind failure reads the same").toBe(9099);
         expect(EmulatorCommand.addressInUsePort('Error: listen EADDRINUSE: address already in use :::9099', [9099]), 'in its IPv6 form too').toBe(9099);
         expect(EmulatorCommand.addressInUsePort(nodeWording, [9001]), 'and names no bump for a port this run never asked for').toBe(null);
+      },
+    },
+
+    {
+      name: 'every-window-port-sits-below-the-short-lived-range-and-off-the-classic-ports',
+      run({ expect }) {
+        // A window inside the range a machine hands out for short-lived sockets meets a stray one by chance.
+        const declared = Array.from({ length: WINDOW_COUNT }, (_, slot) => Object.values(windowPorts(slot))).flat();
+        const classic = new Set(Object.values(CLASSIC_PORTS));
+
+        expect(declared.filter((port) => port >= 32768), 'every window port is below 32768').toEqual([]);
+        expect(declared.filter((port) => classic.has(port)), 'no window port is a classic port').toEqual([]);
       },
     },
 

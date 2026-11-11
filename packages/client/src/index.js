@@ -16,6 +16,7 @@ import { createMotion } from './modules/motion.js';
 import { createRequest, mergeUsageIntoBindings } from './modules/request.js';
 import { createLogger } from './modules/logger.js';
 import { pathPrefix } from './modules/path-prefix.js';
+import { FUNCTIONS_REGION, apiAddress } from './modules/api-address.js';
 import { loadOnce, loadFirestore, loadMessaging } from './modules/firebase-services.js';
 // The environment is the ONE module's, vendored in at prepare time like every
 // other shared contract this runtime hosts
@@ -799,7 +800,7 @@ class Omega {
       return localFunctionsUrl(this._providedDevPorts(), projectId, DEV_FACT_WRITER);
     }
 
-    return `https://us-central1-${projectId}.cloudfunctions.net`;
+    return `https://${FUNCTIONS_REGION}-${projectId}.cloudfunctions.net`;
   }
 
   getApiUrl(environment, url) {
@@ -819,17 +820,22 @@ class Omega {
       return localApiUrl(this._providedDevPorts(), DEV_FACT_WRITER);
     }
 
-    // The API rides the BRAND domain (api.<brand host>). Never derive from
-    // authDomain: it is an auth concern (the brand host, with /__/auth/*
-    // self-hosted at build time) and its value must stay free to change
-    // without moving the API base.
+    // The API rides the BRAND domain (api.<brand host>), or the functions
+    // address on a default Pages host. Never derive from authDomain: it is an
+    // auth concern (the brand host, with /__/auth/* self-hosted at build time)
+    // and its value must stay free to change without moving the API base.
     const brandUrl = this.config.brand?.url; // schema enforces an http(s) URL
     const baseUrl = url || brandUrl || window.location.origin;
 
-    // Prepend 'api.' subdomain, hostname-only (playground.omegajs.dev ->
-    // api.playground.omegajs.dev) — any path/port on brand.url is dropped,
-    // exactly like the desktop/extension url-helpers mirrors.
-    return `https://api.${new URL(baseUrl).hostname}`;
+    // This brand's project id addresses only this brand's own url: another
+    // url (the company's) on a default Pages host has no address here.
+    const ownUrl = !url || url === brandUrl;
+
+    const address = apiAddress(baseUrl, ownUrl ? this._resolveFirebaseConfig()?.projectId : undefined);
+    if (!address) {
+      throw new Error(`No API address for ${baseUrl}: a default Pages host needs cloud.config.projectId`);
+    }
+    return address;
   }
 
   isValidRedirectUrl(url) {

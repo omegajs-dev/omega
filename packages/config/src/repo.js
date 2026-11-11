@@ -16,16 +16,13 @@ const path = require('node:path');
 
 const { isPlainObject } = require('./merge.js');
 const { targetUrl, brandHost } = require('./targets.js');
+const { isDefaultPagesHost } = require('./api-address.js');
 // The two provider lists live in schema.js, with the rules that enumerate
 // them (the WINBACK_DURATIONS pattern), and are re-exported here: this module
 // is where every reader takes them from.
 const { REPO_PROVIDERS, HOSTING_PROVIDERS } = require('./schema.js');
 
 const DEFAULT_REPO_PROVIDER = 'github';
-
-// Every GitHub default Pages host (`<owner>.github.io`, and the bare form): a
-// url naming one is an ADDRESS, never a custom domain (#366).
-const DEFAULT_PAGES_HOST = /(^|\.)github\.io$/i;
 const DEFAULT_HOSTING_PROVIDER = 'github';
 
 /**
@@ -251,21 +248,10 @@ function pagesHost(config, name) {
 }
 
 /**
- * Whether a host is a GitHub default Pages host (`<owner>.github.io`, or the
- * bare form): an ADDRESS the hosting provider owns, never a domain a brand can
- * set a CNAME, a zone or a registrar on.
- * @param {string} host - A bare host, as `brandHost` returns it.
- * @returns {boolean}
- */
-function isDefaultPagesHost(host) {
-  return DEFAULT_PAGES_HOST.test(String(host || ''));
-}
-
-/**
  * The ONE skip reason of every domain-managing reader (the edge, domain,
- * search, cloud, account, campaigns and captcha services, the verify sweep's
- * live gate, the web purge): set when the url's host is a default Pages host,
- * so each skipper is one call.
+ * search, cloud, account, campaigns, captcha and advertising services, the
+ * verify sweep's live gate, the web purge): set when the url's host is a
+ * default Pages host, so each skipper is one call.
  * @param {string} [url] - A brand url, scheme optional; empty answers null.
  * @returns {string|null} The reason, or null when the url names a domain (or nothing).
  */
@@ -335,7 +321,6 @@ module.exports = {
   hostingProvider,
   pagesHost,
   pagesAddress,
-  isDefaultPagesHost,
   defaultAddressReason,
   brandVisibility,
 };

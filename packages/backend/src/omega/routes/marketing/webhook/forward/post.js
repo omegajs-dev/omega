@@ -14,11 +14,6 @@
  *     parent forwards the key it received (already validated) when calling
  *     each child.
  *
- * Brand URL derivation:
- *   - Each brand doc in the `brands` collection has `brand.url` (e.g. 'https://somiibo.com').
- *   - API URL is derived by inserting 'api.' subdomain: 'https://api.somiibo.com'.
- *   - Child receivers live at `/omega/marketing/webhook` on that host.
- *
  * Self-inclusion:
  *   - The parent's own brand IS included in the fan-out. The parent @omega.js/backend has
  *     its own user base (e.g. itwcreativeworks.com users) and needs the same
@@ -34,6 +29,7 @@
 const fetch = require('wonderful-fetch');
 const safeCompare = require('../../../../helpers/safe-compare.js');
 const env = require('../../../../libraries/env.js');
+const { apiAddress } = require('@omega.js/config/api-address');
 
 const CHILD_TIMEOUT_MS = 10000;
 
@@ -143,18 +139,15 @@ module.exports = async ({ ctx, omega }) => {
  * Returns { ok: true } on success, { ok: false, error } on failure.
  */
 async function forwardToChild({ ctx, brandId, brandUrl, provider, key, body }) {
-  // Derive API URL: brandUrl 'https://somiibo.com' → 'https://api.somiibo.com'.
-  // Use URL parsing so we tolerate trailing slashes and unusual hosts.
-  let apiUrl;
-  try {
-    const url = new URL(brandUrl);
-    url.hostname = `api.${url.hostname}`;
-    url.pathname = '/omega/marketing/webhook';
-    url.search = `?provider=${encodeURIComponent(provider)}&key=${encodeURIComponent(key)}`;
-    apiUrl = url.toString();
-  } catch (e) {
-    return { ok: false, error: `Invalid brand URL "${brandUrl}": ${e.message}` };
+  // The child receiver is `/omega/marketing/webhook` on the apiAddress of its
+  // registry doc's brand.url ('https://somiibo.com' → 'https://api.somiibo.com').
+  // A default Pages host needs a project id, which no registry doc carries.
+  const base = apiAddress(brandUrl);
+  if (!base) {
+    return { ok: false, error: `brand URL "${brandUrl}" derives no API address (invalid, or a default Pages host with no project id)` };
   }
+
+  const apiUrl = `${base}/omega/marketing/webhook?provider=${encodeURIComponent(provider)}&key=${encodeURIComponent(key)}`;
 
   try {
     const result = await fetch(apiUrl, {

@@ -136,6 +136,27 @@ module.exports = defineCases({
       },
     },
     {
+      name: 'production on a default Pages host gives the project\'s omega_api Cloud Functions address',
+      run: (ctx) => {
+        withEnv(NO_ENV, () => {
+          const omega = fakeOmega('production');
+          omega.config.brand.url = 'https://ian.github.io/site';
+          ctx.expect(helpers.getApiUrl(omega)).toBe('https://us-central1-demo-app.cloudfunctions.net/omega_api');
+        });
+      },
+    },
+    {
+      name: 'production on a default Pages host with no project id throws naming cloud.config.projectId',
+      run: (ctx) => {
+        withEnv(NO_ENV, () => {
+          const omega = fakeOmega('production');
+          omega.config.brand.url = 'https://ian.github.io/site';
+          delete omega.config.cloud;
+          ctx.expect(() => helpers.getApiUrl(omega)).toThrow(/cloud\.config\.projectId/);
+        });
+      },
+    },
+    {
       name: 'getFunctionsUrl: a BUMPED baked dev.ports.functions is the functions base',
       run: (ctx) => {
         withEnv(NO_ENV, () => {

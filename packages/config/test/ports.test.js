@@ -6,6 +6,7 @@
 // 42xxx range so parallel suites/CI don't collide with real services.
 
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const dgram = require('node:dgram');
 const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
@@ -13,6 +14,7 @@ const path = require('node:path');
 
 const {
   CLASSIC_PORTS,
+  FAMILY_UNAVAILABLE,
   isPortFree,
   resolvePorts,
   writePortsFile,
@@ -33,6 +35,17 @@ function block(port, host = '127.0.0.1') {
     server.once('error', reject);
     server.listen(host === null ? { port } : { port, host }, () => {
       resolve(() => new Promise((done) => server.close(done)));
+    });
+  });
+}
+
+/** Hold a real UDP socket on a port's wildcard (type 'udp4', or 'udp6' held IPv6-only); returns close(). */
+function holdUdp(port, type) {
+  return new Promise((resolve, reject) => {
+    const socket = dgram.createSocket(type === 'udp6' ? { type, ipv6Only: true } : type);
+    socket.once('error', reject);
+    socket.bind({ port }, () => {
+      resolve(() => new Promise((done) => socket.close(done)));
     });
   });
 }
@@ -130,6 +143,39 @@ module.exports = defineCases({
         }
 
         ctx.expect(await isPortFree(port), 'listener closed → free again').toBe(true);
+      },
+    },
+
+    {
+      name: 'isPortFree: a UDP socket on the IPv4 wildcard reads busy, and free once it closes',
+      run: async (ctx) => {
+        // firebase-tools on macOS counts a UDP socket as a taken port, so a TCP-only probe hands it one it refuses.
+        const close = await holdUdp(42870, 'udp4');
+        try {
+          ctx.expect(await isPortFree(42870), 'udp4 wildcard socket must read busy').toBe(false);
+        } finally {
+          await close();
+        }
+
+        ctx.expect(await isPortFree(42870), 'socket closed → free again').toBe(true);
+      },
+    },
+
+    {
+      name: 'isPortFree: a UDP socket on the IPv6 wildcard reads busy',
+      run: async (ctx) => {
+        let close;
+        try {
+          close = await holdUdp(42872, 'udp6');
+        } catch (error) {
+          if (!FAMILY_UNAVAILABLE.includes(error.code)) throw error;
+          ctx.skip(`no IPv6 on this host (${error.code})`);
+        }
+        try {
+          ctx.expect(await isPortFree(42872), 'udp6 wildcard socket must read busy').toBe(false);
+        } finally {
+          await close();
+        }
       },
     },
 

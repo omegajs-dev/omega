@@ -30,6 +30,7 @@
  * that port.
  */
 
+const dgram = require('dgram');
 const fs = require('fs');
 const net = require('net');
 const path = require('path');
@@ -65,10 +66,14 @@ const PORTS_FILE = 'ports.json';
 // mkcert proxy). An assumption, and every fallback says so out loud (#262).
 const CLASSIC_DEV_ORIGIN = `https://localhost:${CLASSIC_PORTS.website}`;
 
+// The bind errors that mean "this host has no such address family" (no IPv6),
+// which a probe reads as free rather than busy.
+const FAMILY_UNAVAILABLE = ['EADDRNOTAVAIL', 'EAFNOSUPPORT', 'EINVAL'];
+
 /**
  * Attempt one bind (the probe primitive). On macOS/BSD, wildcard and
- * specific-address listeners COEXIST on the same port — so no single bind
- * can see every listener; isPortFree composes four.
+ * specific-address listeners COEXIST on the same port, so no single bind
+ * can see every listener; isPortFree composes four TCP binds and two UDP.
  * @param {object} listenOptions - net listen options ({ port } = wildcard).
  * @param {boolean} [ignoreMissingFamily] - Treat address-family-unavailable
  *   errors (no IPv6 on this host) as free rather than busy.
@@ -78,7 +83,7 @@ function bindProbe(listenOptions, ignoreMissingFamily = false) {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once('error', (error) => {
-      if (ignoreMissingFamily && ['EADDRNOTAVAIL', 'EAFNOSUPPORT', 'EINVAL'].includes(error.code)) {
+      if (ignoreMissingFamily && FAMILY_UNAVAILABLE.includes(error.code)) {
         return resolve(true);
       }
       resolve(false);
@@ -90,16 +95,37 @@ function bindProbe(listenOptions, ignoreMissingFamily = false) {
 }
 
 /**
- * Is this port free for a dev server to take? Bind-probe, not connect-probe
- * — and FOUR binds, because on macOS/BSD specific-address and wildcard
- * listeners coexist per port, and so do the two wildcard families: a
- * 127.0.0.1 probe misses an IPv6-wildcard listener (`*:port`), a wildcard
- * probe misses a 127.0.0.1-specific one, a `localhost` server can sit on ::1
- * alone, and the bare-`{ port }` bind lands on the IPv6 wildcard `::`, which
- * coexists with a foreign `0.0.0.0` holder (Docker, `nc -l`, any
- * non-loopback dev server). Free means all of 127.0.0.1, ::1 (when the host
- * has IPv6), 0.0.0.0, and the `::` wildcard bind succeed — matching what
- * firebase-tools' own connect-probe will conclude at boot.
+ * Attempt one UDP bind on a family's wildcard (the UDP twin of bindProbe),
+ * with no address reuse, so any UDP socket already on the port fails it.
+ * @param {'udp4'|'udp6'} type - Socket type; picks the wildcard (0.0.0.0 or ::).
+ * @param {number} port - Port to probe.
+ * @returns {Promise<boolean>} True when the bind succeeded. A host with no
+ *   IPv6 reads free for `udp6`.
+ */
+function udpProbe(type, port) {
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket(type);
+    socket.once('error', (error) => {
+      socket.close();
+      if (type === 'udp6' && FAMILY_UNAVAILABLE.includes(error.code)) {
+        return resolve(true);
+      }
+      resolve(false);
+    });
+    socket.bind({ port, address: type === 'udp4' ? '0.0.0.0' : '::' }, () => {
+      socket.close(() => resolve(true));
+    });
+  });
+}
+
+/**
+ * Is this port free for a dev server to take? SIX binds, all must succeed.
+ * Four TCP (127.0.0.1, ::1, 0.0.0.0, and the bare `::` wildcard): on
+ * macOS/BSD specific-address and wildcard listeners coexist per port, and
+ * so do the two wildcard families, so any single bind misses a holder.
+ * Two UDP (the 0.0.0.0 and `::` wildcards): firebase-tools' macOS check
+ * (`lsof -i :<port> -sTCP:LISTEN`) still lists a UDP socket as taken.
+ * A host with no IPv6 skips ::1 and the UDP `::`.
  * @param {number} port - Port to probe.
  * @returns {Promise<boolean>} True when the port is free.
  */
@@ -107,7 +133,9 @@ async function isPortFree(port) {
   return (await bindProbe({ port, host: '127.0.0.1' }))
     && (await bindProbe({ port, host: '::1' }, true))
     && (await bindProbe({ port, host: '0.0.0.0' }))
-    && (await bindProbe({ port }));
+    && (await bindProbe({ port }))
+    && (await udpProbe('udp4', port))
+    && (await udpProbe('udp6', port));
 }
 
 /**
@@ -354,6 +382,7 @@ function envPorts(env = process.env) {
 module.exports = {
   CLASSIC_PORTS,
   CLASSIC_DEV_ORIGIN,
+  FAMILY_UNAVAILABLE,
   isPortFree,
   resolvePorts,
   writePortsFile,

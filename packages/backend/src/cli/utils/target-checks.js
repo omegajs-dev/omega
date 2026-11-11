@@ -128,7 +128,7 @@ async function runTargetChecks(main) {
   // index sync, campaign seeding). ensureTarget() guarantees .firebaserc.
   main.projectId = main.firebaseRC.projects?.default;
   main.projectUrl = `https://console.firebase.google.com/project/${main.projectId}`;
-  main.apiUrl = `https://api.${(main.omegaConfigJSON.brand?.url || '').replace(/^https?:\/\//, '')}`;
+  main.apiUrl = omegaConfig.apiAddress(main.omegaConfigJSON.brand?.url || '', main.projectId);
 
   const tests = testRegistry.getTests({
     main,

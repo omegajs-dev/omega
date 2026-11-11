@@ -20,16 +20,16 @@ const chalk = require('chalk').default;
 const jetpack = require('fs-jetpack');
 
 const { TARGET_FRAMEWORKS } = require('../../../config.js');
-const { sourceRepo, targetUrl, hasLogoSources, BRANDMARK_PNG_DEST } = require('@omega.js/config');
+const { sourceRepo, targetUrl, hasLogoSources, BRANDMARK_PNG_DEST, apiAddress, defaultAddressReason } = require('@omega.js/config');
 const { recordDeploy, readDeployRecord } = require('@omega.js/devkit/deploy-record');
 const { resolvePackageRealDir } = require('@omega.js/devkit/local');
 
 const MAX_RETRIES = 3;
 const MAX_FILES_SHOWN = 10;
 
-// Mirrors @omega.js/backend: getApiUrl() serves from the `api.` subdomain and
+// Mirrors @omega.js/backend: the API sits at apiAddress (api.<host> on an owned
+// host, the project's omega_api functions url on a default Pages host) and
 // mounts its routes under /omega (packages/backend route prefix)
-const API_SUBDOMAIN = 'api';
 const API_HEALTH_PATH = '/omega/health';
 
 // The identity files a deployed site serves from the brand's minted set: the
@@ -370,7 +370,7 @@ async function checkBrandAssets(recorder, entry, ctx) {
 
 /**
  * API health check — the deployed backend answers on
- * https://api.{host}{API_HEALTH_PATH}, plus a deployed-version comparison
+ * {apiAddress}{API_HEALTH_PATH}, plus a deployed-version comparison
  * from the health payload. Skipped for shared Firebase projects (the owning
  * brand deploys the backend).
  */
@@ -388,8 +388,12 @@ async function checkApiHealth(recorder, entry, ctx) {
     return;
   }
 
-  const host = baseUrl.replace(/^https?:\/\//, '');
-  const apiUrl = `https://${API_SUBDOMAIN}.${host}${API_HEALTH_PATH}`;
+  const api = apiAddress(baseUrl, ctx.brandConfig.cloud?.config?.projectId);
+  if (!api) {
+    recorder.note(name, defaultAddressReason(baseUrl));
+    return;
+  }
+  const apiUrl = `${api}${API_HEALTH_PATH}`;
 
   if (ctx.dryRun) {
     recorder.would(`fetch ${apiUrl}`);

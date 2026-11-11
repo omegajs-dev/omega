@@ -14,7 +14,7 @@
 const { execFileSync } = require('node:child_process');
 const chalk = require('chalk').default;
 const { WebSocketServer } = require('ws');
-const { sourceRepo } = require('@omega.js/config');
+const { sourceRepo, apiAddress } = require('@omega.js/config');
 const { isInteractive } = require('@omega.js/devkit/prompt');
 const { resolveExtensionPort } = require('../../../lib/automation-client.js');
 
@@ -140,8 +140,9 @@ function generateLinks(brandConfig, targets = [], extras = {}) {
   if (brandUrl) {
     liveLinks.push({ title: 'Website', url: brandUrl });
   }
-  if (domain && targets.some((entry) => entry.target === 'backend')) {
-    liveLinks.push({ title: 'API', url: `https://api.${domain}` });
+  const api = apiAddress(brandUrl, firebaseProjectId);
+  if (api && targets.some((entry) => entry.target === 'backend')) {
+    liveLinks.push({ title: 'API', url: api });
   }
   if (liveLinks.length > 0) {
     links.Live = liveLinks;

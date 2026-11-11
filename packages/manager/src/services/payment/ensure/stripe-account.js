@@ -3,9 +3,12 @@
  * (name, url, support email, support url). Diff-then-update; account
  * updates aren't supported on every account type (org sub-accounts), so an
  * update failure warns instead of erroring. Disable entirely with
- * payment.providers.stripe.updateAccountInfo = false.
+ * payment.providers.stripe.updateAccountInfo = false. A brand on a default
+ * Pages host derives no support email from its host: with no
+ * brand.contact.email the step skips with the default-address reason.
  */
 const chalk = require('chalk').default;
+const { defaultAddressReason } = require('@omega.js/config');
 
 /**
  * Build desired account settings from brand config
@@ -52,6 +55,12 @@ module.exports = async function ensureStripeAccount(context) {
   if (brandConfig.payment?.providers?.stripe?.updateAccountInfo === false) {
     console.log(`      ${chalk.dim('⊘ Account updates disabled (updateAccountInfo = false)')}`);
     return {};
+  }
+
+  const pagesReason = brandConfig.brand.contact?.email ? null : defaultAddressReason(brandConfig.brand.url);
+  if (pagesReason) {
+    console.log(`      ${chalk.dim(`⊘ ${pagesReason}`)}`);
+    return { output: { stripeAccount: { reason: pagesReason } } };
   }
 
   let account;

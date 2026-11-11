@@ -1,30 +1,46 @@
 /**
- * The parent forwarder's host, and the two reasons a marketing webhook is not
- * configured at all: the ONE copy both provider services read
+ * The parent forwarder's API address, and the reasons a marketing webhook is
+ * not configured at all: the ONE copy both provider services read
  * ([#677](https://github.com/Omega-JS-Stack/omega/issues/677)).
  *
  * Every provider webhook OMEGA manages points at the parent @omega.js/backend's
- * `/omega/marketing/webhook/forward` endpoint, addressed by the RESOLVED
- * `company.url` (this brand's own url when it names no company). So the opt-out,
- * the no-parent refusal and the host derivation are one decision, made here, and
- * a provider service only spells its own provider and its own payload.
+ * `/omega/marketing/webhook/forward` endpoint, on the `apiAddress` of the
+ * RESOLVED `company.url` (this brand's own url when it names no company). So the
+ * opt-out, the no-parent refusal and the address are one decision, made here,
+ * and a provider service only spells its own provider and its own payload.
  */
 const chalk = require('chalk').default;
+const { apiAddress, defaultAddressReason } = require('@omega.js/config');
 
 /**
- * Resolve the parent host a managed webhook points at.
+ * The parent's Firebase project id: the brand's own when the brand IS its
+ * parent (no company, or `self`), else the company layer's.
+ * @param {object} context - The service context (`brandConfig`, `companyConfig`).
+ * @returns {string|undefined}
+ */
+function parentProjectId(context) {
+  const { brandConfig, companyConfig } = context;
+  const id = brandConfig.company?.id;
+  const own = !id || id === 'self' ? brandConfig.cloud?.config?.projectId : undefined;
+
+  return companyConfig?.cloud?.config?.projectId || own;
+}
+
+/**
+ * Resolve the parent API address a managed webhook points at. Prints the skip
+ * lines itself, so both services say the same thing the same way.
  *
- * Prints the skip lines itself, so both services say the same thing the same
- * way; the returned reason is what the caller branches on.
- *
- * @param {object} company - The RESOLVED `brandConfig.company` (may be absent).
+ * @param {object} context - The service context: its `brandConfig` (the
+ *   RESOLVED `company` may be absent) and `companyConfig` (the company layer).
  * @param {string} what - What is being configured, for the lines ('webhook',
  *   'Event Webhook').
- * @returns {{ skip: string }|{ parentHost: string }} `skip` names the reason
- *   ('opted-out', 'no-url'); otherwise the host, with no protocol and no
- *   trailing slash.
+ * @returns {{ skip: string }|{ parentApi: string }} `skip` names the reason
+ *   ('opted-out', 'no-url', or the default-address reason); otherwise the
+ *   parent's `apiAddress`.
  */
-function resolveParentHost(company, what) {
+function resolveParentHost(context, what) {
+  const company = context.brandConfig.company;
+
   // The provider ACCOUNT can be somebody else's, which nothing in the company
   // TOPOLOGY says: the playground's SendGrid account is ITW's, and repointing
   // that account's one Event Webhook would break a production forwarder.
@@ -42,9 +58,17 @@ function resolveParentHost(company, what) {
     return { skip: 'no-url' };
   }
 
-  // The company's own host: its url IS this brand's when it names no company,
-  // which is what the old `parent: 'self'` spelled by hand.
-  return { parentHost: resolved.url.replace(/^https?:\/\//, '').replace(/\/$/, '') };
+  // The company's own API: its url IS this brand's when it names no company,
+  // which is what the old `parent: 'self'` spelled by hand. A Pages-hosted
+  // parent with no project id has no API address to point at.
+  const parentApi = apiAddress(resolved.url, parentProjectId(context));
+  if (!parentApi) {
+    const reason = defaultAddressReason(resolved.url);
+    console.log(chalk.dim(`      ⊘ ${reason}`));
+    return { skip: reason };
+  }
+
+  return { parentApi };
 }
 
 module.exports = { resolveParentHost };

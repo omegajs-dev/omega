@@ -18,7 +18,7 @@ const jetpack = require('fs-jetpack');
 const { input, checkbox, confirm } = require('@omega.js/devkit/prompt');
 const { readOrigin } = require('@omega.js/devkit/git-remote');
 const { missingMachineTools, machineToolLine } = require('@omega.js/devkit/machine-tools');
-const { TARGETS, targetEntries, resolveCompany, deriveBundleIdPrefix, sourceRepo, repoDrift, getAtPath } = require('@omega.js/config');
+const { TARGETS, targetEntries, resolveCompany, deriveBundleIdPrefix, sourceRepo, repoDrift, getAtPath, defaultAddressReason } = require('@omega.js/config');
 
 const { TARGET_FRAMEWORKS, DEFAULTS } = require('./config.js');
 const { resolveBrandRoot, loadBrand } = require('./lib/brand.js');
@@ -106,7 +106,10 @@ function deriveUrl(id) {
   return `https://${id.replace(/-/g, '')}.com`;
 }
 
+/** The support address on the brand's own host; '' on a default Pages host, which is no mail domain. */
 function deriveEmail(url) {
+  if (defaultAddressReason(url)) return '';
+
   const host = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   return `support@${host}`;
 }
@@ -202,11 +205,12 @@ function parseAdminsFlag(value) {
  * The accounts step: the --admins flag, else show the list the brand
  * inherits and let the owner keep it (nothing written: the source layer
  * keeps owning it) or define the brand's own, which lands as account.admins
- * in its omega.json5.
+ * in its omega.json5. The first ask offers `support@{domain}` only when the
+ * brand url derives a support email at all (never on a default Pages host).
  *
  * @returns {Array|null} Customized entries, or null to inherit
  */
-async function collectAccountAdmins(inherited, interactive, flag) {
+async function collectAccountAdmins(inherited, interactive, flag, url) {
   if (flag != null) {
     return parseAdminsFlag(flag);
   }
@@ -233,7 +237,7 @@ async function collectAccountAdmins(inherited, interactive, flag) {
   do {
     const email = (await input({
       message: `Account email (${'{domain}'} = brand domain):`,
-      ...(entries.length === 0 ? { default: 'support@{domain}' } : {}),
+      ...(entries.length === 0 && deriveEmail(url) ? { default: 'support@{domain}' } : {}),
       validate: (value) => (isAdminEmail(value) ? true : 'Must be an email address'),
     })).trim();
     const account = await confirm({ message: 'Manage the Firebase Auth account (create + admin role + top plan)?', default: true });
@@ -348,7 +352,7 @@ async function collectAnswers(options, interactive, brandRoot, origin) {
 
   // accounts — inherit by default (null writes nothing); customizing lands
   // the brand's own account.admins
-  const accountAdmins = await collectAccountAdmins(inheritedAdmins(company), interactive, options.admins);
+  const accountAdmins = await collectAccountAdmins(inheritedAdmins(company), interactive, options.admins, url);
 
   return {
     id,
@@ -715,6 +719,7 @@ module.exports = {
   deriveId,
   deriveName,
   deriveUrl,
+  deriveEmail,
   idFromRepoName,
   spawnDev,
 };

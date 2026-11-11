@@ -18,7 +18,7 @@
  */
 const { join } = require('node:path');
 const jetpack = require('fs-jetpack');
-const { hasTargetOfType, defaultAddressReason } = require('@omega.js/config');
+const { hasTargetOfType, defaultAddressReason, apiAddress } = require('@omega.js/config');
 const { SERVICE_ACCOUNT_REL } = require('@omega.js/devkit/service-account');
 
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -66,7 +66,7 @@ module.exports.run = createServiceRunner({
     // without it, password verification and backend calls degrade (handled
     // per-operation)
     const apiKey = context.brandConfig.cloud?.config?.apiKey || null;
-    const apiBaseUrl = `https://api.${domain}`;
+    const apiBaseUrl = apiAddress(context.brandConfig.brand.url, context.brandConfig.cloud?.config?.projectId);
 
     // Tests inject fakes via context
     let authAdmin = context.authAdmin;

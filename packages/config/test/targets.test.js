@@ -201,6 +201,22 @@ module.exports = defineCases({
       },
     },
 
+    {
+      name: 'targetUrl: on a default Pages host the backend is the Cloud Functions address and a desktop has no url',
+      run: (ctx) => {
+        const config = {
+          brand: { id: 'dreamr', name: 'Dreamr', url: 'https://dreamr-design.github.io/dreamr-web' },
+          repo: { owner: 'dreamr-design' },
+          cloud: { config: { projectId: 'dreamr-app' } },
+          targets: { web: { type: 'web' }, admin: { type: 'web' }, backend: { type: 'backend' }, desktop: { type: 'desktop' } },
+        };
+
+        ctx.expect(targetUrl(config, 'backend')).toBe('https://us-central1-dreamr-app.cloudfunctions.net/omega_api');
+        ctx.expect(targetUrl(config, 'desktop'), 'no api.<owner>.github.io-style host nobody serves').toBe(null);
+        ctx.expect(targetUrl(config, 'admin'), 'a sibling web target keeps its own Pages address').toBe('https://dreamr-design.github.io/dreamr-admin');
+      },
+    },
+
     // ─── targetPortOffset ───
 
     {

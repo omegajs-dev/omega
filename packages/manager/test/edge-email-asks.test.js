@@ -41,12 +41,15 @@ const EMAIL_ASK_CONFIG = `{
 const MAILGUN_MX = { id: 'mx-mailgun', type: 'MX', name: DOMAIN, content: 'mxa.mailgun.org', priority: 10, comment: 'Squarespace email forwarding' };
 const PRIVATEEMAIL_MX = { id: 'mx-private', type: 'MX', name: DOMAIN, content: 'mx1.privateemail.com', priority: 10, comment: 'Private email forwarding (Namecheap)' };
 
-// A live prompt's idle render opens on a bare `? `; its answered render on `✔`
+// A live prompt's idle render opens on a bare `? `; its answered render on a tick
 const LIVE_PROMPT = /(?:^|\n|\x1b\[G|\x1b\[\?25h)\? /;
+// The tick the prompt library draws: the heavy check on a unicode terminal, the
+// root sign under a plain one (TERM=linux)
+const ANSWER_MARK = /[\u2714\u221A]/;
 
 /**
  * A fake terminal that answers its prompts in order, whatever their wording:
- * each answer waits for the next live prompt, types, then waits for its ✔.
+ * each answer waits for the next live prompt, types, then waits for its tick.
  */
 function promptSequence() {
   const streams = makeStreams({ tty: true });
@@ -73,8 +76,8 @@ function promptSequence() {
       await until(promptShown, 'the next prompt');
       const typedAt = streams.getRendered().length;
       streams.input.write(keys);
-      await until((rendered) => rendered.includes('✔', typedAt), 'the answer to land');
-      cursor = streams.getRendered().indexOf('✔', typedAt) + 1;
+      await until((rendered) => ANSWER_MARK.test(rendered.slice(typedAt)), 'the answer to land');
+      cursor = typedAt + streams.getRendered().slice(typedAt).search(ANSWER_MARK) + 1;
     },
     /** Await `run`, failing the moment it opens a prompt instead of finishing. */
     async noPromptDuring(run) {

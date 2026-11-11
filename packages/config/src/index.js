@@ -46,11 +46,12 @@ const { WINDOWS_SIGNING_STRATEGIES, DEFAULT_WINDOWS_SIGNING_STRATEGY, WINDOWS_CL
 const { resolveWinbackOffer, WINBACK_OFFER_DEFAULTS, WINBACK_DURATIONS } = require('./winback.js');
 const { PAYMENT_PROVIDERS, paymentProvider } = require('./payment-providers.js');
 const { SUBSCRIPTION_CADENCES } = require('./payment-cadences.js');
-const { REPO_PROVIDERS, HOSTING_PROVIDERS, repoBlock, sourceRepo, repoDrift, repoMissing, releasesRepo, websiteRepo, hostingProvider, pagesHost, pagesAddress, isDefaultPagesHost, defaultAddressReason, brandVisibility } = require('./repo.js');
+const { REPO_PROVIDERS, HOSTING_PROVIDERS, repoBlock, sourceRepo, repoDrift, repoMissing, releasesRepo, websiteRepo, hostingProvider, pagesHost, pagesAddress, defaultAddressReason, brandVisibility } = require('./repo.js');
+const { FUNCTIONS_REGION, isDefaultPagesHost, apiAddress } = require('./api-address.js');
 const { isDemoProject } = require('./demo.js');
 const { deriveBundleIdPrefix, composeBundleId } = require('./bundle-id.js');
 const { DEV_FACT_CHANNEL, devFactMissing } = require('./dev-facts.js');
-const { CLASSIC_PORTS, CLASSIC_DEV_ORIGIN, isPortFree, resolvePorts, writePortsFile, readPortsFile, clearPortsFile, readSiblingPorts, readSiblingOrigin, envName, portsToEnv, envPort, envPorts } = require('./ports.js');
+const { CLASSIC_PORTS, CLASSIC_DEV_ORIGIN, FAMILY_UNAVAILABLE, isPortFree, resolvePorts, writePortsFile, readPortsFile, clearPortsFile, readSiblingPorts, readSiblingOrigin, envName, portsToEnv, envPort, envPorts } = require('./ports.js');
 const { TARGET_NAME_PATTERN, TARGET_TYPES, targetEntries, targetsOfType, hasTargetOfType, targetPath, targetNameFromDir, targetUrl, targetPortOffset, brandHost } = require('./targets.js');
 
 module.exports = {
@@ -273,6 +274,10 @@ module.exports = {
   pagesAddress,
   isDefaultPagesHost,
   defaultAddressReason,
+  // The brand's ONE API address (api.<host>, or the functions address on a
+  // default Pages host) and the region it names
+  apiAddress,
+  FUNCTIONS_REGION,
   // Visibility has ONE statement, the brand root's package.json `private`
   brandVisibility,
 
@@ -320,6 +325,7 @@ module.exports = {
 
   CLASSIC_PORTS,
   CLASSIC_DEV_ORIGIN,
+  FAMILY_UNAVAILABLE,
   isPortFree,
   resolvePorts,
   writePortsFile,

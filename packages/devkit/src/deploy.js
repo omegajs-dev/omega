@@ -308,7 +308,7 @@ function checkLaneLockfile(lane, steps) {
  * @param {string} [options.token] - GitHub token for the snapshot push.
  * @param {string} [options.message] - Snapshot commit message.
  * @param {object} [options.logger] - Logger with `log` (silent when omitted).
- * @param {function} [options.fetchFn] - Injectable fetch (the ref wait, tests).
+ * @param {function} [options.fetchFn] - Injectable fetch (the re-root and the ref wait, tests).
  * @param {object} [options.steps] - Lane step overrides (tests).
  * @returns {Promise<{ sha: string|null }>} the sha the snapshot landed at, and
  *   null on a lane that pushes none
@@ -384,13 +384,14 @@ async function deliverLane(options) {
   let sha;
 
   try {
-    sha = steps.push({
+    sha = await steps.push({
       brandRoot: lane.brandRoot,
       owner: options.owner,
       repo: options.repo,
       ref,
       token: options.token,
       message: options.message,
+      fetchFn: options.fetchFn,
       // What the stage just wrote has to reach the runner, so the push
       // force-adds it past any ignore rule.
       require: staging ? [STAGING_DIR, 'package-lock.json'] : [],

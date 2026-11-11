@@ -102,7 +102,7 @@ const WRITEBACK_CONFIG = `// Fixture Brand — hand-edited writeback target
 }
 `;
 
-function runService(config, { beehiiv, options = {}, serviceData = {}, webhookKey = true, brandRoot } = {}) {
+function runService(config, { beehiiv, options = {}, serviceData = {}, webhookKey = true, brandRoot, companyConfig } = {}) {
   if (webhookKey) {
     process.env.OMEGA_WEBHOOK_KEY = WEBHOOK_KEY;
   } else {
@@ -119,6 +119,7 @@ function runService(config, { beehiiv, options = {}, serviceData = {}, webhookKe
     options,
     serviceData,
     beehiivApi: beehiiv,
+    companyConfig,
   });
 }
 
@@ -514,6 +515,39 @@ module.exports = defineCases({
 
         ctx.expect(result.status).toBe('success');
         ctx.expect(api.callsTo('listWebhooks').length).toBe(0);
+        ctx.expect(result.output.webhook).toBe(undefined);
+      },
+    },
+
+    {
+      name: 'newsletter: a company on a default Pages host points the webhook at its project\'s Cloud Functions forwarder',
+      run: async (ctx) => {
+        const api = fakeBeehiiv({
+          ...convergedResponses(),
+          listWebhooks: [],
+          createWebhook: { data: { id: 'wh_new' } },
+        });
+
+        const result = await runService(
+          brandConfig({ publicationId: PUB_ID, company: { id: 'parent-brand', url: 'https://parent-org.github.io/parent-brand-web', images: {} } }),
+          { beehiiv: api, companyConfig: { cloud: { config: { projectId: 'parent-app' } } } },
+        );
+
+        ctx.expect(result.status).toBe('success');
+        ctx.expect(api.callsTo('createWebhook')[0].args[1].url)
+          .toBe(`https://us-central1-parent-app.cloudfunctions.net/omega_api/omega/marketing/webhook/forward?provider=beehiiv&key=${WEBHOOK_KEY}`);
+      },
+    },
+
+    {
+      name: 'newsletter: a company on a default Pages host with no project id is no forwarder to point the webhook at',
+      run: async (ctx) => {
+        const api = fakeBeehiiv(convergedResponses());
+
+        const result = await runService(brandConfig({ publicationId: PUB_ID, company: { id: 'parent-brand', url: 'https://parent-org.github.io/parent-brand-web', images: {} } }), { beehiiv: api });
+
+        ctx.expect(result.status).toBe('success');
+        ctx.expect(api.callsTo('listWebhooks').length, 'never api.parent-org.github.io, a host nobody serves').toBe(0);
         ctx.expect(result.output.webhook).toBe(undefined);
       },
     },

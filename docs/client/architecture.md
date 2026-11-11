@@ -74,7 +74,7 @@ Omega (index.js)
 `initialize(config)` boots Firebase only when a usable web SDK config resolves:
 
 - `_resolveFirebaseConfig()` checks `cloud.config` first (the omega.json5 role shape — desktop passes its resolved config through), then the nested `firebase.app.config` (the web/extension bridge contract shape). A blob only counts when **at least one value is non-empty** — framework config merges (e.g. UJM's Jekyll chain) inject all-empty-string blobs into Firebase-less sites, and those resolve to `null` (no init, no URL derivation).
-- Initialization additionally requires a **non-empty `apiKey`** — the SDK cannot boot without one (it crashes the page with `auth/invalid-api-key`). Configs carrying only `projectId` still resolve so `getFunctionsUrl()` can derive its URL (`getApiUrl()` derives from `brand.url`, not the Firebase blob), but Firebase itself stays uninitialized and the console logs `[Firebase] Skipped: config has no apiKey ...` (same idiom as `[Analytics] Skipped:`).
+- Initialization additionally requires a **non-empty `apiKey`**: the SDK cannot boot without one (it crashes the page with `auth/invalid-api-key`). Configs carrying only `projectId` still resolve so `getFunctionsUrl()` can derive its URL (`getApiUrl()` derives from `brand.url` through `apiAddress`, which reads the blob's `projectId` only on a default Pages host), but Firebase itself stays uninitialized and the console logs `[Firebase] Skipped: config has no apiKey ...` (same idiom as `[Analytics] Skipped:`).
 
 ### What boot loads, and what waits for first use
 

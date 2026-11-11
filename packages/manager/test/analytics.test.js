@@ -432,6 +432,36 @@ module.exports = defineCases({
       },
     },
 
+    {
+      name: 'analytics: a brand on a default Pages host streams its website and its Cloud Functions API, and no other target',
+      run: async (ctx) => {
+        let nextId = 400;
+        const api = fakeAnalytics({
+          ...convergedResponses(),
+          listDataStreams: [],
+          listFirebaseLinks: [{ name: `properties/${PROPERTY}/firebaseLinks/fl1`, project: `projects/${PROJECT}` }],
+          createWebDataStream: (propertyId, { defaultUri, displayName }) => ({
+            name: `properties/${PROPERTY}/dataStreams/${++nextId}`,
+            type: 'WEB_DATA_STREAM',
+            displayName,
+            webStreamData: { defaultUri, measurementId: `G-NEW${nextId}` },
+          }),
+        });
+
+        const config = brandConfig({
+          url: 'https://dreamr-design.github.io/dreamr-web',
+          targets: { web: { type: 'web' }, backend: { type: 'backend' }, desktop: { type: 'desktop' } },
+        });
+        const result = await runService(config, { analytics: api });
+
+        ctx.expect(api.callsTo('createWebDataStream').map((call) => call.args[1])).toEqual([
+          { defaultUri: 'https://dreamr-design.github.io/dreamr-web', displayName: 'Fixture Brand - Website' },
+          { defaultUri: `https://us-central1-${PROJECT}.cloudfunctions.net/omega_api`, displayName: 'Fixture Brand - Backend' },
+        ]);
+        ctx.expect(Object.keys(result.output.streams.resolved), 'a desktop has no address on a Pages host').toEqual(['web', 'backend']);
+      },
+    },
+
     // ─── Measurement id → config (#417) ──────────────────────────────────────────
     // Before this, stream ids only ever reached .omega/state.json, so a brand's
     // configured `analytics.providers.google.id` stayed null (the playground's

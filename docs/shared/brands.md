@@ -32,7 +32,7 @@ Secrets live only in `.env`/`.omega/secrets` (gitignored; the config loader hard
 
 Added with Ian 2026-07-17. Id `daily-build`, url dailybuild.omegajs.dev (same subdomain rule). The standing SECOND-SKIN brand: a fictional dev-news publication wearing the newsflash theme permanently, so both first-party skins stay alive in real consumers (classy = playground, newsflash = here). Born by COPY of the playground — the wizard rehearsal is a separate queued exercise. OFFLINE-only (demo-* Firebase, no real cloud/services, never production); website + backend targets only; website dev port pinned 4100 for side-by-side, backend rides N7 bumps.
 
-It plays the SUB-BRAND in the company-mode ads proof, so its company is the playground (`company: { id: "playground" }`, [#677](https://github.com/Omega-JS-Stack/omega/issues/677)): `advertising.providers.inhouse.source: 'company'` derives `api.<company host>` from the RESOLVED `company.url`, which is the playground's own url once any playground run has written its registry line on this machine (`test/e2e/verts-company.test.js` is the proof).
+It plays the SUB-BRAND in the company-mode ads proof, so its company is the playground (`company: { id: "playground" }`, [#677](https://github.com/Omega-JS-Stack/omega/issues/677)): `advertising.providers.inhouse.source: 'company'` derives the company's API address (`api.<company host>`; a company on a default Pages host has none from a sub-brand) from the RESOLVED `company.url`, which is the playground's own url once any playground run has written its registry line on this machine (`test/e2e/verts-company.test.js` is the proof).
 
 ### `../omega-omega` — the REAL brand (sibling repo)
 

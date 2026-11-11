@@ -239,6 +239,33 @@ module.exports = defineCases({
       },
     },
 
+    {
+      name: 'Omega methods > a brand on a default Pages host reaches its API at the project\'s Cloud Functions address',
+      run: async (ctx) => {
+        await beforeEachHook();
+        const omega = getOmega();
+        await omega.initialize({
+          ...TEST_CONFIG,
+          brand: { ...TEST_CONFIG.brand, url: 'https://ian.github.io/site' },
+          firebase: { app: { enabled: false, config: { projectId: 'omegajs-playground' } } },
+        });
+        ctx.expect(omega.getApiUrl()).toBe('https://us-central1-omegajs-playground.cloudfunctions.net/omega_api');
+      },
+    },
+
+    {
+      name: 'Omega methods > a brand on a default Pages host with no project id has no API address and says which key is missing',
+      run: async (ctx) => {
+        await beforeEachHook();
+        const omega = getOmega();
+        await omega.initialize({
+          ...TEST_CONFIG,
+          brand: { ...TEST_CONFIG.brand, url: 'https://ian.github.io/site' },
+        });
+        ctx.expect(() => omega.getApiUrl()).toThrow(/cloud\.config\.projectId/);
+      },
+    },
+
     ...(() => {
       const cases = [];
       // Every module is a plain PROPERTY of the instance. A leftover zero-arg
