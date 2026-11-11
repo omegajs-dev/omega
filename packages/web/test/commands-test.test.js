@@ -287,7 +287,6 @@ module.exports = defineCases({
 
         ctx.expect(config).toHaveProperty('isolation', 'process');
         ctx.expect(config.serial).toEqual(['watch']);
-        ctx.expect(Number.isInteger(config.concurrency) && config.concurrency >= 1, `concurrency ${config.concurrency}`).toBe(true);
         ctx.expect(config).toHaveProperty('defaultTimeout', 120000);
         ctx.expect(config.roots).toEqual([{ source: 'framework', dir: path.join(WEB, 'test'), cwd: WEB }]);
       },

@@ -1,99 +1,23 @@
-# Checks (workflow spec): the test gate that runs on every pull request and
-# every push to the default branch.
-# Making it a REQUIRED check is a repo setting (branch protection / ruleset)
-# a human turns on; until then it runs and reports, and the ship skill treats
-# a red run as unmergeable.
-# Installed once by workflow/standards.sh; after that this copy is the repo's
-# own, so repo-specific steps (extra tools, matrix builds) belong here, not in
-# the workflow core's template.
-#
-# The jobs mirror what the local hooks run: the npm test suite
-# (safety/commit-gate) and the CHANGELOG entry format (docs/changelog-guard).
-# A repo without a test script or without a CHANGELOG passes trivially — the
-# checks exist so a pull request from ANY author (cloud agent, collaborator,
-# laptop without the hooks) meets the same bar before merge.
-#
-# The `changelog` job is the only job the heal adds to an EXISTING checks.yml,
-# appended once at the end of `jobs:`. It calls the kit's reusable workflow,
-# which runs the kit's own changelog.js over this repo's [Unreleased] section,
-# so the linter lives in the kit and nowhere else.
+# Checks: the test gate on every pull request and every push to the default
+# branch, run by the workkit kit's reusable workflow (.github/workflows/ci.yml),
+# and on a push the GitHub release of each release commit it brings (release.yml).
+# The kit owns this file and its standards step rewrites it, so no edit here
+# survives: a repo's own setup commands go in .workkit/settings.json hooks.ciSetup.
 name: checks
 
 on:
   pull_request:
   push:
     branches: [main]
-    paths-ignore: [CHANGELOG.md]
-
-# A newer push supersedes the running verification of the same branch.
-concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    # The backend suite boots the emulators; on a 2-core runner their function
-    # workers need a longer discovery leash, and a hung run must still end.
-    timeout-minutes: 60
-    env:
-      FUNCTIONS_DISCOVERY_TIMEOUT: 120
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      # A runner has no global git identity, so any test that builds a scratch
-      # repo and commits into it fails at "Author identity unknown".
-      - name: Configure git identity
-        run: |
-          git config --global user.name "checks"
-          git config --global user.email "checks@ci.local"
-      - name: Install Java
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '21'
-      - name: Install firebase-tools
-        run: npm install -g firebase-tools@15.22.4
-      - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --no-audit --no-fund
-          elif [ -f package.json ]; then
-            npm install --no-audit --no-fund
-          fi
-      # A repo's test/run.js reaches the kit's runner, and a runner has no kit:
-      # a shallow clone of the public kit, WORKKIT_ENGINE and, for the hooks, a
-      # `workkit` wrapper on PATH; no link, since npm on Windows would need a
-      # .cmd wrapper. The kit itself skips it.
-      - name: Check out the workkit kit's runner
-        shell: bash
-        run: |
-          if [ -f workflow/test/run.js ]; then
-            echo "this repo is the kit, its runner is already here"
-          else
-            git clone --depth 1 https://github.com/itw-creative-works/workkit "$HOME/workkit-kit"
-            # node and the runner cannot resolve Git Bash's /c/... spelling, so a Windows
-            # runner exports the mixed form of both paths.
-            engine="$HOME/workkit-kit/workflow"
-            bin="$HOME/.local/bin"
-            if command -v cygpath >/dev/null 2>&1; then
-              engine="$(cygpath -m "$engine")"
-              bin="$(cygpath -m "$bin")"
-            fi
-            echo "WORKKIT_ENGINE=$engine" >> "$GITHUB_ENV"
-            mkdir -p "$HOME/.local/bin"
-            printf '#!/usr/bin/env bash\nexec bash "$HOME/workkit-kit/workflow/workkit.sh" "$@"\n' > "$HOME/.local/bin/workkit"
-            chmod +x "$HOME/.local/bin/workkit"
-            echo "$bin" >> "$GITHUB_PATH"
-          fi
-      # The package suites are the CI gate; the root battery's e2e lanes stay the
-      # local commit gate's job. The suites need what ci.yml provisions: Java and
-      # firebase-tools (installed above) for the backend suite's emulators, and
-      # xvfb-run for the desktop suite's Electron window.
-      - name: Test
-        run: xvfb-run --auto-servernum npm run test:packages
-  changelog:
-    uses: itw-creative-works/workkit/.github/workflows/changelog.yml@main
+  checks:
+    uses: itw-creative-works/workkit/.github/workflows/ci.yml@main
+    secrets: inherit
+  # A pull request never reaches it, so its token stays read-only.
+  release:
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+      actions: write
+    uses: itw-creative-works/workkit/.github/workflows/release.yml@main

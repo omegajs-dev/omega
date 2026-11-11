@@ -7,7 +7,9 @@
  * the bodies execute, and reports each case back by id.
  * `config.isolation: 'process'` runs each file instead as the main module of
  * its own node:test child, where `defineCases` registers its cases; node's
- * events map back to the same results. `createRunner(config).run(options)`
+ * events map back to the same results, up to `config.concurrency` files at
+ * once (default `poolSize()`, every core but one), then each file under a
+ * `config.serial` directory alone. `createRunner(config).run(options)`
  * resolves `{ passed, failed, skipped, noMatch, durationMs, tests }`.
  */
 
@@ -28,7 +30,7 @@ const { createCaseSession, hostSession, registerSuite, registerLazySuites } = re
 const { guardStdout } = require('./guard-stdout.js');
 const { TIMEOUT_ARG } = require('./define-cases.js');
 const attachLogFile = require('../attach-log-file.js');
-const { mapLimited } = require('../map-limited.js');
+const { mapLimited, poolSize } = require('../map-limited.js');
 
 const ISOLATIONS = ['none', 'process'];
 const EVAL_FLAGS = ['-e', '--eval', '-p', '--print'];
@@ -130,7 +132,8 @@ function createRunner(config) {
   if (isolation !== 'process' && processOnly.length > 0) {
     throw new Error(`${processOnly[0]} needs isolation: 'process' (this runner's isolation is '${isolation}')`);
   }
-  const concurrency = config.concurrency === undefined ? 1 : config.concurrency;
+  const fallback = isolation === 'process' ? poolSize() : 1;
+  const concurrency = config.concurrency === undefined ? fallback : config.concurrency;
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new Error(`concurrency is the most files in flight, a whole number of 1 or more (got ${JSON.stringify(config.concurrency)})`);
   }

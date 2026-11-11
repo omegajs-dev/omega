@@ -5,6 +5,7 @@
  */
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const defineCases = require('../../src/test/define-cases.js');
 const { DEVKIT, cleanEnv, fixtureDir, tempPath, removeAll, takeFile } = require('./_fixtures/helpers.js');
@@ -104,6 +105,16 @@ module.exports = defineCases({
         ctx.expect(narrow.error, narrow.output).toBeNull();
         ctx.expect(Object.keys(narrow.records).sort(), narrow.output).toEqual(['a', 'b', 'c']);
         ctx.expect(overlappingPairs(narrow.records), JSON.stringify(narrow.records)).toEqual([]);
+      },
+    },
+    {
+      name: 'process isolation with no concurrency set overlaps file runs',
+      skip: os.availableParallelism() < 3 && 'the parallel default needs three or more cores',
+      run(ctx) {
+        const run = drive({ fixture: 'overlap', isolation: 'process' });
+        ctx.expect(run.error, run.output).toBeNull();
+        ctx.expect(Object.keys(run.records).sort(), run.output).toEqual(['a', 'b', 'c']);
+        ctx.expect(overlappingPairs(run.records).length, JSON.stringify(run.records)).toBeGreaterThanOrEqual(1);
       },
     },
     {

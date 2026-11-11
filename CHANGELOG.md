@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - [#212](../../issues/212) - `POST /payments/intent` takes `simulate: 'abandon'` - the session is created and no webhook is fired, which is what an abandoned checkout IS. Test-provider only, never persisted.
 
 ### Changed
+- [#1124](../../issues/1124) - The root packages lane runs the package suites in a pool with a serial tail, and the test runner runs files side by side under process isolation. CI setup lives in `hooks.ciSetup`, and a CI run narrows the root `npm test` to the packages lane.
+- [#1124](../../issues/1124) - CI runs through the kit's caller workflow. Its `release` job makes each GitHub release and tag once a release commit reaches `main`, and the ship's cut step only waits for it.
 - [#1148](../../issues/1148) - A brand on a default GitHub Pages host has one API address, its project's Cloud Functions `omega_api` url, answered by config's `apiAddress` on every surface and in the manager's webhooks. It derives no support email or contact block, and the streams and advertising steps skip hosts it does not own.
 - [#1147](../../issues/1147) - Before each deploy the snapshot chain is re-rooted on GitHub's side through the git data API: the deploy ref's tip becomes a parentless copy of its own tree and the new snapshot chains on it, so the ref holds one root, the latest snapshot and any admin publish since.
 - [#830](../../issues/830) - Jekyll-era template filters take `omega_*` names (`omega_slugify`, `omega_date_xmlschema`, `omega_where` and the rest). An old name fails the build naming its replacement, the `compat-filters` rule of `omega migrate` rewrites them, and `omega_jsonify` is compact by default (pass an indent for pretty output).
