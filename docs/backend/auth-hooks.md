@@ -11,8 +11,12 @@ Auth hooks let consumer projects inject custom logic into @omega.js/backend's au
 
 Hook signature (the same object @omega.js/backend's own handler received):
 
+- A hook is an ES module whose default export is the async function, loaded through the one handler loader.
+- A CommonJS hook (`module.exports = ...`) is refused by name: `<file> must be an ES module with one default export (export default async (...) => {})`.
+- No top-level `await`: the file is loaded by `require()`, which refuses an async module. An `await` goes inside the default export.
+
 ```javascript
-module.exports = async ({ ctx, omega, user, context }) => {
+export default async ({ ctx, omega, user, context }) => {
   // user: AuthUserRecord (uid, email, providerData, etc.)
   // context: AuthEventContext for blocking functions (ipAddress, userAgent, additionalUserInfo)
   //          EventContext for triggers (eventId, eventType, timestamp; no IP/userAgent)
@@ -28,7 +32,7 @@ const ENFORCE = true;
 
 const ALLOWED_PROVIDERS = ['google.com'];
 
-module.exports = async ({ ctx, omega, user, context }) => {
+export default async ({ ctx, omega, user, context }) => {
   if (!ENFORCE) { return; }
 
   const functions = omega.firebase.functions;
@@ -45,12 +49,12 @@ module.exports = async ({ ctx, omega, user, context }) => {
 
 ```javascript
 // hooks/auth/on-create.js — Auto-delete spam referrals
-const powertools = require('node-powertools');
+import powertools from 'node-powertools';
 
 const ENFORCE = true;
 const BLOCKED_AFFILIATE_CODES = ['iLvQjmvm'];
 
-module.exports = async ({ ctx, omega, user, context }) => {
+export default async ({ ctx, omega, user, context }) => {
   if (!ENFORCE) { return; }
 
   const admin = omega.firebase.admin;

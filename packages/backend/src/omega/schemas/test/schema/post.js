@@ -2,7 +2,7 @@
  * The reference schema: every field option of the declaration vocabulary, and
  * a plan split. test/helpers/settings.test.js pins its resolved output.
  */
-module.exports = ({ user }) => {
+export default({ user }) => {
   const isPremium = user.plan !== 'basic';
 
   const fields = {

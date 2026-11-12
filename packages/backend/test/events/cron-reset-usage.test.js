@@ -19,7 +19,8 @@
  */
 const expect = require('../../dist/vendor/devkit/test/expect.js');
 
-const resetUsage = require('../../dist/omega/events/cron/daily/reset-usage.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const resetUsage = loadHandler(require.resolve('../../dist/omega/events/cron/daily/reset-usage.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 const CATALOG = {

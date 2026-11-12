@@ -46,7 +46,7 @@ async function runPrune({ verifiedSenders } = {}) {
   const answered = [];
 
   await withProviderApi(api, async (load) => {
-    const { stageReengage } = load('events/cron/daily/marketing-prune.js');
+    const { stageReengage } = load('events/cron/helpers/marketing-prune.js');
     const ctx = campaignCtx(load);
     const send = ctx.email.sendCampaign;
 

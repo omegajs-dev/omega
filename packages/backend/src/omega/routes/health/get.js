@@ -1,5 +1,5 @@
-const path = require('path');
-const { readTestMode, applyEnvFromFile } = require('../../../test/utils/test-mode-file.js');
+import path from 'path';
+import { readTestMode, applyEnvFromFile } from '../../../test/utils/test-mode-file.js';
 
 /**
  * GET /health — the deployed backend's liveness + version probe
@@ -11,7 +11,7 @@ const { readTestMode, applyEnvFromFile } = require('../../../test/utils/test-mod
  * liveness probe is not a test route, so it is a real route now and the folder
  * has zero exceptions ([#238](https://github.com/Omega-JS-Stack/omega/issues/238)).
  */
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
 
   // Belt-and-suspenders freshness check: re-read the test-mode file before
   // reporting `testExtendedMode`. fs.watch installed in omega.initialize() usually

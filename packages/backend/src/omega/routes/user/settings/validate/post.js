@@ -1,14 +1,15 @@
-const _ = require('lodash');
-const jetpack = require('fs-jetpack');
-const powertools = require('node-powertools');
-const path = require('path');
-const { validate } = require('../../../../helpers/schema.js');
+import _ from 'lodash';
+import jetpack from 'fs-jetpack';
+import powertools from 'node-powertools';
+import path from 'path';
+import { pathToFileURL } from 'url';
+import { validate } from '../../../../helpers/schema.js';
 
 /**
  * POST /user/settings/validate - Validate user settings against defaults
  * Merges user settings with subscription-specific defaults from defaults.js
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication
@@ -50,7 +51,7 @@ module.exports = async ({ ctx, omega, user, data }) => {
 
   // Load and process defaults
   try {
-    const defaults = _.get(require(resolvedPath)(), data.defaultsPath);
+    const defaults = _.get((await import(pathToFileURL(resolvedPath).href)).default(), data.defaultsPath);
     const combined = combineDefaults(defaults.all, defaults[userData.subscription?.product?.id] || {});
 
     ctx.log('Combined settings', combined);

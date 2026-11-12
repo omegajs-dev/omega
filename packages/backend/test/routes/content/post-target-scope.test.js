@@ -10,7 +10,8 @@
  *
  * Run: npx omega test backend:routes/content/post-target-scope
  */
-const readPost = require('../../../dist/omega/routes/content/post/get.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const readPost = loadHandler(require.resolve('../../../dist/omega/routes/content/post/get.js'));
 const {
   brandConfig,
   fakeOmega,

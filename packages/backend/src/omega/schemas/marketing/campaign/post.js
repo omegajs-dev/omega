@@ -1,7 +1,7 @@
 /**
  * Schema for POST /marketing/campaign
  */
-module.exports = () => ({
+export default() => ({
   // Identity
   id: { type: 'string', default: '' },
   type: { type: 'string', default: 'email' },

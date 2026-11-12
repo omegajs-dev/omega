@@ -2,6 +2,6 @@
  * Schema: POST /payments/uncancel
  * Validates the request to withdraw a scheduled subscription cancellation
  */
-module.exports = () => ({
+export default() => ({
   confirmed: { type: 'boolean', required: true },
 });

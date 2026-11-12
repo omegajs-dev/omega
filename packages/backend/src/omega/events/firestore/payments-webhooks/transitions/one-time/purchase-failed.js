@@ -17,12 +17,15 @@
  * lane. The copy still reads one-time: the template branches on the ORDER's type,
  * not on which transition sent it.
  */
-const paymentFailed = require('../subscription/payment-failed.js');
+import path from 'path';
+import { loadHandler } from '../../../../../libraries/load-handler.js';
 
-module.exports = async function (context) {
+export default async function (context) {
   const { after, order, uid, ctx } = context;
 
   ctx.log(`Transition [one-time/purchase-failed]: uid=${uid}, orderId=${order?.id}, product=${after?.product?.id}`);
 
-  return paymentFailed(context);
+  // Another handler comes through the one loader: an `import` of it re-parses the
+  // file (the package names no "type") and prints MODULE_TYPELESS_PACKAGE_JSON
+  return loadHandler(path.join(import.meta.dirname, '..', 'subscription', 'payment-failed.js'))(context);
 };

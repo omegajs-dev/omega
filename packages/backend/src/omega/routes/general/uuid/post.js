@@ -1,6 +1,6 @@
-const uuid = require('uuid');
+import * as uuid from 'uuid';
 
-module.exports = async ({ ctx, data, analytics }) => {
+export default async ({ ctx, data, analytics }) => {
 
   const name = data.name || data.input;
   const version = `${data.version}`.replace('v', '');

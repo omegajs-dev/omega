@@ -5,6 +5,6 @@
 // Use this for: resetting a release the deploy will recreate, last-mile validations, anything
 // that must happen before the publish reaches the release repo.
 
-module.exports = async (ctx) => {
+export default async (ctx) => {
   // ctx = { build, projectRoot, mode }
 };

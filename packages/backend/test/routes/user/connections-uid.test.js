@@ -26,9 +26,10 @@
 const path = require('path');
 const jetpack = require('fs-jetpack');
 
-const getRoute = require('../../../dist/omega/routes/user/connections/get.js');
-const postRoute = require('../../../dist/omega/routes/user/connections/post.js');
-const deleteRoute = require('../../../dist/omega/routes/user/connections/delete.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const getRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/get.js'));
+const postRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/post.js'));
+const deleteRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/delete.js'));
 const { encryptState } = require('../../../dist/omega/routes/user/connections/_state.js');
 const { validate } = require('../../../dist/omega/helpers/schema.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
@@ -431,8 +432,8 @@ module.exports = defineCases({
         // of the request's raw parts answering a declaration, validated by
         // helpers/schema.js. GET requires a provider, so every GET names one.
         const context = { user: null, body: {}, query: {}, path: '', method: 'POST', headers: {}, geolocation: {} };
-        const getDeclaration = require('../../../dist/omega/schemas/user/connections/get.js')(context);
-        const postDeclaration = require('../../../dist/omega/schemas/user/connections/post.js')(context);
+        const getDeclaration = loadHandler(require.resolve('../../../dist/omega/schemas/user/connections/get.js'))(context);
+        const postDeclaration = loadHandler(require.resolve('../../../dist/omega/schemas/user/connections/post.js'))(context);
         const get = (input) => validate(getDeclaration, { provider: 'google', ...input }).data;
         const post = (input) => validate(postDeclaration, input).data;
 

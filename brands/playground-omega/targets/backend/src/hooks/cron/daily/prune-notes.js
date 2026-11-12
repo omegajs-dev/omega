@@ -5,7 +5,7 @@
 const MAX_AGE_DAYS = 30;
 const BATCH_SIZE = 500;
 
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
   const firestore = omega.firebase.admin.firestore();
   const cutoff = ctx.meta.startTime.timestampUNIX - (MAX_AGE_DAYS * 24 * 60 * 60);
   let pruned = 0;

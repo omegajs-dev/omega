@@ -34,7 +34,8 @@
  * Run: npx omega test backend:events/payments/webhook-transition-claim
  */
 const expect = require('../../../dist/vendor/devkit/test/expect.js');
-const onWrite = require('../../../dist/omega/events/firestore/payments-webhooks/on-write.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const onWrite = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/on-write.js'));
 const { CLAIM_WINDOW_MS } = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/index.js');
 const { buildAdmin, CONFIG, subscriptionPayload } = require('./_webhook-harness.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');

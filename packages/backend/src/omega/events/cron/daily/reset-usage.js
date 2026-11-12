@@ -10,14 +10,9 @@
  *   those credits and a reset is not a revoke ([#647](https://github.com/Omega-JS-Stack/omega/issues/647))
  */
 
-// The features contract, shared with the gate — see services/usage.js for why
-// this resolves two ways
-let account;
-try {
-  account = require('@omega.js/account/features');
-} catch (e) {
-  account = require('../../../../../dist/vendor/account/features.js');
-}
+// The features contract, shared with the gate, through the backend's one account door
+import account from '../../../helpers/account.js';
+
 const { isCountedFeature } = account;
 
 // The key under `usage` that is NOT a counter: a map of admin-granted limits.
@@ -46,7 +41,7 @@ function isCounterBlock(value) {
     && (typeof value.daily === 'number' || typeof value.monthly === 'number');
 }
 
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   const storage = omega.storage({ name: 'usage', temporary: true, clear: false, log: false });
 
   ctx.log('Starting...');

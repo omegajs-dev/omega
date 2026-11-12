@@ -1,26 +1,23 @@
-// Loads a JS module from an arbitrary path on disk (e.g. consumer's src/tray/index.js).
+// Loads a consumer integration file from an arbitrary path on disk (e.g. the consumer's
+// src/integrations/tray/index.js) and answers its default export.
 //
-// Used by tray/menu/context-menu to load consumer-defined definition files. A bundler would
-// normally try to resolve `require(<dynamicPath>)` at build time, which can never work for a
-// runtime path, so we use Node's `module.createRequire(...)` to get a real require function.
-// (In the webpack era this also drew a noisy "Critical dependency" warning at build time; the
-// runtime behavior was correct then too.)
+// Used by tray/menu/context-menu. A bundler would normally try to resolve `require(<dynamicPath>)`
+// at build time, which can never work for a runtime path, so we use Node's
+// `module.createRequire(...)` to get a real require function.
 
 const path   = require('path');
+const fs     = require('fs');
 const Module = require('module');
+const { defaultExport } = require('@omega.js/devkit/run-consumer-hook');
 
-// Returns the module.exports of the file, or null if the file doesn't exist.
-// THROWS if the file exists but fails to load (syntax error, throws at module-eval, etc.).
-// Callers can decide whether to treat load errors as fatal — most should.
-// On success, also clears Node's require cache for the file so subsequent reloads pick up edits.
+// Returns the file's default export, or null if the file doesn't exist.
+// THROWS if the file fails to load, or is not an ES module with one default export.
+// Node never reloads an edited ES module, so an edit shows on the next launch.
 function loadConsumerFile(absPath) {
-  const fs = require('fs');
   if (!fs.existsSync(absPath)) return null;
 
   const consumerRequire = Module.createRequire(path.join(process.cwd(), 'package.json'));
-  const resolved = consumerRequire.resolve(absPath);
-  delete consumerRequire.cache[resolved];
-  return consumerRequire(resolved);
+  return defaultExport(absPath, consumerRequire(absPath));
 }
 
 module.exports = loadConsumerFile;

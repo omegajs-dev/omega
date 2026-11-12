@@ -1,67 +1,6 @@
-// Menu — file-based application menu definition.
-//
-// @omega.js/desktop looks for the consumer's `src/integrations/menu/index.js` and calls it with a builder API:
-//
-//   // src/integrations/menu/index.js
-//   module.exports = ({ omega, menu, defaults }) => {
-//     // Use the platform-aware default template as a starting point...
-//     menu.useDefaults();
-//
-//     // ...or build from scratch:
-//     menu.menu('File', [
-//       { id: 'file/new', label: 'New Window', accelerator: 'CmdOrCtrl+N', click: () => omega.windows.show('main') },
-//       { type: 'separator' },
-//       { role: 'quit' },
-//     ]);
-//     menu.menu('Edit', [{ role: 'undo' }, { role: 'redo' }]);
-//
-//     // Mutate by id-path AFTER the structure is in place:
-//     menu.insertAfter('main/check-for-updates', { id: 'main/preferences', label: 'Preferences...', click: ... });
-//     menu.update('main/check-for-updates', { label: 'Updates' });
-//     menu.remove('view/reload');
-//     menu.hide('main/services');
-//   };
-//
-// Builder API (during definition):
-//   menu.menu(label, items)   // add a top-level menu bar entry
-//   menu.useDefaults()        // populate with the platform-appropriate default template
-//   menu.clear()              // start over
-//   menu.append(item)         // append a top-level descriptor (rare; prefer menu())
-//
-// Id-path API (during definition AND at runtime via `omega.menu.*`):
-//   .find(idPath) / .has(idPath)
-//   .update(idPath, patch)        — Object.assign + re-render
-//   .remove(idPath)               — splice + re-render
-//   .enable(idPath, bool)         — sugar over update
-//   .show(idPath, bool) / .hide(idPath)
-//   .insertBefore(idPath, item) / .insertAfter(idPath, item)
-//   .appendTo(idPath, item)       — push into a submenu
-//
-// Item descriptors mirror Electron's MenuItemConstructorOptions, plus the same
-// dynamic conveniences as tray: label/enabled/visible/checked may be functions,
-// click handlers are wrapped to catch errors.
-//
-// Default template ids (path scheme — `parent/child/...`):
-//   main/about, main/check-for-updates, main/preferences, main/services, main/hide,
-//   main/hide-others, main/show-all, main/relaunch, main/quit
-//   file/close, file/quit
-//   edit/undo, edit/redo, edit/cut, edit/copy, edit/paste, edit/paste-and-match-style,
-//   edit/delete, edit/select-all
-//   view/reload, view/force-reload, view/reset-zoom, view/zoom-in, view/zoom-out,
-//   view/toggle-fullscreen
-//   view/developer (submenu, dev-mode only): view/developer/toggle-devtools,
-//     view/developer/inspect-elements, view/developer/force-reload,
-//     view/developer/simulate-update (submenu): view/developer/simulate-update/available,
-//     view/developer/simulate-update/unavailable, view/developer/simulate-update/error
-//   window/minimize, window/zoom, window/close, window/front
-//   help/check-for-updates (win/linux only — mac places it under main/), help/website (when brand.url)
-//   development (top-level, dev-mode only): development/open-exe-folder,
-//     development/open-user-data, development/open-logs, development/open-app-config,
-//     development/test-error
-//
-// Disabling at runtime: call `omega.menu.disable()` from anywhere in main,
-// idempotent, calls Menu.setApplicationMenu(null) (or null on Windows/Linux to hide
-// the menu bar). No config flag.
+// Menu: the file-based application menu. The consumer's src/integrations/menu/index.js
+// is an ES module whose default export runs once at boot as ({ omega, menu, defaults }).
+// The builder, the id-path API, the default ids and disable(): docs/desktop/menu.md.
 
 const path = require('path');
 const fs   = require('fs');
@@ -102,13 +41,7 @@ const menu = {
 
     if (fs.existsSync(absPath)) {
       const loadConsumerFile = require('../utils/load-consumer-file.js');
-      const loaded = loadConsumerFile(absPath);
-      if (typeof loaded === 'function') {
-        menu._definitionFn = loaded;
-      } else if (loaded != null) {
-        logger.warn(`menu definition at ${absPath} did not export a function — using defaults.`);
-        menu._definitionFn = null;
-      }
+      menu._definitionFn = loadConsumerFile(absPath);
     } else {
       logger.log(`no menu definition at ${absPath} — using default template.`);
     }

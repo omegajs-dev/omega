@@ -1,8 +1,8 @@
-const path = require('path');
-const powertools = require('node-powertools');
-const loadProvider = require('../../../libraries/load-provider.js');
-const winback = require('../../../libraries/payment/winback.js');
-const isTrialing = require('../cancel/_is-trialing.js');
+import path from 'path';
+import powertools from 'node-powertools';
+import loadProvider from '../../../libraries/load-provider.js';
+import winback from '../../../libraries/payment/winback.js';
+import isTrialing from '../cancel/_is-trialing.js';
 
 /**
  * POST /payments/winback
@@ -46,7 +46,7 @@ const isTrialing = require('../cancel/_is-trialing.js');
  * offer on them and opens the questionnaire the customer came for.
  * Requires authentication.
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   // Require authentication
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -128,7 +128,7 @@ module.exports = async ({ ctx, user, data }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, {
       code: 400,

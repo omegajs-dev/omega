@@ -9,10 +9,12 @@
  * Schemas are pure functions with no I/O, so they are asserted directly: a
  * declaration's keys are the fields it accepts.
  */
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+
 const SCHEMAS = {
-  'admin/post (create)': require('../../dist/omega/schemas/admin/post/post.js'),
-  'admin/post (edit)': require('../../dist/omega/schemas/admin/post/put.js'),
-  'admin/repo/content': require('../../dist/omega/schemas/admin/repo/content/post.js'),
+  'admin/post (create)': loadHandler(require.resolve('../../dist/omega/schemas/admin/post/post.js')),
+  'admin/post (edit)': loadHandler(require.resolve('../../dist/omega/schemas/admin/post/put.js')),
+  'admin/repo/content': loadHandler(require.resolve('../../dist/omega/schemas/admin/repo/content/post.js')),
 };
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 

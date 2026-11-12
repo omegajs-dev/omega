@@ -24,7 +24,9 @@
  * config hole at all; it stays the integration surface for the happy paths.
  */
 const expect = require('../../dist/vendor/devkit/test/expect.js');
-const cron = require('../../dist/omega/events/cron/frequent/marketing-campaigns.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const cron = loadHandler(require.resolve('../../dist/omega/events/cron/frequent/marketing-campaigns.js'));
+const { PROCESSING_LEASE_SECONDS } = require('../../dist/omega/events/cron/helpers/marketing-campaigns.js');
 const newsletter = require('../../dist/omega/libraries/email/generators/newsletter.js');
 const Marketing = require('../../dist/omega/libraries/email/marketing/index.js');
 const { getNextFutureOccurrence } = require('../../dist/omega/libraries/email/constants.js');
@@ -56,8 +58,8 @@ const COLLECTION = 'marketing-campaigns';
  * `sendCampaign` defaults to a throw so an accidental email dispatch on the
  * push cases is loud rather than silently passing; the email cases pass their
  * own. `generate` swaps the newsletter generator's export for the run (the
- * cron requires the module by path, so the require cache IS the seam) and is
- * always restored.
+ * cron's helper requires the module by path on each run, so the require cache
+ * IS the seam) and is always restored.
  */
 async function runCron(seed, { sendCampaign, generate } = {}) {
   const { admin, docs } = memoryAdmin(Object.fromEntries(Object.entries(seed).map(([id, doc]) => [`${COLLECTION}/${id}`, doc])));
@@ -196,7 +198,7 @@ module.exports = defineCases({
         const { store } = await runCron({
           '_stale': pushCampaign(now, {
             status: 'processing',
-            processingStartedAt: now - cron.PROCESSING_LEASE_SECONDS - 600,
+            processingStartedAt: now - PROCESSING_LEASE_SECONDS - 600,
           }),
         });
         const doc = store.get('_stale');

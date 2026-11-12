@@ -2,10 +2,9 @@
  * POST /special/electron-client - Setup a @omega.js/desktop client
  * Returns client configuration with optional auth
  */
-const path = require('path');
-const { buildPublicConfig } = require(path.join(__dirname, '..', '..', 'brand', 'get.js'));
+import { buildPublicConfig } from '../../brand/public-config.js';
 
-module.exports = async ({ ctx, omega, data, analytics }) => {
+export default async ({ ctx, omega, data, analytics }) => {
   const admin = omega.firebase.admin;
 
   // brandId/brand fallback to omega.config

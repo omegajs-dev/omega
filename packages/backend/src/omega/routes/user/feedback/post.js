@@ -1,11 +1,11 @@
-const pushid = require('pushid');
-const powertools = require('node-powertools');
+import pushid from 'pushid';
+import powertools from 'node-powertools';
 
 /**
  * POST /user/feedback - Submit user feedback
  * Saves feedback to Firestore and optionally prompts for review
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

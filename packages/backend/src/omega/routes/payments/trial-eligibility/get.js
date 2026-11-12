@@ -3,7 +3,7 @@
  * Returns whether the authenticated user is eligible for a free trial
  * Eligible = no previous subscription orders in payments-orders
  */
-module.exports = async ({ ctx, omega, user }) => {
+export default async ({ ctx, omega, user }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

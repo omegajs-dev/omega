@@ -1,6 +1,9 @@
-const powertools = require('node-powertools');
-const { REMINDER_DELAYS, COLLECTION } = require('../../../libraries/abandoned-cart-config.js');
-const { User } = require('../../../helpers/account.js');
+import powertools from 'node-powertools';
+import cartConfig from '../../../libraries/abandoned-cart-config.js';
+import account from '../../../helpers/account.js';
+
+const { REMINDER_DELAYS, COLLECTION } = cartConfig;
+const { User } = account;
 
 /**
  * Abandoned cart reminder cron job
@@ -8,7 +11,7 @@ const { User } = require('../../../helpers/account.js');
  * Queries payments-carts where status is pending and nextReminderAt has passed,
  * sends escalating email reminders, and advances or completes the tracker.
  */
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   const admin = omega.firebase.admin;
   const nowUNIX = Math.floor(Date.now() / 1000);
 

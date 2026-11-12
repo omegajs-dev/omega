@@ -2,9 +2,9 @@
  * POST /handler/post - Create post handler (with invoice and notification)
  * Admin-only endpoint that creates invoices and sends notifications for guest posts
  */
-const env = require('../../../libraries/env.js');
+import env from '../../../libraries/env.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
   const fetch = omega.require('wonderful-fetch');
 
   // Require authentication

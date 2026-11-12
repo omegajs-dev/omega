@@ -15,7 +15,7 @@
  * says X" is seeded as an order doc — or, for "the subscription is gone", as no order
  * doc at all.
  */
-const sweep = require('../../../dist/omega/events/cron/daily/trial-lapse-sweep.js');
+const { resolveTrialOutcomeConversion } = require('../../../dist/omega/events/cron/helpers/trial-lapse-sweep.js');
 const analytics = require('../../../dist/omega/events/firestore/payments-webhooks/analytics.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
@@ -56,7 +56,7 @@ module.exports = defineCases({
           payment: { provider: 'paypal', resourceId: 'I-PAYPAL-TRIAL', frequency: 'monthly', price: 9.99 },
         };
 
-        const conversion = sweep.resolveTrialOutcomeConversion(paypalTrial, 'lapsed', 'USD');
+        const conversion = resolveTrialOutcomeConversion(paypalTrial, 'lapsed', 'USD');
 
         expect(conversion, 'a lapse the sweep decided should be reported').toBeTruthy();
         expect(conversion.event).toBe('trial_lapse');
@@ -65,7 +65,7 @@ module.exports = defineCases({
         expect(conversion.params.is_recurring, 'nothing was ever charged').toBe(false);
         expect(conversion.eventId, 'the dedupe id is keyed to the SUBSCRIPTION, which is the one thing this sweep and the payment webhook both know').toBe('trial_lapse.I-PAYPAL-TRIAL');
 
-        const converted = sweep.resolveTrialOutcomeConversion({ ...paypalTrial }, 'converted', 'USD');
+        const converted = resolveTrialOutcomeConversion({ ...paypalTrial }, 'converted', 'USD');
 
         expect(converted.event).toBe('trial_convert');
         expect(converted.eventId).toBe('trial_convert.I-PAYPAL-TRIAL');
@@ -94,7 +94,7 @@ module.exports = defineCases({
           payment: { provider: 'stripe', resourceId: 'sub_stripe_converted', frequency: 'monthly', price: 9.99 },
         };
 
-        expect(sweep.resolveTrialOutcomeConversion(alreadyReported, 'converted', 'USD'), 'the term has already moved past the trial, so a payment webhook reported this conversion').toBe(null);
+        expect(resolveTrialOutcomeConversion(alreadyReported, 'converted', 'USD'), 'the term has already moved past the trial, so a payment webhook reported this conversion').toBe(null);
       },
     },
 
@@ -127,7 +127,7 @@ module.exports = defineCases({
         ]) {
           const resolved = analytics.resolvePaymentEvent('subscription', transition, eventType, after, {}, null, inTrial);
           const webhookId = analytics.resolveEventId(resolved, { id: '_test-order', metadata: { updatedBy: { event: { id: 'evt_whatever' } } } });
-          const sweepId = sweep.resolveTrialOutcomeConversion(inTrial, outcome, 'USD').eventId;
+          const sweepId = resolveTrialOutcomeConversion(inTrial, outcome, 'USD').eventId;
 
           expect(webhookId, `both paths must call a ${outcome} trial the same conversion`).toBe(sweepId);
           expect(webhookId.endsWith(`.${RESOURCE_ID}`), 'and both must key it on the subscription').toBe(true);

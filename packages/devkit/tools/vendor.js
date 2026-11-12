@@ -69,6 +69,7 @@ const jetpack = require('fs-jetpack');
 const vendorDocs = require('./vendor-docs');
 const Logger = require('../src/logger');
 const { resolvePackageDir } = require('../src/local');
+const { bareSpecifiers, packageName, stripComments } = require('../src/load-forms');
 
 const logger = new Logger('devkit-vendor');
 
@@ -77,7 +78,7 @@ const SPECIFIER = '@omega\\.js\\/([a-z0-9-]+)(?:\\/([A-Za-z0-9._/-]+))?';
 
 // The private workspace utility packages vendoring exists FOR (never published;
 // hosts wire them as devDependencies). A dist reference to any OTHER @omega.js
-// package is an error unless it's a declared runtime dependency — publishable
+// package is an error unless it's a declared runtime dependency: publishable
 // packages (web, client, backend, ...) are never folded into a host's dist.
 const VENDORABLE_PACKAGES = ['devkit', 'config', 'account', 'template-kit', 'analytics', 'monitoring'];
 
@@ -102,7 +103,7 @@ const PRIVATE_REFERENCE = new RegExp(
   `(?:${REFERENCE_PREFIXES.join('|')})['"]@omega\\.js\\/(${VENDORABLE_PACKAGES.join('|')})(?:['"/])`,
 );
 
-// Matches relative requires/imports — used to walk package-internal dependencies.
+// Matches relative requires/imports: the walk of package-internal dependencies.
 // Group 2 = the relative path in every pattern.
 const RELATIVE_PATTERNS = [
   /require(?:\.resolve)?\(\s*(['"])(\.{1,2}\/[^'"]+)\1/g,
@@ -110,84 +111,6 @@ const RELATIVE_PATTERNS = [
   /import\s*\(\s*(['"])(\.{1,2}\/[^'"]+)\1/g,
   /import\s+(['"])(\.{1,2}\/[^'"]+)\1/g,
 ];
-
-// Matches bare-specifier requires/imports (anything not starting with . or /) —
-// used by the host-dependency guard on the vendored files. Group 2 = specifier.
-const BARE_PATTERNS = [
-  /require\(\s*(['"])([^'"./][^'"]*)\1/g,
-  /from\s+(['"])([^'"./][^'"]*)\1/g,
-  /import\s*\(\s*(['"])([^'"./][^'"]*)\1/g,
-  /import\s+(['"])([^'"./][^'"]*)\1/g,
-];
-
-// Strip JS comments before scanning — a require/import inside a comment is not
-// a dependency. Two live bites: JSDoc prose that reads like an ESM from-clause
-// (config/edit.js: "('brand' from brand, 'a b' from 'a b')" reported a phantom
-// host dep named 'a b'), and a JSDoc @example quoting require('../dist/…'),
-// which sent the closure walk after a module that doesn't exist and killed
-// @omega.js/backend's prepare (#354).
-//
-// Lexer-grade, not a parser: it tracks string and template literals so a `//`
-// or `/*` inside one is never a comment, and treats a backslash as escaping the
-// next character everywhere — which covers the escaped slashes of a regex
-// literal (/https?:\/\//). Regex literals themselves are not tracked; an
-// UNescaped `//` inside one (only reachable in a character class) would still
-// read as a comment. NESTED template literals are not tracked either: the
-// scanner closes a template at the first unescaped backtick, so a `${`…`}`
-// misclassifies the tail (verified inert across all vendorable sources).
-// Detection-only — never used for rewriting.
-function stripComments(source) {
-  let result = '';
-  let index = 0;
-
-  while (index < source.length) {
-    const char = source[index];
-    const next = source[index + 1];
-
-    if (char === '/' && next === '/') {
-      while (index < source.length && source[index] !== '\n') index += 1;
-      continue;
-    }
-
-    if (char === '/' && next === '*') {
-      const end = source.indexOf('*/', index + 2);
-      index = end === -1 ? source.length : end + 2;
-      continue;
-    }
-
-    if (char === '"' || char === "'" || char === '`') {
-      const start = index;
-      index += 1;
-      while (index < source.length) {
-        if (source[index] === '\\') {
-          index += 2;
-          continue;
-        }
-        if (source[index] === char) {
-          index += 1;
-          break;
-        }
-        // An unterminated quote (a stray apostrophe) ends at the newline rather
-        // than swallowing the rest of the file — templates may span lines.
-        if (char !== '`' && source[index] === '\n') break;
-        index += 1;
-      }
-      result += source.slice(start, index);
-      continue;
-    }
-
-    if (char === '\\') {
-      result += source.slice(index, index + 2);
-      index += 2;
-      continue;
-    }
-
-    result += char;
-    index += 1;
-  }
-
-  return result;
-}
 
 // Map a package subpath ('' | 'logger' | 'test/expect' | 'logger.js' |
 // 'fixtures/package.json') to its module-root-relative file.
@@ -205,12 +128,6 @@ function subpathToFile(subpath, packageRoot) {
   }
 
   return `${name}.js`;
-}
-
-// Reduce a require/import specifier to its package name ('chalk', '@scope/pkg').
-function specifierToPackageName(specifier) {
-  const parts = specifier.split('/');
-  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
 // Collect the .js files under dir that are host code: never follows symlinks
@@ -533,19 +450,16 @@ function vendorPackages(options) {
   };
   const missing = new Set();
   jetpack.find(vendorRoot, { matching: '**/*.js' }).forEach((file) => {
-    const contents = stripComments(jetpack.read(path.resolve(file)) || '');
-    for (const pattern of BARE_PATTERNS) {
-      for (const match of contents.matchAll(pattern)) {
-        const name = specifierToPackageName(match[2]);
-        // Cross-references between @omega.js packages are never host deps: the
-        // vendorable ones become sibling paths in step 4's rewrite, and a
-        // published runtime dep (client) resolves from the host's node_modules.
-        if (name.startsWith('@omega.js/')) {
-          continue;
-        }
-        if (!isBuiltin(name) && !hostRuntimeDeps[name]) {
-          missing.add(name);
-        }
+    for (const { specifier } of bareSpecifiers(jetpack.read(path.resolve(file)) || '')) {
+      const name = packageName(specifier);
+      // Cross-references between @omega.js packages are never host deps: the
+      // vendorable ones become sibling paths in step 4's rewrite, and a
+      // published runtime dep (client) resolves from the host's node_modules.
+      if (name.startsWith('@omega.js/')) {
+        continue;
+      }
+      if (!isBuiltin(name) && !hostRuntimeDeps[name]) {
+        missing.add(name);
       }
     }
   });

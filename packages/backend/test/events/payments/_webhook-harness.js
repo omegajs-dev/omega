@@ -11,7 +11,8 @@
  *
  * `_`-prefixed, so the runner never discovers it as a suite.
  */
-const onWrite = require('../../../dist/omega/events/firestore/payments-webhooks/on-write.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const onWrite = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/on-write.js'));
 
 // A contended transaction re-runs; a stand-in that re-ran forever would hang a suite
 // instead of failing it. Firestore's own client gives up too.

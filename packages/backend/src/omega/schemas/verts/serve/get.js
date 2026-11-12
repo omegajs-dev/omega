@@ -1,7 +1,7 @@
 /**
  * Schema for GET /verts/serve
  */
-module.exports = () => ({
+export default() => ({
   parent: { type: 'string', default: '' },
   brand: { type: 'string', default: '' },
   tags: { type: 'string', default: '' },

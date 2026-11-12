@@ -6,4 +6,6 @@
 // from here. The lane itself is shared with the desktop target, at
 // `scripts/release-lane.js`.
 
-module.exports = (ctx) => require('../../../../scripts/release-lane.js')(ctx, { tagFamily: /^extension-v/ });
+import prepareRelease from '../../../../scripts/release-lane.js';
+
+export default (ctx) => prepareRelease(ctx, { tagFamily: /^extension-v/ });

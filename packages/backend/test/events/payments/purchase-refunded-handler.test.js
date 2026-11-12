@@ -19,7 +19,8 @@
  *
  * Run: npx omega test backend:events/payments/purchase-refunded-handler
  */
-const handler = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-refunded.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-refunded.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 const ORDER_ID = '9090-8080-7070';

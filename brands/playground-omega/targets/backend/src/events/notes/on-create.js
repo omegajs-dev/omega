@@ -3,9 +3,9 @@
  * run through omega.events.run('notes/on-create'): bumps the owner's counter
  * Doc: node_modules/@omega.js/manager/docs/backend/routes.md (New Event Handler)
  */
-const { FieldValue } = require('firebase-admin/firestore');
+import { FieldValue } from 'firebase-admin/firestore';
 
-module.exports = async ({ ctx, omega, snapshot }) => {
+export default async ({ ctx, omega, snapshot }) => {
   const note = snapshot.data();
 
   // Every writer (the notes route, the on-create auth hook, the owner through

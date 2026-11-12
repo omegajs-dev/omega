@@ -2,9 +2,9 @@
  * POST /admin/infer-contact - Infer contact info from email addresses
  * Admin-only endpoint for testing/debugging the inferContact pipeline
  */
-const { inferContact } = require('../../../libraries/infer-contact.js');
+import { inferContact } from '../../../libraries/infer-contact.js';
 
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
 
   // Require authentication
   if (!user.authenticated) {

@@ -21,9 +21,9 @@
 //   reload                                        — always
 //   inspect, toggle-devtools                      — dev mode only
 
-const { sendToNotes } = require('../../lib/notes.js');
+import { sendToNotes } from '../../lib/notes.js';
 
-module.exports = ({ omega, menu, params, webContents }) => {
+export default ({ omega, menu, params, webContents }) => {
   // Start from @omega.js/desktop's default template, then customize below.
   menu.useDefaults();
 
@@ -39,15 +39,13 @@ module.exports = ({ omega, menu, params, webContents }) => {
 
   // ───────── Examples (uncomment to use) ─────────
   //
-  // // Add "Search Google" when text is selected:
+  // // Add "Search Google" when text is selected (with `import { shell } from 'electron';`
+  // // at the top of this file):
   // if (params.selectionText) {
   //   menu.insertAfter('copy', {
   //     id: 'search-google',
   //     label: `Search "${params.selectionText.slice(0, 20)}"`,
-  //     click: () => {
-  //       const { shell } = require('electron');
-  //       shell.openExternal(`https://google.com/search?q=${encodeURIComponent(params.selectionText)}`);
-  //     },
+  //     click: () => shell.openExternal(`https://google.com/search?q=${encodeURIComponent(params.selectionText)}`),
   //   });
   // }
   //

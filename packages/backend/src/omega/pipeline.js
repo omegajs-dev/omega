@@ -15,6 +15,7 @@ const { merge } = require('lodash');
 const JSON5 = require('json5');
 const Context = require('./context.js');
 const Settings = require('./services/settings.js');
+const { loadHandler: loadHandlerFile } = require('./libraries/load-handler.js');
 const { projectUserForLog, redactHeadersForLog, redactDataForLog, safeStringify } = require('./helpers/log-redaction.js');
 
 // The one CORS policy every request passes (the MCP lane and the custom server included)
@@ -181,10 +182,10 @@ function loadHandler(state) {
     const indexPath = path.resolve(routesDir, 'index.js');
 
     if (fs.existsSync(methodFilePath)) {
-      state.handler = require(methodFilePath);
+      state.handler = loadHandlerFile(methodFilePath);
       ctx.log(`Middleware.process(): Loaded route: ${methodFile}`);
     } else if (fs.existsSync(indexPath)) {
-      state.handler = require(indexPath);
+      state.handler = loadHandlerFile(indexPath);
       ctx.log(`Middleware.process(): Method-specific file (${methodFile}) not found, using index.js`);
     } else if (fs.existsSync(routesDir)) {
       ctx.respond(new Error(`Method not allowed: ${method.toUpperCase()} is not supported by ${routePath}`), {code: 405});

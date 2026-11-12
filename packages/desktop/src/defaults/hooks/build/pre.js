@@ -4,6 +4,6 @@
 // Use this for: pre-flight checks, generating build-time artifacts, mutating config before
 // the bundle / build-config tasks see it.
 
-module.exports = async (ctx) => {
+export default async (ctx) => {
   // ctx = { build, mode, projectRoot }
 };

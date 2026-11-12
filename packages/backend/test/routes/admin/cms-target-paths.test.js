@@ -19,8 +19,9 @@
 const path = require('node:path');
 const jetpack = require('fs-jetpack');
 
-const createPost = require('../../../dist/omega/routes/admin/post/post.js');
-const writeContent = require('../../../dist/omega/routes/admin/repo/content/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const createPost = loadHandler(require.resolve('../../../dist/omega/routes/admin/post/post.js'));
+const writeContent = loadHandler(require.resolve('../../../dist/omega/routes/admin/repo/content/post.js'));
 const { loadConfig } = require('../../helpers/_shared-config.js');
 const {
   ADMIN_USER,

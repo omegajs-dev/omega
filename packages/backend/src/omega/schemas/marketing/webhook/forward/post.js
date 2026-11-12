@@ -5,4 +5,4 @@
  * forwarded to every child @omega.js/backend unchanged. Validation happens in the dispatcher
  * (provider + key query params) and at each child's receiver.
  */
-module.exports = () => ({});
+export default() => ({});

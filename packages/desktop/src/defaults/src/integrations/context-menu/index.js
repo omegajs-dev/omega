@@ -17,22 +17,20 @@
 //   reload:                                         always
 //   inspect, toggle-devtools:                       dev mode only
 
-module.exports = ({ omega, menu, params, webContents }) => {
+export default ({ omega, menu, params, webContents }) => {
   // Start from @omega.js/desktop's default template. Don't add anything by default: leave it
   // identical to what the framework would do without this file.
   menu.useDefaults();
 
   // ───────── Examples (uncomment to use) ─────────
   //
-  // // Add "Search Google" when text is selected:
+  // // Add "Search Google" when text is selected (with `import { shell } from 'electron';`
+  // // at the top of this file):
   // if (params.selectionText) {
   //   menu.insertAfter('copy', {
   //     id: 'search-google',
   //     label: `Search "${params.selectionText.slice(0, 20)}"`,
-  //     click: () => {
-  //       const { shell } = require('electron');
-  //       shell.openExternal(`https://google.com/search?q=${encodeURIComponent(params.selectionText)}`);
-  //     },
+  //     click: () => shell.openExternal(`https://google.com/search?q=${encodeURIComponent(params.selectionText)}`),
   //   });
   // }
   //

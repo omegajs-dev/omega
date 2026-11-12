@@ -1,7 +1,7 @@
 /**
  * Schema for GET /verts
  */
-module.exports = () => ({
+export default() => ({
   id: { type: 'string', default: '' },
   limit: { type: ['string', 'number'], default: 100 },
 });

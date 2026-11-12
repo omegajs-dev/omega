@@ -1,5 +1,5 @@
-const { retryWrite, runAuthHook, MAX_RETRIES } = require('./utils.js');
-const { buildUserDoc, isUserDoc, extractProviderName } = require('../../libraries/user-doc.js');
+import { retryWrite, runAuthHook, MAX_RETRIES } from './utils.js';
+import { buildUserDoc, isUserDoc, extractProviderName } from '../../libraries/user-doc.js';
 
 /**
  * onCreate - Create user doc
@@ -28,7 +28,7 @@ const { buildUserDoc, isUserDoc, extractProviderName } = require('../../librarie
  * context (EventContext — NOT AuthEventContext, no ipAddress/userAgent/locale):
  *   eventId, eventType, timestamp, resource: { service, name }, params
  */
-module.exports = async ({ ctx, omega, user, context }) => {
+export default async ({ ctx, omega, user, context }) => {
   const startTime = Date.now();
   const admin = omega.firebase.admin;
 

@@ -10,6 +10,7 @@
  * `omega.handlers[<function name>]` hook, when set, runs before and after it.
  */
 const Context = require('./context.js');
+const { loadHandler } = require('./libraries/load-handler.js');
 
 /**
  * Run one event handler.
@@ -40,7 +41,7 @@ function run(omega, handlerName, payload) {
     // Load handler
     let handler;
     try {
-      handler = require(handlerPath);
+      handler = loadHandler(handlerPath);
     } catch (e) {
       // A handler that will not load is a server fault, so it goes through the
       // SAME door a 5xx route does: report() logs it AND captures it to Sentry

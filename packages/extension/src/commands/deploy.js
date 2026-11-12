@@ -29,6 +29,7 @@ const logger = build.logger('deploy');
 const { deployViaDispatch, dispatchTarget, laneLabel, resolveToken } = require('@omega.js/devkit/deploy');
 const attachLogFile = require('@omega.js/devkit/attach-log-file');
 const { assertBrandVersion } = require('@omega.js/devkit/brand-version');
+const { runConsumerHook } = require('@omega.js/devkit/run-consumer-hook');
 const { targetNameFromDir } = require('@omega.js/config');
 const { ensureTarget } = require('./lib/ensure-target.js');
 const { deployPrecheck } = require('./lib/deploy-precheck.js');
@@ -62,18 +63,14 @@ module.exports = async function (options) {
   assertBrandVersion({ dir: projectDir });
 
   // The consumer's pre-deploy hook, on BOTH lanes and before anything is
-  // published or published to ([#900](https://github.com/Omega-JS-Stack/omega/issues/900)):
-  // the playground's prunes its GitHub releases (the version itself comes from
-  // `omega bump` at the brand root, #869). Through the package task's own
-  // hook loader, the one `hooks/build/pre.js` already goes through: one loader
-  // per surface. A dry run skips it, because a hook may act on the world and a
-  // dry run promises to send nothing.
+  // published, through devkit's one hook runner. A dry run skips it, because
+  // a hook may act on the world and a dry run promises to send nothing.
   if (dryRun) {
     logger.log('DRY RUN, skipping hook "deploy/pre"');
   } else {
     // The one ctx shape every OMEGA hook takes, `{ build, projectRoot, mode }`,
     // and a deploy's mode is PRODUCTION: what it is about to publish is a release.
-    await require('../gulp/tasks/package.js').hook('deploy:pre', { mode: 'production' });
+    await runConsumerHook('deploy/pre', { build, projectRoot: projectDir, mode: 'production' });
   }
 
   // The direct lane, on request: build + store-publish from THIS machine.

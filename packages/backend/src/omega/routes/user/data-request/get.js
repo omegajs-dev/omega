@@ -8,7 +8,7 @@
  *   pending   — request submitted, waiting to be processed (omega_cronDaily sets to 'completed' after 14 days)
  *   completed — data is available for download (downloads counter tracks how many times downloaded)
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

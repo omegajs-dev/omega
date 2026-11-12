@@ -43,25 +43,16 @@
  *
  * Runs on omega_cronFrequent (every 10 minutes).
  */
-const moment = require('moment');
-const pushid = require('pushid');
-const notification = require('../../../libraries/notification.js');
-const { getNextFutureOccurrence } = require('../../../libraries/email/constants.js');
-// firebase-admin v13 dropped the admin.firestore.FieldValue static — import
+import moment from 'moment';
+import pushid from 'pushid';
+import notification from '../../../libraries/notification.js';
+import { getNextFutureOccurrence } from '../../../libraries/email/constants.js';
+// firebase-admin v13 dropped the admin.firestore.FieldValue static: import
 // the modular way (same pattern as admin/send-email.js).
-const { FieldValue } = require('firebase-admin/firestore');
+import { FieldValue } from 'firebase-admin/firestore';
+import { PROCESSING_LEASE_SECONDS, GENERATOR_MAX_ATTEMPTS, loadGenerators } from '../helpers/marketing-campaigns.js';
 
-// How long a 'processing' lease is honored before the campaign of a crashed or
-// timed-out run is reclaimed for retry. Must comfortably exceed the function
-// timeout so an in-flight run is never reclaimed out from under itself.
-const PROCESSING_LEASE_SECONDS = 30 * 60;
-
-// How many times a generator campaign may yield nothing before its occurrence
-// is skipped (recurring) or the campaign is failed (one-off). At the 10-minute
-// cron cadence this is ~6 hours of retries.
-const GENERATOR_MAX_ATTEMPTS = 36;
-
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
   const admin = omega.firebase.admin;
   const now = Math.round(Date.now() / 1000);
   const collection = admin.firestore().collection('marketing-campaigns');
@@ -122,9 +113,7 @@ module.exports = async ({ ctx, omega }) => {
 
     // --- Generator campaigns: generate content + send in one shot ---
     if (generator) {
-      const generators = {
-        newsletter: require('../../../libraries/email/generators/newsletter.js'),
-      };
+      const generators = loadGenerators();
 
       if (!generators[generator]) {
         await doc.ref.set({
@@ -466,8 +455,3 @@ function stamp() {
     timestampUNIX: Math.round(Date.now() / 1000),
   };
 }
-
-// Exposed for tests (test/email/campaign-cron-pipeline.js) — single source of
-// truth for the lease + retry-cap tuning.
-module.exports.PROCESSING_LEASE_SECONDS = PROCESSING_LEASE_SECONDS;
-module.exports.GENERATOR_MAX_ATTEMPTS = GENERATOR_MAX_ATTEMPTS;

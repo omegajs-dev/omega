@@ -16,7 +16,8 @@
  *
  * Run: npx omega test backend:events/payments/purchase-failed-handler
  */
-const handler = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-failed.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-failed.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 const ORDER_ID = '5544-3322-1100';

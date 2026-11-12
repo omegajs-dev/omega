@@ -2,9 +2,9 @@
  * Transition: payment-recovered
  * Triggered when a suspended subscription is recovered (suspended → active)
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc }) {
+export default async function ({ ctx, before, after, order, uid, userDoc }) {
   ctx.log(`Transition [subscription/payment-recovered]: uid=${uid}, product=${after.product?.id}`);
 
   sendOrderEmail({

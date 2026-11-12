@@ -21,9 +21,10 @@
  *
  * Run: npx omega test framework:events/auth-trigger-log-privacy
  */
-const beforeCreate = require('../../dist/omega/events/auth/before-create.js');
-const beforeSignIn = require('../../dist/omega/events/auth/before-signin.js');
-const onDelete = require('../../dist/omega/events/auth/on-delete.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const beforeCreate = loadHandler(require.resolve('../../dist/omega/events/auth/before-create.js'));
+const beforeSignIn = loadHandler(require.resolve('../../dist/omega/events/auth/before-signin.js'));
+const onDelete = loadHandler(require.resolve('../../dist/omega/events/auth/on-delete.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 const UID = '_test-657-uid';

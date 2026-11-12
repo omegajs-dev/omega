@@ -55,6 +55,23 @@ module.exports = defineCases({
     },
 
     {
+      name: 'parse-audit: of three ES module files, names the broken one and passes the other two',
+      run: (ctx) => {
+        const root = makeTree('parse-audit-esm', {
+          'routes/get.js': `import path from 'node:path';\nexport default async () => path.sep;\n`,
+          'routes/post.js': `#!/usr/bin/env node\nexport default async ({ ctx }) => ctx;\n`,
+          'routes/broken.js': `import path from 'node:path';\nexport default async () => { path.sep(((;\n`,
+        });
+        cleanup(ctx, root);
+
+        const { checked, failures } = parseAuditTree(root);
+
+        ctx.expect(checked).toBe(3);
+        ctx.expect(failures.map((failure) => failure.file)).toEqual([path.join('routes', 'broken.js')]);
+      },
+    },
+
+    {
       name: 'parse-audit: skips build-output dirs by default, honors custom skipDirs',
       run: (ctx) => {
         const root = makeTree('parse-audit-skips', {

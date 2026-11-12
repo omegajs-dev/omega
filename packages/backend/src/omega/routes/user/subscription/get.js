@@ -1,10 +1,10 @@
-const powertools = require('node-powertools');
+import powertools from 'node-powertools';
 
 /**
  * GET /user/subscription - Get user subscription info
  * Returns subscription, expiry, trial, and payment status
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

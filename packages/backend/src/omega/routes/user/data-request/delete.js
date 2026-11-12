@@ -2,7 +2,7 @@
  * DELETE /user/data-request - Cancel a pending data request
  * Deletes the most recent pending data request for the authenticated user.
  */
-module.exports = async ({ ctx, omega, user }) => {
+export default async ({ ctx, omega, user }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

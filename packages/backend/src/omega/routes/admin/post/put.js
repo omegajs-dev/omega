@@ -2,16 +2,16 @@
  * PUT /admin/post - Edit blog post
  * Admin/blogger endpoint to edit existing blog posts via GitHub
  */
-const moment = require('moment');
-const powertools = require('node-powertools');
-const { Octokit } = require('@octokit/rest');
+import moment from 'moment';
+import powertools from 'node-powertools';
+import { Octokit } from '@octokit/rest';
 
-const dispatchDeploy = require('./dispatch-deploy');
-const { writeFileBothBranches } = require('../lib/deploy-branch.js');
-const { cmsContext } = require('../../../helpers/web-target.js');
-const env = require('../../../libraries/env.js');
+import dispatchDeploy from './dispatch-deploy.js';
+import { uploadPost } from './upload-post.js';
+import { cmsContext } from '../../../helpers/web-target.js';
+import env from '../../../libraries/env.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
   const fetch = omega.require('wonderful-fetch');
 
   // Require authentication
@@ -125,38 +125,3 @@ async function fetchPost(ctx, url, target) {
 
   return result;
 }
-
-// Helper: Upload post to GitHub
-async function uploadPost(ctx, octokit, data, fetchedPost) {
-  const filename = fetchedPost.path;
-  const sha = fetchedPost.sha;
-  const frontmatter = fetchedPost.frontmatter;
-  const owner = data.githubUser;
-  const repo = data.githubRepo;
-
-  // Combine content
-  const fullContent = `---\n${frontmatter}\n---\n\n${data.body}`;
-
-  // Upload post to BOTH branches (#919): the default branch is the record, and
-  // the deploy branch is what CI builds, so a post that skipped it would never
-  // reach the live site on a brand running local framework packages.
-  const { result, deployBranch } = await writeFileBothBranches({
-    ctx,
-    octokit,
-    owner: owner,
-    repo: repo,
-    path: filename,
-    sha: sha,
-    message: `📦 admin/post:edit ${filename}`,
-    content: fullContent,
-  });
-
-  data.deployBranch = deployBranch;
-
-  ctx.log('uploadPost(): Result', result);
-
-  return result;
-}
-
-// Expose the write for tests
-module.exports.uploadPost = uploadPost;

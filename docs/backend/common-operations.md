@@ -7,7 +7,7 @@ Inside-the-handler patterns for the most frequent operations. See [docs/backend/
 The pipeline authenticates before the route runs, so the route reads the caller off its argument (`ctx.user` is the same `User`):
 
 ```javascript
-module.exports = async ({ ctx, user }) => {
+export default async ({ ctx, user }) => {
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
   }

@@ -1,10 +1,10 @@
-const powertools = require('node-powertools');
+import powertools from 'node-powertools';
 
 /**
  * DELETE /user/sessions - Sign out of all sessions
  * Signs user out of all active sessions and revokes refresh tokens
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

@@ -8,7 +8,8 @@ const jetpack = require('fs-jetpack');
 const { loadConfig, missingDefaults } = require('../helpers/_shared-config.js');
 const { writeJson } = require('../../dist/vendor/devkit/write-json.js');
 const { resolveSignupLimit } = require('../../dist/omega/events/auth/utils.js');
-const beforeCreate = require('../../dist/omega/events/auth/before-create.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const beforeCreate = loadHandler(require.resolve('../../dist/omega/events/auth/before-create.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 /**

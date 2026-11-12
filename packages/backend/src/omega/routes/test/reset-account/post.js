@@ -1,5 +1,5 @@
-const { resolvedBrandHost } = require('@omega.js/config');
-const { getAccountDefinitions, createAccount, seedOrderFixture, seedSessionFixture } = require('../../../../test/test-accounts.js');
+import { resolvedBrandHost } from '@omega.js/config';
+import { getAccountDefinitions, createAccount, seedOrderFixture, seedSessionFixture } from '../../../../test/test-accounts.js';
 
 /**
  * POST /test/reset-account
@@ -13,7 +13,7 @@ const { getAccountDefinitions, createAccount, seedOrderFixture, seedSessionFixtu
  * seed. Development/testing only, and only for the account the caller is
  * signed in as — there is no uid parameter.
  */
-module.exports = async ({ ctx, user }) => {
+export default async ({ ctx, user }) => {
   // Emulator-only: never a route outside development/testing (an explicit
   // positive check, per the context contract — not `!isProduction()`)
   if (!ctx.isDevelopment() && !ctx.isTesting()) {

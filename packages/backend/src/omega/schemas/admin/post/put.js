@@ -1,7 +1,7 @@
 /**
  * Schema for PUT /admin/post (edit)
  */
-module.exports = () => ({
+export default() => ({
   url: { type: 'string', required: true },
   body: { type: 'string', required: true },
   title: { type: 'string' },

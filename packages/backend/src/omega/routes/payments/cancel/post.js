@@ -1,8 +1,8 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
-const powertools = require('node-powertools');
-const isAlreadyGone = require('../../../libraries/payment/provider-errors.js');
-const isTrialing = require('./_is-trialing.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
+import powertools from 'node-powertools';
+import isAlreadyGone from '../../../libraries/payment/provider-errors.js';
+import isTrialing from './_is-trialing.js';
 
 /**
  * POST /payments/cancel
@@ -13,7 +13,7 @@ const isTrialing = require('./_is-trialing.js');
  * Stores the cancellation reason/feedback on payments-orders/{orderId}.requests.cancellation.
  * Requires authentication.
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   // Require authentication
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -81,7 +81,7 @@ module.exports = async ({ ctx, user, data }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });
   }

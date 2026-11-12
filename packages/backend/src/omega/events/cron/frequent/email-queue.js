@@ -1,4 +1,4 @@
-const moment = require('moment');
+import moment from 'moment';
 
 // Must match the SEND_AT_LIMIT in email.js
 const SEND_AT_LIMIT = 71;
@@ -18,7 +18,7 @@ const MAX_RETRIES = 5;
  * Emails land in this queue when their `sendAt` exceeds the 71-hour limit
  * at the time of the original send() call (see email.js → saveToEmailQueue).
  */
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   const admin = omega.firebase.admin;
   const cutoff = moment().add(SEND_AT_LIMIT, 'hours').unix();
 

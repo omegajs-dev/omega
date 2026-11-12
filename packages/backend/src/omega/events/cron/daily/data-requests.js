@@ -7,7 +7,7 @@
  *
  * Scans the entire collection (no index required) since data-requests is small.
  */
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   const admin = omega.firebase.admin;
   const nowUNIX = Math.round(Date.now() / 1000);
 

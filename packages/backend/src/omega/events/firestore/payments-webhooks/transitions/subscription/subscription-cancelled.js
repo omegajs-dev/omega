@@ -2,9 +2,9 @@
  * Transition: subscription-cancelled
  * Triggered when a subscription is fully cancelled (any non-cancelled → cancelled)
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc }) {
+export default async function ({ ctx, before, after, order, uid, userDoc }) {
   ctx.log(`Transition [subscription/subscription-cancelled]: uid=${uid}, previousProduct=${before?.product?.id}, previousStatus=${before?.status}`);
 
   // Check if subscription has a future expiry (e.g., cancelled at period end)

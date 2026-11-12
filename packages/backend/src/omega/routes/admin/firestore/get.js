@@ -2,7 +2,7 @@
  * GET /admin/firestore - Read Firestore document
  * Admin-only endpoint to read any document
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

@@ -18,12 +18,12 @@
  * remove) is naturally idempotent — re-processing a provider retry produces the same
  * end state with no extra side effects, so duplicate suppression buys nothing.
  */
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
-const safeCompare = require('../../../helpers/safe-compare.js');
-const env = require('../../../libraries/env.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
+import safeCompare from '../../../helpers/safe-compare.js';
+import env from '../../../libraries/env.js';
 
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
   const query = ctx.request.query;
 
   const provider = query.provider;
@@ -53,7 +53,7 @@ module.exports = async ({ ctx, omega }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     ctx.error(`marketing webhook: failed to load provider "${provider}":`, e);
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });

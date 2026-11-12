@@ -2,9 +2,10 @@
  * POST /admin/payment - Payment provider webhook
  * Admin-only endpoint to process payment events
  */
-const jetpack = require('fs-jetpack');
+import jetpack from 'fs-jetpack';
+import { pathToFileURL } from 'url';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   // Require authentication
   if (!user.authenticated) {
@@ -35,7 +36,7 @@ module.exports = async ({ ctx, omega, user, data, analytics }) => {
   // Load provider
   let provider;
   try {
-    provider = new (require(providerPath));
+    provider = new ((await import(pathToFileURL(providerPath).href)).default);
     provider.omega = omega;
   } catch (e) {
     ctx.error('Subprovider failed to load:', providerPath, e);

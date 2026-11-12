@@ -26,7 +26,9 @@
  * Run: npx omega test backend:events/payments/trial-lapse-sweep-staleness
  */
 const expect = require('../../../dist/vendor/devkit/test/expect.js');
-const sweep = require('../../../dist/omega/events/cron/daily/trial-lapse-sweep.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const sweep = loadHandler(require.resolve('../../../dist/omega/events/cron/daily/trial-lapse-sweep.js'));
+const { isNewerThanSweep } = require('../../../dist/omega/events/cron/helpers/trial-lapse-sweep.js');
 const { buildAdmin, CONFIG } = require('./_webhook-harness.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
@@ -104,11 +106,11 @@ module.exports = defineCases({
         // The guard's whole predicate, at the resolution the stamps actually carry.
         // Under the strict `>` this replaced, the equal case answered false — the
         // sweep called a webhook from its own second "older" and wrote over it.
-        expect(sweep.isNewerThanSweep(1000, 1000), 'a write inside the sweep read\'s own second is NEWER, not older').toBe(true);
-        expect(sweep.isNewerThanSweep(1001, 1000), 'a later write is newer').toBe(true);
-        expect(sweep.isNewerThanSweep(999, 1000), 'a write from before the read is genuinely older').toBe(false);
-        expect(sweep.isNewerThanSweep(0, 1000), 'a subscription nobody has stamped is not newer').toBe(false);
-        expect(sweep.isNewerThanSweep(undefined, 1000), 'an unstamped subscription reads as 0, not NaN').toBe(false);
+        expect(isNewerThanSweep(1000, 1000), 'a write inside the sweep read\'s own second is NEWER, not older').toBe(true);
+        expect(isNewerThanSweep(1001, 1000), 'a later write is newer').toBe(true);
+        expect(isNewerThanSweep(999, 1000), 'a write from before the read is genuinely older').toBe(false);
+        expect(isNewerThanSweep(0, 1000), 'a subscription nobody has stamped is not newer').toBe(false);
+        expect(isNewerThanSweep(undefined, 1000), 'an unstamped subscription reads as 0, not NaN').toBe(false);
       },
     },
 

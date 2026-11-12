@@ -1,9 +1,12 @@
-const moment = require('moment');
-const _ = require('lodash');
-const { inferContact } = require('../../../libraries/infer-contact.js');
-const { trackSignup } = require('../../../libraries/analytics/signup.js');
-const { validate: validateEmail, isDisposable, ALL_CHECKS } = require('../../../libraries/email/validation.js');
-const { User } = require('../../../helpers/account.js');
+import moment from 'moment';
+import _ from 'lodash';
+import { inferContact } from '../../../libraries/infer-contact.js';
+import { trackSignup } from '../../../libraries/analytics/signup.js';
+import { validate as validateEmail, isDisposable, ALL_CHECKS } from '../../../libraries/email/validation.js';
+import account from '../../../helpers/account.js';
+import { keyNames, locationFromGeolocation } from './record-fields.js';
+
+const { User } = account;
 
 const MAX_POLL_TIME_MS = 30000;
 const POLL_INTERVAL_MS = 500;
@@ -20,7 +23,7 @@ const POLL_INTERVAL_MS = 500;
  * 6. Process affiliate referral (writes to referrer's doc)
  * 7. Send welcome emails + add to marketing lists (non-blocking)
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication
@@ -149,24 +152,6 @@ async function pollForUserDoc(ctx, uid) {
 }
 
 /**
- * The top-level key names of a payload, for a log line that must not carry the payload.
- *
- * The incoming settings and the record signup writes are both made of the fields a user
- * document is made of — the api keys buildUserRecord() deliberately preserves, the consent
- * records, the request IP, the attribution — and a backend line lands in Cloud Logging for
- * the whole retention window ([#632](https://github.com/Omega-JS-Stack/omega/issues/632)).
- * The SHAPE is what a log reader needs; the values belong at `ctx.debug` or nowhere.
- *
- * @param {*} value - Any payload (a non-object reads as nothing)
- * @returns {string} Comma-joined top-level key names, or '(none)'
- */
-function keyNames(value) {
-  const keys = value && typeof value === 'object' ? Object.keys(value) : [];
-
-  return keys.length ? keys.join(', ') : '(none)';
-}
-
-/**
  * Build the complete user record to write at signup completion.
  *
  * Returns the WHOLE merged document (written without {merge}), layered deepest-first:
@@ -246,32 +231,6 @@ function buildUserRecord(ctx, { data, inferred, uid, email, creationTime, existi
   // Deep-merge: schema (base) ← existing doc (real values win) ← signup data (owned fields win).
   // _.merge mutates its first arg, so start from a fresh object.
   return _.merge({}, schemaShape, existingDoc || {}, signupData);
-}
-
-/**
- * The `personal.location` fields the request's geolocation can fill.
- *
- * The header-derived country/region/city landed in `activity.geolocation` and nowhere else, so
- * `personal.location` — the address half of the ad-platform match keys
- * (`libraries/analytics/match-data.js`) and the email merge fields — stayed empty on every
- * account ([#638](https://github.com/Omega-JS-Stack/omega/issues/638)).
- *
- * The fill is per-field and never overwrites: an IP guess loses to anything the user set, in the
- * incoming settings or in the existing doc. Nothing to fill returns an EMPTY object, so the
- * write carries no `personal.location` key at all rather than a map of nulls.
- */
-function locationFromGeolocation(geolocation, existingLocation) {
-  const location = {};
-
-  for (const field of ['country', 'region', 'city']) {
-    if (existingLocation?.[field] || !geolocation?.[field]) {
-      continue;
-    }
-
-    location[field] = geolocation[field];
-  }
-
-  return location;
 }
 
 /**
@@ -637,7 +596,3 @@ function sendFeedbackEmail(ctx, uid, firstName) {
       return result;
     });
 }
-
-// Exported for unit tests (pure, no I/O).
-module.exports.locationFromGeolocation = locationFromGeolocation;
-module.exports.keyNames = keyNames;

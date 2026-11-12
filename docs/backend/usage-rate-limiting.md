@@ -3,7 +3,7 @@
 ## The one call
 
 ```js
-module.exports = async ({ ctx }) => {
+export default async ({ ctx }) => {
   const left = await ctx.usage.consume('saves');   // throws a 429 over limit
 
   // ... do the work the user paid for

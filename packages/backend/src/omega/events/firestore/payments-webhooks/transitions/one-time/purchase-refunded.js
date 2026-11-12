@@ -19,12 +19,15 @@
  * handler was a log-only stub, so their only notice was the line on their
  * statement ([#673](https://github.com/Omega-JS-Stack/omega/issues/673)).
  */
-const paymentRefunded = require('../subscription/payment-refunded.js');
+import path from 'path';
+import { loadHandler } from '../../../../../libraries/load-handler.js';
 
-module.exports = async function (context) {
+export default async function (context) {
   const { after, order, uid, ctx, refundDetails } = context;
 
   ctx.log(`Transition [one-time/purchase-refunded]: uid=${uid}, orderId=${order?.id}, product=${after?.product?.id}, amount=${refundDetails?.amount || 'unknown'} ${refundDetails?.currency || 'USD'}, reason=${refundDetails?.reason || 'none'}`);
 
-  return paymentRefunded(context);
+  // Another handler comes through the one loader: an `import` of it re-parses the
+  // file (the package names no "type") and prints MODULE_TYPELESS_PACKAGE_JSON
+  return loadHandler(path.join(import.meta.dirname, '..', 'subscription', 'payment-refunded.js'))(context);
 };

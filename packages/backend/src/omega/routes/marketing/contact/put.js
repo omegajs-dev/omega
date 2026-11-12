@@ -3,7 +3,7 @@
  * Admin-only endpoint to re-sync a user's data to marketing providers
  */
 
-module.exports = async ({ ctx, data, analytics }) => {
+export default async ({ ctx, data, analytics }) => {
 
   // The caller the middleware authenticated — the usage counter is lazy now
   // and was never the right place to read a role from (#647)

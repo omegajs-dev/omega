@@ -1,4 +1,4 @@
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
 
   // Get url
   const url = omega.config?.brand?.url;

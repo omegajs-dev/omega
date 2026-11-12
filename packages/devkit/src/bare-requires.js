@@ -15,11 +15,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { builtinModules } = require('node:module');
 const { frameworkDependencyNames } = require('./framework-deps.js');
+const { bareSpecifiers, packageName } = require('./load-forms.js');
 
 // Both spellings of every built-in: `require('fs')` and `require('node:fs')`.
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
-
-const REQUIRE_CALL = /\brequire\(\s*(['"])([^'"\n]+)\1\s*\)/g;
 
 // Build output, vendored trees and the archive dirs a port leaves behind: none
 // of them is source this project ships, and scanning them reports findings
@@ -29,19 +28,6 @@ const SKIP_DIRS = ['node_modules', 'dist', '_site', '_legacy', '_backup', '.git'
 // The dependency fields npm resolves a bare specifier from at RUNTIME or in a
 // build. A peer the consumer declares is installed beside it like any other.
 const MANIFEST_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
-
-/**
- * The PACKAGE a specifier resolves to: `@scope/name` keeps two segments,
- * everything else keeps one, and the subpath is not the dependency.
- *
- * @param {string} specifier
- * @returns {string}
- */
-function packageName(specifier) {
-  const segments = specifier.split('/');
-
-  return specifier.startsWith('@') ? segments.slice(0, 2).join('/') : segments[0];
-}
 
 /**
  * Every `.js` file under a dir, build output and archive dirs skipped.
@@ -95,14 +81,11 @@ function declaredPackages(root) {
 }
 
 /**
- * Scan a consumer's sources for bare requires of packages it does not declare.
- *
+ * Scan a consumer's sources for bare requires and imports of packages it does not declare.
  * @param {string} root - Consumer project root (the manifest is judged from here).
  * @param {object} [options]
- * @param {string[]} [options.aliases] - Package names the framework RESOLVES for
- *   the consumer (a bundler alias, a runtime the framework owns). None is a
- *   dependency a consumer may declare, so naming one would hand the report a
- *   fix that breaks the project.
+ * @param {string[]} [options.aliases] - Package names the framework RESOLVES for the
+ *   consumer (a bundler alias, a runtime it owns): never a dependency to declare.
  * @param {string} [options.srcDir] - The tree to scan, relative to root. Defaults to `src`.
  * @param {string} [options.frameworkRoot] - The calling framework's package root:
  *   a finding its declared set carries is marked `framework: true`.
@@ -121,11 +104,7 @@ function collectBareRequires(root, options = {}) {
     const source = fs.readFileSync(filePath, 'utf8');
     const seen = new Set();
 
-    REQUIRE_CALL.lastIndex = 0;
-    let match;
-    while ((match = REQUIRE_CALL.exec(source)) !== null) {
-      const specifier = match[2];
-      if (specifier.startsWith('.') || specifier.startsWith('/')) continue; // a path, not a package
+    for (const { specifier, index } of bareSpecifiers(source)) {
       if (BUILTINS.has(specifier)) continue;
 
       const name = packageName(specifier);
@@ -135,7 +114,7 @@ function collectBareRequires(root, options = {}) {
 
       found.push({
         file: path.relative(root, filePath),
-        line: source.slice(0, match.index).split('\n').length,
+        line: source.slice(0, index).split('\n').length,
         module: name,
         fix: `add it to this project's package.json (\`npm install ${name}\`), it resolved through the legacy flat install and resolves under OMEGA only by hoisting`,
         framework: frameworkDeps.has(name),
@@ -182,4 +161,4 @@ function nudgeBareRequires({ root, srcDir, frameworkRoot, aliases, door, warn })
   return findings;
 }
 
-module.exports = { collectBareRequires, formatBareRequire, nudgeBareRequires, packageName };
+module.exports = { collectBareRequires, formatBareRequire, nudgeBareRequires };

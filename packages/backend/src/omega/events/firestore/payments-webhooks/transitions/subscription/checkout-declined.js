@@ -13,6 +13,6 @@
  * access to lose. No analytics either: no money moved, and the resolver tracks
  * payments, not attempts ([#212]).
  */
-module.exports = async function ({ ctx, before, after, order, uid }) {
+export default async function ({ ctx, before, after, order, uid }) {
   ctx.log(`Transition [subscription/checkout-declined]: uid=${uid}, attemptedProduct=${after.product?.id}, previousProduct=${before?.product?.id || 'none'}, order=${order?.id || 'none'} (no email — the user is at checkout and sees the decline)`);
 };

@@ -2,10 +2,13 @@
  * POST /general/email - Send templated email
  * Public endpoint to send email using predefined templates
  */
-const path = require('path');
-const { merge } = require('lodash');
-const { loadTemplate } = require('../../../libraries/load-provider');
-module.exports = async ({ ctx, omega, data }) => {
+import path from 'path';
+import lodash from 'lodash';
+import { loadTemplate } from '../../../libraries/load-provider.js';
+
+const { merge } = lodash;
+
+export default async ({ ctx, omega, data }) => {
   // Validate required parameters
   if (!data.id) {
     return ctx.respond('Parameter {id} is required.', { code: 400 });
@@ -28,7 +31,7 @@ module.exports = async ({ ctx, omega, data }) => {
   // loadTemplate validates the id so it can never resolve outside templates/
   let emailPayload;
   try {
-    const script = loadTemplate(path.join(__dirname, 'templates'), data.id);
+    const script = loadTemplate(path.join(import.meta.dirname, 'templates'), data.id);
     emailPayload = merge(
       {},
       DEFAULT,

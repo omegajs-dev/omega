@@ -120,15 +120,15 @@ The vendor tool derives the split from the host's package.json: anything in `dep
 **A consumer may use any package its framework declares in `dependencies`, with a nudge and never a requirement.** Where the code runs decides how the name resolves:
 
 - **Bundled code** (web pages and modules, desktop main/preload/renderer, every extension context): a bare `require` or `import` of a framework-declared package resolves from the framework's own installation through the resolve hook `@omega.js/devkit/bundle` composes into every build ([devkit/index.md](../devkit/index.md)), so a bundle carries one copy, the framework's, even when the consumer declares its own.
-- **Code under plain node** (backend functions, desktop and extension hooks): a bare `require` of a package the target never declared resolves only by HOISTING, which holds on one install and not the next. Two fixes, and either is complete: declare it in the target's own `package.json` (`npm install <module>`), and the declared version wins, or load the framework's copy through the framework's door:
+- **Code under plain node** (backend functions, desktop and extension hooks): a bare `require` or `import` of a package the target never declared resolves only by HOISTING, which holds on one install and not the next. Two fixes, and either is complete: declare it in the target's own `package.json` (`npm install <module>`), and the declared version wins, or load the framework's copy through the framework's door:
 
 | Framework | Scanned tree | The door |
 |---|---|---|
-| `@omega.js/backend` | `src/` | `omega.require('<module>')` |
-| `@omega.js/desktop` | `hooks/` | `require('@omega.js/desktop').require('<module>')` |
-| `@omega.js/extension` | `hooks/` | `require('@omega.js/extension').require('<module>')` |
+| `@omega.js/backend` | `src/` | `omega.require('<module>')` inside the handler body (a top-level `import` cannot reach it) |
+| `@omega.js/desktop` | `hooks/` | `desktop.require('<module>')` after `import desktop from '@omega.js/desktop'` |
+| `@omega.js/extension` | `hooks/` | `extension.require('<module>')` after `import extension from '@omega.js/extension'` |
 
-**The nudge.** Every verb's scaffold (each framework's ensure-target) scans its tree in the table with devkit's `nudgeBareRequires` and prints ONE warning per undeclared package, at file:line. A package the framework declares gets both fixes, ``declare it (`npm install <module>`), or load the framework's copy with <door>``; any other package gets the declare-only line. It is never an error: the verb runs on, and a consumer that declares its own version silences it. Web runs no nudge, because it loads no consumer code under plain node: every page module reaches the bundle hook above, and a brand's suite asks for a framework dependency through `require(name)` on the test door, `@omega.js/web/test` ([web/test-framework.md](../web/test-framework.md)).
+**The nudge.** Every verb's scaffold (each framework's ensure-target) scans its tree in the table with devkit's `nudgeBareRequires`, reading every `require`, `import` and `export ... from` of a package outside comments, and prints ONE warning per undeclared package, at file:line. A package the framework declares gets both fixes, ``declare it (`npm install <module>`), or load the framework's copy with <door>``; any other package gets the declare-only line. It is never an error: the verb runs on, and a consumer that declares its own version silences it. Web runs no nudge, because it loads no consumer code under plain node: every page module reaches the bundle hook above, and a brand's suite asks for a framework dependency through `require(name)` on the test door, `@omega.js/web/test` ([web/test-framework.md](../web/test-framework.md)).
 
 ## API surface (`@omega.js/devkit/local`)
 

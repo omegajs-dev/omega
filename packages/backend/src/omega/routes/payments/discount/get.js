@@ -2,9 +2,9 @@
  * GET /payments/discount?code=FLASH20
  * Validates a discount code and returns the discount details
  */
-const discountCodes = require('../../../libraries/payment/discount-codes.js');
+import discountCodes from '../../../libraries/payment/discount-codes.js';
 
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   const result = discountCodes.validate(data.code, user.authenticated ? user : undefined);
 
   ctx.log(`Discount validation: code=${result.code}, valid=${result.valid}`);

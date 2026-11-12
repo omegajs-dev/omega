@@ -1,5 +1,9 @@
 const path = require('path');
 const { validate, pathParams } = require('../helpers/schema.js');
+const { loadHandler } = require('../libraries/load-handler.js');
+
+// The module that issues a schema's require: a resolution failure it issues is a missing schema file
+const LOADER = require.resolve('../libraries/load-handler.js');
 
 /**
  * Settings: the request service that validates a request's input against its
@@ -74,23 +78,17 @@ class Settings {
 function loadSchema(ctx, schemaDir, method, schemaName) {
   const methodFile = `${method}.js`;
 
-  // Only fall back when THIS specific file is missing. If the file exists but
-  // throws (syntax error, runtime error, a broken require of its own) we
-  // re-throw so the real problem surfaces instead of being masked by a
-  // misleading fallback. The decision is STRUCTURAL, not textual:
-  // err.requireStack[0] is the module that ISSUED the failing require. THIS
-  // file issues it only when the schema file itself cannot be resolved; once
-  // the schema file loads, any resolution failure inside it is issued by the
-  // schema file (or one of its own dependencies) and must surface. A message
-  // match cannot tell these apart: Node's "Require stack:" names the schema
-  // file in both.
+  // Fall back only when THIS file is missing; one that loads and throws surfaces.
+  // err.requireStack[0] is the module that issued the failing require: the loader
+  // only when the schema file itself cannot be resolved (a message match cannot
+  // tell, since Node's "Require stack:" names the schema file in both cases).
   const isMissingModule = (err) => err
     && err.code === 'MODULE_NOT_FOUND'
     && Array.isArray(err.requireStack)
-    && err.requireStack[0] === __filename;
+    && err.requireStack[0] === LOADER;
 
   try {
-    const factory = require(path.resolve(schemaDir, methodFile));
+    const factory = loadHandler(path.resolve(schemaDir, methodFile));
     ctx.log(`Settings.resolve(): Loaded method-specific schema: ${schemaName}/${methodFile}`);
 
     return factory;
@@ -101,7 +99,7 @@ function loadSchema(ctx, schemaDir, method, schemaName) {
   }
 
   try {
-    const factory = require(path.resolve(schemaDir, 'index.js'));
+    const factory = loadHandler(path.resolve(schemaDir, 'index.js'));
     ctx.log(`Settings.resolve(): Method-specific schema not found, using main schema fallback`);
 
     return factory;

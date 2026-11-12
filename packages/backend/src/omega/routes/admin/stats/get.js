@@ -1,10 +1,10 @@
-const _ = require('lodash');
+import _ from 'lodash';
 
 /**
  * GET /admin/stats - Get application stats
  * Admin-only endpoint to retrieve and optionally update app statistics
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

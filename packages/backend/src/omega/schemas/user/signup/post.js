@@ -1,4 +1,4 @@
-module.exports = ({ user }) => ({
+export default({ user }) => ({
   uid: { type: 'string', default: user.uid },
   attribution: { type: 'object', default: {} },
   // The client's tracking-consent snapshot, stored verbatim on the user record beside

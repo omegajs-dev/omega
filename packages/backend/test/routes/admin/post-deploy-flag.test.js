@@ -11,8 +11,9 @@
  * Run: npx omega test backend:routes/admin/post-deploy-flag
  */
 const { validate } = require('../../../dist/omega/helpers/schema.js');
-const createSchema = require('../../../dist/omega/schemas/admin/post/post.js');
-const editSchema = require('../../../dist/omega/schemas/admin/post/put.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const createSchema = loadHandler(require.resolve('../../../dist/omega/schemas/admin/post/post.js'));
+const editSchema = loadHandler(require.resolve('../../../dist/omega/schemas/admin/post/put.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 // The validated data, or the refusal thrown so a case fails naming it

@@ -20,6 +20,7 @@
     "./stop-signals": "./src/stop-signals.js",
     "./process-tree": "./src/process-tree.js",
     "./bare-requires": "./src/bare-requires.js",
+    "./run-consumer-hook": "./src/run-consumer-hook.js",
     "./translation-include": "./src/translation-include.js",
     "./env-watch": "./src/env-watch.js",
     "./cli-router": "./src/cli-router.js",

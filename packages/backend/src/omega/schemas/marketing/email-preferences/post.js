@@ -5,7 +5,7 @@
  * - Authenticated (account page toggle): action ('subscribe' | 'unsubscribe'). Other fields ignored.
  * - Anonymous (HMAC link from email footer): email + asmId + sig + action ('subscribe' | 'unsubscribe').
  */
-module.exports = () => ({
+export default() => ({
   email: { type: 'string' },
   asmId: { type: ['string', 'number'] },
   action: { type: 'string', required: true },

@@ -34,8 +34,8 @@ module.exports = defineCases({
         await firestore.set('notes/prune-old', note('prune-old', 31));
         await firestore.set('notes/prune-recent', note('prune-recent', 29));
 
-        // The runner reads the STAGED job off omega.cwd, and so does this
-        const job = require(path.join(omega.cwd, 'hooks', 'cron', 'daily', 'prune-notes.js'));
+        // The runner reads the STAGED job's default export off omega.cwd, and so does this
+        const job = require(path.join(omega.cwd, 'hooks', 'cron', 'daily', 'prune-notes.js')).default;
         const result = await job({ ctx, omega, context: {} });
 
         expect(result.pruned >= 1, 'the job reports what it deleted').toBeTruthy();

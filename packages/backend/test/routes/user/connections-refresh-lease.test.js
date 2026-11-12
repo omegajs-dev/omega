@@ -33,7 +33,8 @@ const path = require('path');
 const jetpack = require('fs-jetpack');
 const { FieldValue } = require('firebase-admin/firestore');
 
-const postRoute = require('../../../dist/omega/routes/user/connections/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const postRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/post.js'));
 const {
   acquireRefreshLease,
   clearRefreshLease,

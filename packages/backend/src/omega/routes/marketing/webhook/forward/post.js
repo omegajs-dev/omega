@@ -26,14 +26,14 @@
  *     still returns 200 so the provider doesn't retry the parent indefinitely.
  *     Children themselves track idempotency, so provider retries are safe.
  */
-const fetch = require('wonderful-fetch');
-const safeCompare = require('../../../../helpers/safe-compare.js');
-const env = require('../../../../libraries/env.js');
-const { apiAddress } = require('@omega.js/config/api-address');
+import fetch from 'wonderful-fetch';
+import safeCompare from '../../../../helpers/safe-compare.js';
+import env from '../../../../libraries/env.js';
+import { apiAddress } from '@omega.js/config/api-address';
 
 const CHILD_TIMEOUT_MS = 10000;
 
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
   const admin = omega.firebase.admin;
   const query = ctx.request.query;
 

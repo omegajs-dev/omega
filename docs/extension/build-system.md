@@ -127,7 +127,7 @@ Views in `src/views/<component>/index.html` go through two passes of `{{ }}` tok
 
 [tasks/package.js](../../packages/extension/src/gulp/tasks/package.js):
 
-1. **Pre-hook** — runs `hooks/build/pre.js` if present (the flat `hooks/build:pre.js` still resolves as a transition fallback)
+1. **Pre-hook**: runs `hooks/build/pre.js` if present, the one path the runner reads (`omega migrate --execute` moves a flat `hooks/build:pre.js` there)
 2. **Per-browser manifest normalization** — converts JSON5 → strict JSON for Chrome/Edge/Opera (Firefox tolerates JSON5 but normalized anyway)
 3. **Per-browser asset copy** to `packaged/<browser>/raw/`: `dist/build.js` rides along with everything else, so the package lane composes no snapshot of its own and writes no `build.json` sidecar ([#743](https://github.com/Omega-JS-Stack/omega/issues/743)). Source maps stay behind ([#1064](https://github.com/Omega-JS-Stack/omega/issues/1064)): every bundle's `.map` sits beside it in `dist` for local reading, and the raw copy drops `**/*.map`, because a map carries the remote-script URLs the redaction strips from the `.js` and its positions predate the post-build rewrites
 4. **Zip** to `packaged/<browser>/<name>.zip`

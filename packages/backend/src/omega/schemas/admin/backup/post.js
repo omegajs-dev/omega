@@ -1,6 +1,6 @@
 /**
  * Schema for POST /admin/backup
  */
-module.exports = () => ({
+export default() => ({
   deletionRegex: { type: 'string' },
 });

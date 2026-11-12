@@ -6,7 +6,7 @@
  *   id    — Get a single vert by ID
  *   limit — Max results (default 100)
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
 
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });

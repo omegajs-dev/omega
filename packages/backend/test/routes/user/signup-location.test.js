@@ -1,23 +1,19 @@
 /**
- * Test: routes/user/signup/post.locationFromGeolocation
- * Unit tests for the `personal.location` fill signup derives from the request's
- * geolocation ([#638](https://github.com/Omega-JS-Stack/omega/issues/638)).
+ * Test: routes/user/signup/record-fields.locationFromGeolocation, the
+ * `personal.location` fill signup derives from the request's geolocation.
  *
  * Run (from the framework repo): npm test routes/user/signup-location
  *
  * Contract:
  *   - The request's country/region/city fill the matching `personal.location`
- *     fields, which nothing else ever wrote — so the ad-platform match keys
- *     (`libraries/analytics/match-data.js`) stopped shipping empty ct/st/country.
- *   - A value the user set (in the incoming settings or in the existing doc)
- *     ALWAYS wins: an IP guess never overwrites a self-reported location.
- *   - Nothing to fill returns an EMPTY object, so the write carries no
- *     `personal.location` key at all rather than a map of nulls.
+ *     fields, so the ad-platform match keys carry ct/st/country.
+ *   - A value the user set (incoming settings or the existing doc) ALWAYS wins;
+ *     nothing to fill returns an EMPTY object (no `personal.location` key).
  */
-const post = require('../../../dist/omega/routes/user/signup/post.js');
+const recordFields = require('../../../dist/omega/routes/user/signup/record-fields.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
-const { locationFromGeolocation } = post;
+const { locationFromGeolocation } = recordFields;
 
 // The shape the Context resolves from the request headers (cf-ipcountry /
 // x-country-code / x-appengine-*) — the extra fields are ignored by the fill.
@@ -32,7 +28,7 @@ const GEOLOCATION = {
 };
 
 module.exports = defineCases({
-  description: 'routes/user/signup/post.locationFromGeolocation',
+  description: 'routes/user/signup/record-fields.locationFromGeolocation',
   type: 'group',
 
   tests: [

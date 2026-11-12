@@ -1,13 +1,13 @@
-const { FieldValue } = require('firebase-admin/firestore');
-const { buildContext, resolveConnection } = require('./_context.js');
-const { buildGrantContext, runStep, REVOKE_UNSUPPORTED } = require('./_grant.js');
+import { FieldValue } from 'firebase-admin/firestore';
+import { buildContext, resolveConnection } from './_context.js';
+import { buildGrantContext, runStep, REVOKE_UNSUPPORTED } from './_grant.js';
 
 /**
  * DELETE /user/connections - Remove a connection
  *
  * Revokes tokens with the provider (best effort) and removes the connection.
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   // An admin may pass `uid`: revoking happens AT THE PROVIDER, on the user's
   // behalf, and needs no browser ([#782](https://github.com/Omega-JS-Stack/omega/issues/782))
   const context = await buildContext({ ctx, user, data, honorUid: true });

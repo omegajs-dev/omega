@@ -1,6 +1,6 @@
-const { FieldValue } = require('firebase-admin/firestore');
-const { deliverConversion } = require('../../../libraries/analytics/conversions.js');
-const { buildAttributionContext, buildIdentity } = require('../../../libraries/analytics/match-data.js');
+import { FieldValue } from 'firebase-admin/firestore';
+import { deliverConversion } from '../../../libraries/analytics/conversions.js';
+import { buildAttributionContext, buildIdentity } from '../../../libraries/analytics/match-data.js';
 
 /**
  * Notification subscription write handler
@@ -8,7 +8,7 @@ const { buildAttributionContext, buildIdentity } = require('../../../libraries/a
  * Handles create, update, and delete events for notification subscriptions.
  * Updates stats counters and sends analytics events.
  */
-module.exports = async ({ ctx, omega, context, change }) => {
+export default async ({ ctx, omega, context, change }) => {
   const admin = omega.firebase.admin;
 
   // Shortcuts

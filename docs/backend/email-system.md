@@ -77,7 +77,7 @@ Email bodies arrive from two very different places, so `renderContent()` has two
 | Lane | Who uses it | markdown-it |
 |---|---|---|
 | **Untrusted** (default) | AI-authored campaign/newsletter bodies, user-submitted fields, anything arriving over a route or the MCP `send_email`/`create_campaign` tools | `html: false` — smuggled `<script>`/`<img onerror>` renders as inert text |
-| **Trusted** (`trustedContent: true` on the send settings) | First-party callers that hand-build markup: the dispute alert (`events/firestore/payments-disputes/on-write.js`) and the newsletter report email (`generators/newsletter.js`) | `html: true` |
+| **Trusted** (`trustedContent: true` on the send settings) | First-party callers that hand-build markup: the dispute alert (`events/firestore/payments-disputes/send-dispute-email.js`) and the newsletter report email (`generators/newsletter.js`) | `html: true` |
 
 Rules for the trusted lane:
 

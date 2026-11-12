@@ -21,7 +21,8 @@
  *
  * Run: npx omega test framework:events/auth-delete-conversion
  */
-const onDelete = require('../../dist/omega/events/auth/on-delete.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const onDelete = loadHandler(require.resolve('../../dist/omega/events/auth/on-delete.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const Context = require('../../dist/omega/context.js');
 

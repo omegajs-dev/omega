@@ -4,7 +4,7 @@
  */
 const WELCOME_TEXT = 'Welcome to the playground';
 
-module.exports = async ({ ctx, omega, user }) => {
+export default async ({ ctx, omega, user }) => {
   const id = omega.utilities.randomId();
 
   await omega.firebase.admin.firestore().doc(`notes/${id}`).set({

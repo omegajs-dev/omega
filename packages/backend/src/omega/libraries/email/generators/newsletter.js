@@ -41,7 +41,7 @@ function resolveSectionImageFn(newsletterConfig) {
 const { renderMarkdown } = require('./lib/markdown-renderer.js');
 const { escapeHtml, safeUrl, senderFrom } = require('../constants.js');
 const { uploadAssets, USE_CDN_URLS, REPO_OWNER, REPO_NAME, RAW_BASE } = require('./lib/image-host.js');
-const { buildPublicConfig } = require('../../../routes/brand/get.js');
+const { buildPublicConfig } = require('../../../routes/brand/public-config.js');
 const { writeArticle, publishArticle } = require('../../../libraries/content/ghostii.js');
 const { trackContentSource, contentSourceHash, resolveSources } = require('../../../libraries/content/source-resolver.js');
 

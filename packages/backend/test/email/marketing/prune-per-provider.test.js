@@ -22,7 +22,9 @@
  * extended-mode marketing-lifecycle suite.
  */
 const expect = require('../../../dist/vendor/devkit/test/expect.js');
-const cron = require('../../../dist/omega/events/cron/daily/marketing-prune.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const cron = loadHandler(require.resolve('../../../dist/omega/events/cron/daily/marketing-prune.js'));
+const pruneHelpers = require('../../../dist/omega/events/cron/helpers/marketing-prune.js');
 const omega = require('../../../dist/omega/index.js');
 const sendgridProvider = require('../../../dist/omega/libraries/email/providers/sendgrid.js');
 const beehiivProvider = require('../../../dist/omega/libraries/email/providers/beehiiv.js');
@@ -35,7 +37,7 @@ const {
   isNewsletterInactive,
   NEWSLETTER_RECEIVED_FLOOR,
   NEWSLETTER_MIN_AGE_DAYS,
-} = cron;
+} = pruneHelpers;
 
 const DAY = 24 * 60 * 60 * 1000;
 const BRAND = { id: 'acme', name: 'Acme' };
@@ -323,7 +325,7 @@ module.exports = defineCases({
             sendgrid.getSegmentContacts = async () => ({ success: true, contacts: [contact('cold@gmail.com', 'sg_cold'), contact('payer@gmail.com', 'sg_payer')] });
             sendgrid.bulkDeleteContacts = async (ids) => { deleted.push(...ids); return { success: true }; };
 
-            const { stagePrune: stage } = load('events/cron/daily/marketing-prune.js');
+            const { stagePrune: stage } = load('events/cron/helpers/marketing-prune.js');
             const ctx = campaignCtx(load, { error: (...args) => errors.push(args.join(' ')) });
 
             await stage(ctx.omega, ctx);

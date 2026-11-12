@@ -8,9 +8,13 @@ No config block. Path is conventional: `src/integrations/tray/index.js`. To opt 
 
 ## Definition file
 
+- The file is an ES module with one default export, loaded through `require()` once at boot. A `module.exports` file is refused, and boot throws `<file> must be an ES module with one default export (export default async (...) => {})`.
+- The body uses a top-level `import`, and `import.meta.dirname` for the file's folder. An edit shows on the next launch.
+- No top-level `await`: the file is loaded by `require()`, which refuses an async module. The default export is called without `await`, so it builds its items before any `await` of its own.
+
 ```js
 // src/integrations/tray/index.js
-module.exports = ({ omega, tray }) => {
+export default ({ omega, tray }) => {
   // @omega.js/desktop auto-resolves the tray icon from config/icons/<platform>/tray.png at build
   // time, so explicit tray.icon() is OPTIONAL. Call it only to override.
   // Note: on macOS, if you pass your own path, the filename MUST end in
@@ -143,7 +147,7 @@ omega.tray.refresh();    // dynamic-label functions re-evaluate
 
 ```js
 // src/integrations/tray/index.js
-module.exports = ({ tray }) => {
+export default ({ tray }) => {
   tray.icon('...');
   tray.useDefaults();
   tray.remove('check-for-updates');

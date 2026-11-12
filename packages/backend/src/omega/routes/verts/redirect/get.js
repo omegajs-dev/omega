@@ -12,9 +12,9 @@
  * utm_medium=omega-vert, utm_campaign=<vertId> — added by the shared tagger,
  * so any param the advertiser already put on the link wins.
  */
-const { getVertById, normalizeHost, normalizeBrandId, isHttpUrl, buildClickDestination } = require('../utils.js');
+import { getVertById, normalizeHost, normalizeBrandId, isHttpUrl, buildClickDestination } from '../utils.js';
 
-module.exports = async ({ ctx, omega, data, analytics }) => {
+export default async ({ ctx, omega, data, analytics }) => {
 
   const vert = await getVertById(omega, data.id);
 

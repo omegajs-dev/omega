@@ -1,4 +1,5 @@
 const jetpack = require('fs-jetpack');
+const { loadHandler } = require('../../libraries/load-handler.js');
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -51,30 +52,15 @@ async function retryWrite(ctx, tag, fn) {
 }
 
 /**
- * Run consumer auth hooks from hooks/auth/{eventName}.js
+ * Run the consumer's auth hook at hooks/auth/{eventName}.js (authored under
+ * src/, staged into dist/, which is omega.cwd at runtime), after the framework's
+ * own handler: before-create, before-signin, on-create, on-delete.
  *
- * Similar to how cron discovers hooks at hooks/cron/{schedule}/*.js,
- * auth hooks are discovered at hooks/auth/{eventName}.js in the consumer project.
+ * A blocking hook (before-create, before-signin) may throw HttpsError to block
+ * the operation; a trigger hook's (on-create, on-delete) errors are logged and never block it.
  *
- * For blocking functions (before-create, before-signin):
- *   - Hook can throw HttpsError to block the operation
- *   - Hook runs AFTER @omega.js/backend's core checks (disposable email, rate limiting, etc.)
- *
- * For trigger functions (on-create, on-delete):
- *   - Hook errors are logged but don't block the operation
- *
- * Hook signature:
- *   module.exports = async ({ ctx, omega, user, context }) => { ... }
- *
- * Consumer project structure (authored under src/, staged into dist/, which
- * is omega.cwd at runtime):
- *   src/
- *     hooks/
- *       auth/
- *         before-create.js   — runs after @omega.js/backend checks, can block signup
- *         before-signin.js   — runs after @omega.js/backend signin logic, can block signin
- *         on-create.js       — runs after @omega.js/backend creates user doc
- *         on-delete.js       — runs after @omega.js/backend deletes user doc
+ * Hook signature, an ES module through the one loader:
+ *   export default async ({ ctx, omega, user, context }) => { ... }
  */
 async function runAuthHook(eventName, args) {
   const { omega, ctx } = args;
@@ -88,7 +74,7 @@ async function runAuthHook(eventName, args) {
   ctx.log(`${eventName}: Running consumer hook @ ${hookPath}`);
 
   // Load and execute — passes the same args object the @omega.js/backend handler received
-  const hook = require(hookPath);
+  const hook = loadHandler(hookPath);
   await hook(args);
 
   ctx.log(`${eventName}: Consumer hook completed`);

@@ -1,4 +1,4 @@
-module.exports = async ({ ctx, analytics }) => {
+export default async ({ ctx, analytics }) => {
 
   // Send analytics event
   analytics.event('test', {});

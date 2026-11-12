@@ -11,7 +11,8 @@
  *
  * Run: npx omega test backend:routes/admin/email-request-log
  */
-const handler = require('../../../dist/omega/routes/admin/email/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/admin/email/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 const ADMIN = { authenticated: true, roles: { admin: true } };

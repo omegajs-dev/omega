@@ -20,7 +20,8 @@
  *
  * Run: npx omega test framework:events/notification-conversion
  */
-const onWrite = require('../../dist/omega/events/firestore/notifications/on-write.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const onWrite = loadHandler(require.resolve('../../dist/omega/events/firestore/notifications/on-write.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const Context = require('../../dist/omega/context.js');
 

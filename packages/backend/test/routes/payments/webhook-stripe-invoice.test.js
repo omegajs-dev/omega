@@ -22,7 +22,8 @@
  */
 const { callHandler } = require('./_route-harness.js');
 
-const handler = require('../../../dist/omega/routes/payments/webhook/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/webhook/post.js'));
 const stripeProvider = require('../../../dist/omega/routes/payments/webhook/providers/stripe.js');
 
 const FIXTURE_INVOICE_RENEWAL = require('../../fixtures/stripe/invoice-subscription-payment-succeeded.json');

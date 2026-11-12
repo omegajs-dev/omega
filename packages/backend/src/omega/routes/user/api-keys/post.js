@@ -1,13 +1,13 @@
-const uuid4 = require('uuid').v4;
-const UIDGenerator = require('uid-generator');
-const powertools = require('node-powertools');
+import { v4 as uuid4 } from 'uuid';
+import UIDGenerator from 'uid-generator';
+import powertools from 'node-powertools';
 const uidgen = new UIDGenerator(256);
 
 /**
  * POST /user/api-keys - Regenerate API keys
  * Regenerates clientId and/or privateKey for the user
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

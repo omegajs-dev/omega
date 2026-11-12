@@ -11,6 +11,7 @@
 const expect = require('../../dist/vendor/devkit/test/expect.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const sourceResolver = require('../../dist/omega/libraries/content/source-resolver.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
 const {
   fakeProviderApi,
   withProviderApi,
@@ -57,7 +58,7 @@ async function runCron(campaign) {
     await withProviderApi(api, async (load) => {
       stubAssetUpload(load);
 
-      const cron = load('events/cron/frequent/marketing-campaigns.js');
+      const cron = loadHandler(require.resolve('../../dist/omega/events/cron/frequent/marketing-campaigns.js'));
       const ctx = campaignCtx(load, {
         admin: store.admin,
         ai: { request: newsletterAi },

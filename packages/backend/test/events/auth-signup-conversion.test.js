@@ -22,7 +22,8 @@
  *
  * Run: npx omega test framework:events/auth-signup-conversion
  */
-const onCreate = require('../../dist/omega/events/auth/on-create.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const onCreate = loadHandler(require.resolve('../../dist/omega/events/auth/on-create.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const Context = require('../../dist/omega/context.js');
 

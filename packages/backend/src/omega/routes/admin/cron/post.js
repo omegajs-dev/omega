@@ -1,10 +1,11 @@
-const path = require('path');
+import path from 'path';
+import { loadHandler } from '../../../libraries/load-handler.js';
 
 /**
  * POST /admin/cron - Run cron job manually
  * Admin-only endpoint to trigger cron jobs
  */
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   // Require authentication (allow in dev)
   if (!user.authenticated && ctx.isProduction()) {
@@ -24,8 +25,8 @@ module.exports = async ({ ctx, omega, user, data, analytics }) => {
   ctx.log('Running cron job:', data.id);
 
   // Run the cron job
-  const cronPath = path.resolve(__dirname, `../../../events/cron/${data.id}.js`);
-  const cronHandler = require(cronPath);
+  const cronPath = path.resolve(import.meta.dirname, `../../../events/cron/${data.id}.js`);
+  const cronHandler = loadHandler(cronPath);
   const result = await cronHandler({ ctx, omega, context: {} }).catch(e => e);
 
   if (result instanceof Error) {

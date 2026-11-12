@@ -11,6 +11,7 @@ const { CLASSIC_DEV_ORIGIN } = require('@omega.js/config');
 const { listingId, deriveFirefoxId } = require('../../lib/listings.js');
 const { renderTokens, unresolvedTokens } = require('@omega.js/devkit/tokens');
 const { writeJson } = require('@omega.js/devkit/write-json');
+const { runConsumerHook } = require('@omega.js/devkit/run-consumer-hook');
 
 // Load package
 const project = build.getPackage('project');
@@ -652,7 +653,7 @@ async function packageFn(complete) {
     logger.log('Starting...');
 
     // Run build:pre hook
-    await hook('build:pre');
+    await runConsumerHook('build/pre', hookContext());
 
     // Run packageRaw
     await packageRaw();
@@ -667,7 +668,7 @@ async function packageFn(complete) {
     await deployStoreAssets();
 
     // Run build:post hook
-    await hook('build:post');
+    await runConsumerHook('build/post', hookContext());
 
     // Run liveReload
     liveReload();
@@ -712,63 +713,19 @@ module.exports.compileManifest = compileManifest;
 module.exports.illegalMatchPatterns = illegalMatchPatterns;
 module.exports.compileLocales = compileLocales;
 module.exports.deployStoreAssets = deployStoreAssets;
-module.exports.hook = hook;
 // The browser targets the package lane builds: the one list the publish task's
 // release upload is checked against (it ships packaged/<target>/extension.zip).
 module.exports.TARGETS = TARGETS;
 
-// Run hooks
-async function hook(file, ctx) {
-  // Candidate paths, in order: the NESTED form the defaults scaffold writes and
-  // setup's migration moves flat files to (`hooks/build/pre.js`), then the flat
-  // pre-migration form (`hooks/build:pre.js`) as a transition fallback. Resolving
-  // only the flat one left every migrated consumer's hooks dead (#571).
-  const candidates = [
-    path.join(process.cwd(), 'hooks', `${file.split(':').join(path.sep)}.js`),
-    path.join(process.cwd(), 'hooks', `${file}.js`),
-  ];
-
-  // Find the first one that exists
-  const fullPath = candidates.find((candidate) => jetpack.exists(candidate));
-
-  // Quit if there is none — a consumer may delete a scaffolded hook, so the
-  // miss is an informational line through the framework logger (the bare
-  // console.warn it replaces carried no tag and read as build noise, #571)
-  if (!fullPath) {
-    return logger.log(`No ${file} hook found at ${candidates[0]}`);
-  }
-
-  // Log
-  logger.log(`Running hook: ${fullPath}`);
-
-  // Load hook
-  let hook;
-  try {
-    // Load the hook
-    hook = require(fullPath);
-  } catch (e) {
-    throw new Error(`Error loading hook: ${fullPath} ${e.stack}`);
-  }
-
-  // Execute hook — the ONE hook-argument shape across OMEGA frameworks: the same
-  // `{ build, projectRoot, mode }` ctx @omega.js/desktop hands its lifecycle
-  // hooks. This used to pass the package task's internal watch counter while both
-  // docs described a build-info object nothing ever built, so a hook written from
-  // the docs read `undefined` at its first property (#591). Everything those docs
-  // promised is reachable through `build` (getManifest/getConfig/getPackage).
-  try {
-    return await hook({
-      build,
-      projectRoot: process.cwd(),
-      // Build mode answers the BUILD lane's hooks. A caller that knows better
-      // says so: the deploy verb's hook runs outside a build and what it is
-      // about to publish is a release, so it names `production` itself.
-      mode: build.isBuildMode() ? 'production' : 'development',
-      ...(ctx || {}),
-    });
-  } catch (e) {
-    throw new Error(`Error running hook: ${fullPath} ${e.stack}`);
-  }
+// The ONE hook-argument shape across OMEGA frameworks, `{ build, projectRoot, mode }`,
+// the same ctx @omega.js/desktop hands its lifecycle hooks. Build mode answers the
+// BUILD lane's hooks; the deploy verb names `production` itself.
+function hookContext() {
+  return {
+    build,
+    projectRoot: process.cwd(),
+    mode: build.isBuildMode() ? 'production' : 'development',
+  };
 }
 
 // Get redactions

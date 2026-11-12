@@ -55,6 +55,8 @@ Over HTTP the connection's role is its caller's, resolved ONCE per request throu
 | `generate_uuid` | admin | `POST /omega/general/uuid` | Generate a UUID |
 | `health_check` | public | `GET /omega/health` | Check server health |
 
+- `run_cron` and `run_hook` (`POST /omega/admin/cron`, `POST /omega/admin/hook`) load the named job or hook through the one handler loader: a file that is there but fails to load, or is still in the CommonJS form, fails the call loudly naming the file, never `Hook not found`.
+
 ## Tool Annotations
 
 Every tool has MCP annotations that control how Claude Desktop categorizes and displays it:
@@ -103,9 +105,15 @@ npx omega mcp --token <api-key>    # User-level — sees 4 tools (2 user + 2 pub
 
 Consumer projects expose custom MCP tools via a single `src/mcp.js` file, which `omega build` stages to `dist/mcp.js` where both transports load it. Tools are automatically discovered and merged with the built-in tools.
 
+- `mcp.js` is an ES module whose default export is the tools array.
+- A CommonJS `mcp.js` (`module.exports = [...]`), or one whose default export is not an array, is refused by name, `<file> must be an ES module with one default export (export default [ ... ])`, and the load throws rather than answering an empty tool list.
+- An `mcp.js` that fails to load (a leftover top-level `require(` beside `export default [` throws `require is not defined`) throws too, `[@omega.js/backend:mcp] <file> failed to load: <cause>`, the cause kept. Over HTTP a refused or broken `mcp.js` answers the request with a 500, a JSON-RPC error (`-32603`) carrying that message.
+- No consumer tools are served when the backend has no cwd, when `mcp.js` is missing, or when a tool lacks `name` or `description`, or lacks both `path` and `handler` (that file's whole list is dropped, logged with `console.error`).
+- No top-level `await`: the file is loaded by `require()`, which refuses an async module.
+
 ```js
 // src/mcp.js
-module.exports = [
+export default [
   // Route delegation — points at an existing route (works on stdio + HTTP)
   {
     name: 'get_sponsorship',

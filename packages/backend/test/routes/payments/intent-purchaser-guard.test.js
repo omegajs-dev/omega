@@ -17,7 +17,8 @@
 const { buildUser, callHandler } = require('./_route-harness.js');
 const { TEST_ACCOUNT_PASSWORD } = require('../../../dist/test/test-accounts.js');
 
-const handler = require('../../../dist/omega/routes/payments/intent/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/intent/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 const NO_AUTH_UID = '_test-intent-no-auth-user';

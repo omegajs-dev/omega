@@ -1,4 +1,4 @@
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
 
   // Check admin
   if (!user.roles.admin) {

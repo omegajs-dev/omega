@@ -24,7 +24,7 @@ When enabled, every string in `data` is run through `sanitize-html` (strip all t
 ## Schema Field Opt-Out (when route-level sanitize is on)
 
 ```javascript
-module.exports = () => ({
+export default () => ({
   // This field will NOT be sanitized: raw HTML is preserved
   htmlContent: { type: 'string', default: '', sanitize: false },
   // This field IS sanitized when route-level sanitize is enabled
@@ -39,7 +39,7 @@ A nested object's own `fields` carry `sanitize: false` the same way.
 For most use cases (particularly anywhere you insert user-supplied content into HTML), call `omega.utilities.sanitize()` directly at the insertion site:
 
 ```javascript
-module.exports = async ({ ctx, omega, data }) => {
+export default async ({ ctx, omega, data }) => {
   const safeHtml = omega.utilities.sanitize(data.body);
 };
 ```
@@ -59,7 +59,7 @@ Stored XSS comes from rendering, not from receiving. Sanitize at the render site
 ## Route Handler Context
 
 ```javascript
-module.exports = async ({ ctx, omega, user, data, usage, analytics }) => {
+export default async ({ ctx, omega, user, data, usage, analytics }) => {
   // data             whitespace-trimmed by the pipeline; HTML preserved unless the route opts in with { sanitize: true }
   // omega.utilities  the process service for a manual sanitize() / trim()
 };

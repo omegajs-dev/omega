@@ -212,7 +212,7 @@ async function ensureTarget(options) {
     root: projectDir,
     srcDir: 'hooks',
     frameworkRoot: build.getRootPath('main'),
-    door: (name) => `require('@omega.js/extension').require('${name}')`,
+    door: (name) => `extension.require('${name}') after import extension from '@omega.js/extension'`,
     warn,
   });
 

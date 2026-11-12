@@ -5,16 +5,19 @@ Consumers can inject custom logic at well-defined points without forking @omega.
 ## How hooks work
 
 1. @omega.js/desktop scaffolds empty hook files into `<consumer>/hooks/**/*.js` on every verb (`ensureTarget()`).
-2. At each lifecycle point, @omega.js/desktop checks for the file. If it exists, @omega.js/desktop loads + invokes it. If not, no-op.
-3. The hook signature is `async (ctx) => { ... }`, with `ctx` the ONE hook-argument shape every OMEGA framework passes, `{ build, projectRoot, mode }`: `build` is the build module (`require('@omega.js/desktop/build')`, one plain object of functions: `getConfig()`, `getPackage()`, `getRootPath()`, ...). Whatever it returns is awaited but ignored.
+2. At each lifecycle point, @omega.js/desktop checks for the file. If it exists, devkit's one hook runner (`runConsumerHook`, shared with @omega.js/extension) loads it through `require()` and invokes its default export. If not, no-op.
+3. A hook file is an ES module with one default export, `export default async (ctx) => { ... }`, with `ctx` the ONE hook-argument shape every OMEGA framework passes, `{ build, projectRoot, mode }`: `build` is the build module (`@omega.js/desktop/build`, one plain object of functions: `getConfig()`, `getPackage()`, `getRootPath()`, ...). Whatever it returns is awaited but ignored.
+   - The body uses `import`: a top-level `import`, `await import()` for a lazy load, and `import.meta.dirname` for the file's folder.
+   - No top-level `await`: the file is loaded by `require()`, which refuses an async module. An `await` goes inside the default export.
+   - An edit shows on the next run: Node never reloads an ES module inside one process.
 4. **Failure semantics:**
-   - File missing entirely → logged informationally (`hook "<name>" not present at ... — skipping.`), build continues.
+   - File missing entirely → logged informationally (`hook "<name>" not present at ..., skipping`), build continues.
    - File exists but fails to load (syntax error, etc.) → **throws**, build fails.
-   - File exists but doesn't export a function → **throws**, build fails.
+   - File exists but is not an ES module with a default export function (a `module.exports` hook included) → **throws** `<file> must be an ES module with one default export (export default async (...) => {})`, build fails.
    - File loads + invokes the function and the function throws → **throws**, build fails.
 
    In other words: a hook that doesn't exist is fine (you'll see one log line), but a hook that's broken in any way fails loudly. You should never silently ship a malformed hook to production.
-5. **A hook runs under plain node, outside the bundle**, so a `require` of a framework dependency the target never declared resolves only by hoisting: every verb's scaffold warns on it (the dependency nudge, never an error), and the two fixes are declaring it or loading the framework's copy with `require('@omega.js/desktop').require(name)` ([the shared rule](../shared/local-dev.md#using-what-the-framework-depends-on)).
+5. **A hook runs under plain node, outside the bundle**, so an `import` (or `import()`) of a framework dependency the target never declared resolves only by hoisting: every verb's scaffold warns on it (the dependency nudge, never an error), and the two fixes are declaring it or loading the framework's copy with `desktop.require(name)` after `import desktop from '@omega.js/desktop'` ([the shared rule](../shared/local-dev.md#using-what-the-framework-depends-on)).
 
 ## Hooks reference
 
@@ -41,8 +44,8 @@ Consumers can inject custom logic at well-defined points without forking @omega.
 
 ```js
 // hooks/release/post.js
-module.exports = async ({ build, projectRoot }) => {
-  const pkg = require(`${projectRoot}/package.json`);
+export default async ({ build }) => {
+  const pkg = build.getPackage('project');
   const url = process.env.SLACK_WEBHOOK_URL;
   if (!url) return;
   await fetch(url, {
@@ -57,11 +60,11 @@ module.exports = async ({ build, projectRoot }) => {
 
 ```js
 // hooks/build/pre.js
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
-module.exports = async ({ projectRoot }) => {
+export default async ({ projectRoot }) => {
   const log = execSync('git log --oneline -n 20', { cwd: projectRoot });
   fs.writeFileSync(path.join(projectRoot, 'CHANGELOG_LATEST.txt'), log);
 };
@@ -71,10 +74,10 @@ module.exports = async ({ projectRoot }) => {
 
 ```js
 // hooks/notarize/post.js
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-module.exports = async (context) => {
+export default async (context) => {
   const { appOutDir, packager } = context;
   const appName = packager.appInfo.productFilename;
   const appPath = path.join(appOutDir, `${appName}.app`);
@@ -85,6 +88,6 @@ module.exports = async (context) => {
 
 ## Tests
 
-- `src/test/suites/build/run-consumer-hook.test.js` — silent skip, invocation with args, error swallowing.
+- `packages/devkit/test/run-consumer-hook.test.js`: the one hook runner, desktop's and extension's alike (a missing file skips, an ES module hook runs with its args, a `module.exports` hook is refused by name).
 - `src/test/suites/build/deploy-hook.test.js`: `omega deploy` runs `hooks/deploy/pre.js` after the scaffold and before the precheck; a dry run skips it.
 - `src/test/suites/build/build-config.test.js` — `injectAfterSign` always points at @omega.js/desktop's notarize.

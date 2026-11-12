@@ -15,7 +15,8 @@
  *
  * Run: npx omega test backend:routes/user/orders
  */
-const handler = require('../../../dist/omega/routes/user/orders/get.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/user/orders/get.js'));
 const { buildAdmin } = require('../../events/payments/_webhook-harness.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 

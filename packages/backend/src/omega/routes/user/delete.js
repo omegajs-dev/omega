@@ -1,11 +1,11 @@
-const fetch = require('wonderful-fetch');
-const env = require('../../libraries/env.js');
+import fetch from 'wonderful-fetch';
+import env from '../../libraries/env.js';
 
 /**
  * DELETE /user - Delete user account
  * Requires admin auth or self-deletion with admin override
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

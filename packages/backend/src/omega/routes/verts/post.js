@@ -2,9 +2,9 @@
  * POST /omega/verts - Create a house vert
  * Admin-only. Saves to the verts collection (the serve route's inventory).
  */
-const { isHttpUrl, resetInventoryCache } = require('./utils.js');
+import { isHttpUrl, resetInventoryCache } from './utils.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });

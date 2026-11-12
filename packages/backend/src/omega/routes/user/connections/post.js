@@ -1,14 +1,14 @@
-const { FieldPath, FieldValue } = require('firebase-admin/firestore');
-const { buildContext, connectionRecords, resolveConnection, droppedUidError } = require('./_context.js');
-const { loadProvider, disabledProviderError, connectionLimitError } = require('./_providers.js');
-const { decryptState, pkceChallenge, STATE_TTL_MINUTES } = require('./_state.js');
-const { buildGrantContext, runStep } = require('./_grant.js');
-const {
+import { FieldPath, FieldValue } from 'firebase-admin/firestore';
+import { buildContext, connectionRecords, resolveConnection, droppedUidError } from './_context.js';
+import { loadProvider, disabledProviderError, connectionLimitError } from './_providers.js';
+import { decryptState, pkceChallenge, STATE_TTL_MINUTES } from './_state.js';
+import { buildGrantContext, runStep } from './_grant.js';
+import {
   acquireRefreshLease,
   awaitRefreshedToken,
   clearRefreshLease,
   LEASE_WAIT_MS,
-} = require('./_lease.js');
+} from './_lease.js';
 
 /**
  * POST /user/connections - Write operations
@@ -17,7 +17,7 @@ const {
  *   - tokenize (default): Exchange authorization code for tokens
  *   - refresh: Refresh access token
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   ctx.log('Connections POST request', { action: data.action });
 
   switch (data.action) {

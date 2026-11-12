@@ -18,7 +18,8 @@
  *
  * Run: npx omega test backend:events/payments/abandoned-cart-activity
  */
-const sweep = require('../../../dist/omega/events/cron/frequent/abandoned-carts.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const sweep = loadHandler(require.resolve('../../../dist/omega/events/cron/frequent/abandoned-carts.js'));
 const { REMINDER_DELAYS, COLLECTION } = require('../../../dist/omega/libraries/abandoned-cart-config.js');
 const { buildAdmin, CONFIG } = require('./_webhook-harness.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');

@@ -6,7 +6,7 @@
  * ([#647](https://github.com/Omega-JS-Stack/omega/issues/647))
  * A `uid` counts against that account instead, through usage.forUser()
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   const amount = data.amount;
 
   // Anonymous callers are keyed EXPLICITLY — a key can never silently move a

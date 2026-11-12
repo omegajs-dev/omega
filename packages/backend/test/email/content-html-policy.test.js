@@ -210,7 +210,8 @@ module.exports = defineCases({
         // internalOnlyFieldFault() in the handler is the BRACES — the moment either
         // field is declared on a schema (or a consumer route forwards raw settings),
         // the guard is what stops it. If this test ever fails, the guard is live.
-        const emailSchema = require('../../dist/omega/schemas/admin/email/post.js')();
+        const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+        const emailSchema = loadHandler(require.resolve('../../dist/omega/schemas/admin/email/post.js'))();
         const { data: email } = validate(emailSchema, {
           to: 'a@b.co',
           subject: 's',
@@ -228,7 +229,7 @@ module.exports = defineCases({
         // the handler guard rather than a schema strip.
         expect(email.data.content.html, 'data.content.html no longer passes the schema — update this test').toBe('<img src=x onerror=alert(1)>');
 
-        const campaignSchema = require('../../dist/omega/schemas/marketing/campaign/post.js')();
+        const campaignSchema = loadHandler(require.resolve('../../dist/omega/schemas/marketing/campaign/post.js'))();
         const { data: campaign } = validate(campaignSchema, { name: 'n', subject: 's', contentHtml: '<img src=x>', trustedContent: true });
 
         expect(campaign.contentHtml, 'campaign schema admitted contentHtml').toBe(undefined);

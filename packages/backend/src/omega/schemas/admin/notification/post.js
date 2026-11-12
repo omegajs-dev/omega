@@ -2,7 +2,7 @@
  * Schema for POST /admin/notification
  * (The route reads named props only and rebuilds filters explicitly.)
  */
-module.exports = () => ({
+export default() => ({
   notification: {
     type: 'object',
     default: {

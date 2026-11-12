@@ -2,13 +2,13 @@
  * POST /admin/backup - Backup Firestore
  * Admin-only endpoint to export Firestore to Cloud Storage
  */
-const moment = require('moment');
-const powertools = require('node-powertools');
-const { Storage } = require('@google-cloud/storage');
+import moment from 'moment';
+import powertools from 'node-powertools';
+import { Storage } from '@google-cloud/storage';
 
 const storage = new Storage();
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication (allow in dev)

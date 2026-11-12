@@ -35,6 +35,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const jetpack = require('fs-jetpack');
 const powertools = require('node-powertools');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 module.exports = defineCases({
@@ -92,7 +93,7 @@ module.exports = defineCases({
     }
 
     const publisherPath = path.join(__dirname, '..', '..', 'dist', 'omega', 'events', 'cron', 'daily', 'blog-auto-publisher.js');
-    const publisher = require(publisherPath);
+    const publisher = loadHandler(publisherPath);
 
     // Get content entries
     const contentArray = powertools.arrayify(blogConfig.content);

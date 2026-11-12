@@ -1,7 +1,7 @@
 /**
  * Schema for POST /marketing/contact
  */
-module.exports = () => ({
+export default() => ({
   email: { type: 'string', required: true },
   firstName: { type: 'string', default: '' },
   lastName: { type: 'string', default: '' },

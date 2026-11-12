@@ -24,7 +24,9 @@ const analytics = require('../../../dist/omega/events/firestore/payments-webhook
 
 const PayPal = require('../../../dist/omega/libraries/payment/providers/paypal.js');
 
-const handler = require('../../../dist/omega/routes/payments/intent/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/intent/post.js'));
+const { buildConfirmationUrl } = require('../../../dist/omega/routes/payments/intent/confirmation-url.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 // What each code is worth, pinned against the discount-codes SSOT below so a
@@ -178,16 +180,14 @@ module.exports = defineCases({
         const discount = discountCodes.validate(PERCENT_CODE);
         const expected = parseFloat((state.price * 0.85).toFixed(2));
 
-        expect(typeof handler.buildConfirmationUrl, 'The route should expose its URL builder for testing').toBe('function');
-
-        const discounted = handler.buildConfirmationUrl('https://example.com', { ...args, discount });
+        const discounted = buildConfirmationUrl('https://example.com', { ...args, discount });
         expect(amountFromUrl(discounted), `A Stripe checkout should quote the discounted first charge ($${expected}) too`).toBe(String(expected));
 
-        const undiscounted = handler.buildConfirmationUrl('https://example.com', { ...args, discount: null });
+        const undiscounted = buildConfirmationUrl('https://example.com', { ...args, discount: null });
         expect(amountFromUrl(undiscounted), 'An undiscounted checkout should be left at the list price').toBe(String(state.price));
 
         if (state.product.trial?.days) {
-          const trialing = handler.buildConfirmationUrl('https://example.com', { ...args, trial: true, discount });
+          const trialing = buildConfirmationUrl('https://example.com', { ...args, trial: true, discount });
           expect(amountFromUrl(trialing), 'A trial charges nothing today, coupon or not').toBe('0');
         }
       },

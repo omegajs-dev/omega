@@ -1,6 +1,6 @@
-const path = require('path');
-const { getRoster } = require('../../../../test/roster.js');
-const { loadSeedAccounts } = require('../../../../test/seed.js');
+import path from 'path';
+import { getRoster } from '../../../../test/roster.js';
+import { loadSeedAccounts } from '../../../../test/seed.js';
 
 /**
  * GET /test/roster: the personas the dev palette offers, straight off the seed
@@ -12,7 +12,7 @@ const { loadSeedAccounts } = require('../../../../test/seed.js');
  * every seeded account, so a suite finds its own persona here. Any other
  * environment ignores it, and the palette never asks.
  */
-module.exports = async ({ ctx, data }) => {
+export default async ({ ctx, data }) => {
   // Emulator-only: never a route outside development/testing (an explicit
   // positive check, per the context contract, not `!isProduction()`)
   if (!ctx.isDevelopment() && !ctx.isTesting()) {

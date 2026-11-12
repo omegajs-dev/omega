@@ -7,7 +7,7 @@
 const { Octokit } = require('@octokit/rest');
 const sharp = require('sharp');
 
-const { IMAGE_MAX_DIMENSION } = require('../../../dist/omega/routes/admin/post/post');
+const { IMAGE_MAX_DIMENSION } = require('../../../dist/omega/routes/admin/post/images.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 module.exports = defineCases({

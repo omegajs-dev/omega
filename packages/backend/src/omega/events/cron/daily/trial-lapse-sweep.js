@@ -1,14 +1,11 @@
-const path = require('path');
-const powertools = require('node-powertools');
-const loadProvider = require('../../../libraries/load-provider.js');
-const { deliverConversion } = require('../../../libraries/analytics/conversions.js');
-const { buildAttributionContext, buildIdentity } = require('../../../libraries/analytics/match-data.js');
-// The payment webhook's analytics module owns what "still inside the trial" means
-// for reporting, and this sweep reports the outcomes that webhook never sees — so
-// both read the one predicate rather than keeping a copy each ([#407]).
-const { isInsideTrial } = require('../../firestore/payments-webhooks/analytics.js');
+import path from 'path';
+import powertools from 'node-powertools';
+import loadProvider from '../../../libraries/load-provider.js';
+import { deliverConversion } from '../../../libraries/analytics/conversions.js';
+import { buildAttributionContext, buildIdentity } from '../../../libraries/analytics/match-data.js';
+import { isNewerThanSweep, resolveTrialOutcomeConversion } from '../helpers/trial-lapse-sweep.js';
 
-const PROVIDERS_DIR = path.join(__dirname, '../../../libraries/payment/providers');
+const PROVIDERS_DIR = path.join(import.meta.dirname, '../../../libraries/payment/providers');
 
 // The candidate window, at both edges.
 //
@@ -28,38 +25,18 @@ const FLOOR_SECONDS = 30 * 24 * 60 * 60;
 const SWEEP_LIMIT = 200;
 
 /**
- * Trial lapse sweep
+ * Trial lapse sweep: the backstop for a missed trial-end webhook, which leaves a
+ * user on a paid product never paid for (`trial.claimed` never says "converted").
+ * Every candidate is CONFIRMED against live provider state before a write, never
+ * inferred from dates: active stamps `trial.outcome` converted and nothing else;
+ * gone or cancelled resets to basic and stamps lapsed; dunning waits for the next
+ * run. Each write re-reads in a transaction so a newer webhook is never clobbered.
  *
- * A trial that ends without converting should leave the user on basic. The providers
- * say so with a webhook — and when that webhook is missed or never fires, the user
- * keeps a paid product they never paid for. Nothing else notices: `trial.claimed`
- * means "this subscription HAD a trial", never "it converted", so a lapsed trial and
- * a converted one are indistinguishable on the user doc alone.
- *
- * So this asks the provider. Every candidate is CONFIRMED against live provider
- * state before anything is written — the sweep never infers a lapse from dates.
- *
- * Flow:
- * 1. Query users whose claimed trial expired inside the window and who are still active
- * 2. Skip the ones already stamped, on basic, or with no provider to ask
- * 3. Fetch the live subscription from the provider
- * 4. Provider says active  → the trial CONVERTED: stamp `trial.outcome` and nothing else
- *    Provider says gone or cancelled → the trial LAPSED: reset to basic + stamp
- *    Anything else (dunning) → leave it; the provider still has it
- * 5. Re-read before writing so a webhook that landed since the query is never clobbered
- * 6. Report the outcome to analytics — but ONLY when this sweep is the one that saw it
- *
- * No email is sent from here. The sweep is state correction — the customer-facing
- * message for a lapsed trial is its own piece of work.
- *
- * **Analytics.** For PayPal this sweep is the only place a trial outcome is ever
- * known: PayPal fires no trial-end event, so nothing in the webhook pipeline is told
- * and the funnel had no signal at all ([#407]). So the outcome is reported here, at
- * the moment it is stamped, through the same `deliverConversion` path the payment
- * webhook uses. The guard against double-counting is
- * `resolveTrialOutcomeConversion()` below.
+ * No email is sent from here. The outcome is reported through `deliverConversion`,
+ * the only signal PayPal ever gives (it fires no trial-end event); the guard against
+ * double-counting is `resolveTrialOutcomeConversion()` (../helpers/trial-lapse-sweep.js).
  */
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   const admin = omega.firebase.admin;
 
   // The read stamp: any subscription write newer than this landed AFTER our snapshot,
@@ -238,86 +215,6 @@ module.exports = async ({ ctx, omega, context }) => {
 };
 
 /**
- * Has a subscription write landed since this sweep read its candidates?
- *
- * `>=`, not `>`. Both numbers are whole SECONDS, so a webhook that wrote inside the
- * same second the sweep took its snapshot carries an EQUAL stamp — and a strict `>`
- * read that as older and let the sweep write over it, which is precisely the write
- * the guard exists to protect (a provider's own trial-end event resolving the trial
- * while the backstop was mid-run). Equal reads as newer: the cost of being wrong is
- * one candidate re-examined on the next run, against a subscription silently
- * reverted to a state the provider had already moved past.
- *
- * @param {number} freshStampUNIX - `subscription.payment.updatedBy.date.timestampUNIX`, 0 when never stamped
- * @param {number} sweepReadUNIX - The second this run read its candidate snapshot
- * @returns {boolean} True when the sweep's answer is stale and must not be written
- */
-function isNewerThanSweep(freshStampUNIX, sweepReadUNIX) {
-  return (freshStampUNIX || 0) >= sweepReadUNIX;
-}
-
-/**
- * The conversion to report for an outcome this sweep just decided, or null when the
- * outcome was already reported at the moment it happened.
- *
- * THE GUARD IS THE TERM. A conversion a payment webhook already saw moved `expires`
- * out past the trial's end, and a lapse it saw left the subscription suspended or
- * cancelled — which this sweep's own query (`status == active`) never selects. So a
- * candidate still inside its trial is exactly one no webhook has resolved, and it is
- * the only one this backstop has anything new to say about.
- *
- * The subscription-keyed event id collapses a genuine race on the two platforms that
- * key on an event id; this guard is what keeps GA4 honest, because GA4 deduplicates
- * a `purchase` on `transaction_id` alone — and this path has no invoice to name, so
- * a conversion reported twice would arrive under two different ids and count twice
- * ([#656](https://github.com/Omega-JS-Stack/omega/issues/656)).
- *
- * Which makes this the ONE documented exception to "`transaction_id` is a charge's
- * id, never the subscription's": this path has no invoice to name, and the outcome
- * stamp keeps it to one fire (docs/shared/analytics.md).
- *
- * The subscription passed in is the one read BEFORE the lapse write — the paid
- * product that lapsed, not the `basic` the sweep resets it to.
- *
- * @param {object} sub - The subscription as it stood before this sweep wrote
- * @param {string} outcome - 'converted' | 'lapsed'
- * @param {string} currency - The brand's payment currency
- * @returns {{ event: string, eventId: string, params: object }|null}
- */
-function resolveTrialOutcomeConversion(sub, outcome, currency) {
-  if (!isInsideTrial(sub)) {
-    return null;
-  }
-
-  const event = outcome === 'converted' ? 'trial_convert' : 'trial_lapse';
-  // The full price: a conversion the provider made without telling us leaves no
-  // invoice here to read a discount off, and the plan price is the honest number
-  // this path can actually stand behind.
-  const price = parseFloat(sub.payment?.price || 0);
-
-  return {
-    event: event,
-    eventId: `${event}.${sub.payment?.resourceId}`,
-    params: {
-      transaction_id: sub.payment?.resourceId,
-      value: price,
-      currency: currency,
-      items: [{
-        item_id: sub.product?.id,
-        item_name: sub.product?.name,
-        item_category: 'subscription',
-        price: price,
-        quantity: 1,
-      }],
-      payment_provider: sub.payment?.provider,
-      payment_frequency: sub.payment?.frequency || null,
-      is_trial: true,
-      is_recurring: false,
-    },
-  };
-}
-
-/**
  * Report a trial outcome this sweep decided (non-blocking, never throws at the sweep)
  *
  * @param {object} options
@@ -350,7 +247,3 @@ function trackOutcome({ outcome, uid, userData, sub, omega, ctx }) {
     ctx.error(`Trial outcome tracking failed for ${uid}: ${e.message}`, e);
   }
 }
-
-// The sweep IS the module; these ride alongside it for the pipeline and the tests.
-module.exports.resolveTrialOutcomeConversion = resolveTrialOutcomeConversion;
-module.exports.isNewerThanSweep = isNewerThanSweep;

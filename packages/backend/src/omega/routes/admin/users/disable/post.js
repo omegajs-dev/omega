@@ -5,7 +5,7 @@
  * access. The flag is invisible to client SDKs — read it back through
  * GET /admin/users/list (the auth join).
  */
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication (allow in dev)

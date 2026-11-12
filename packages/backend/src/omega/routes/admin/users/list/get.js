@@ -9,7 +9,7 @@
  *   search     - email/uid prefix filter (Firestore range scan on auth.email)
  *   startAfter - uid cursor from the previous page's nextCursor
  */
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication (allow in dev)

@@ -3,7 +3,8 @@
 A route's schema declares the input the route accepts. The request pipeline validates the request against it and hands the route the result as `data`.
 
 - **Where**: `src/schemas/{name}/{method}.js`. The settings service (`src/omega/services/settings.js`) loads the method-specific file first (`get.js` / `post.js` / ...) and falls back to `{name}/index.js`. The name defaults to the route name (`omega.routes.run('items', { req, res })` loads `src/schemas/items/`); the `schema` pipeline option names another one.
-- **What**: a schema file exports a function of the request and returns a PLAIN field declaration.
+- **What**: a schema file is an ES module whose default export is a function of the request, returning a PLAIN field declaration. It loads through the one handler loader, so a CommonJS schema (`module.exports = ...`) is refused by name ([routes.md](routes.md#new-route-consumer-project)).
+- **No top-level `await`**: the file is loaded by `require()`, which refuses an async module. An `await` goes inside the default export.
 - **How**: ONE adapter, `src/omega/helpers/schema.js`, turns that declaration into a zod schema and validates with it. zod is the only validator underneath, and the declaration stays a plain object until the adapter runs, so the function can change any field on any request fact before zod sees it.
 
 ## The schema function
@@ -28,7 +29,7 @@ Every field option, and every split kind:
 
 ```javascript
 // src/schemas/items/post.js
-module.exports = ({ user, body, query, path, method, headers, geolocation }) => {
+export default ({ user, body, query, path, method, headers, geolocation }) => {
   const fields = {
     name:    { type: 'string', required: true, clean: /[<>]/g, max: 80 },
     limit:   { type: 'number', default: 10, min: 1, max: 100 },
@@ -74,7 +75,7 @@ A split is ordinary code in the function: it edits the declaration before the fu
 - **The input** (`body`): a field that depends on another field the caller sent. `if (body.mode === 'full') { fields.address.fields.zip.required = true; }`. The same kind picks a whole nested group by a `type` the caller sent:
 
 ```javascript
-module.exports = ({ body }) => {
+export default ({ body }) => {
   const fields = {
     name: { type: 'string', required: true },
     type: { type: 'string', required: true, enum: ['url', 'text'] },
@@ -131,9 +132,9 @@ Nested `fields` resolve the same way, level by level, and unknown keys strip at 
 IDs are generated in the **schema**, never in the route. A forced `value` computed in the function is a fresh id per request, and the route reads `data.id`:
 
 ```javascript
-const omega = require('@omega.js/backend');
+import omega from '@omega.js/backend';
 
-module.exports = () => ({
+export default () => ({
   id: { type: 'string', value: omega.utilities.randomId() },
   name: { type: 'string', required: true },
 });
@@ -146,7 +147,7 @@ module.exports = () => ({
 A `path: true` field reads the request path's segments that follow the route path, in declaration order: `/items/abc` under the route `items` fills the first `path` field with `abc` (`/omega/items/abc` too). A request with no id in the path resolves the field to `''`.
 
 ```javascript
-module.exports = () => ({
+export default () => ({
   id: { type: 'string', path: true, min: 1, max: 128 },
 });
 ```
@@ -154,7 +155,7 @@ module.exports = () => ({
 `min: 1` is a real guard: a request with no id is refused with `400 Invalid settings {id}: must be at least 1 character` before the route runs, so a handler never reads or writes the wrong document. A GET that lists when no id is given omits it:
 
 ```javascript
-module.exports = () => ({
+export default () => ({
   id: { type: 'string', path: true },
   limit: { type: 'number', default: 20, min: 1, max: 100 },
   startAfter: { type: 'string', default: '' },
@@ -163,7 +164,7 @@ module.exports = () => ({
 
 ## Webhook routes
 
-Webhook routes (`payments/webhook`, `marketing/webhook`, ...) keep an empty declaration by design (`module.exports = () => ({})`): the body is the raw provider payload, which the route reads off `ctx.request`.
+Webhook routes (`payments/webhook`, `marketing/webhook`, ...) keep an empty declaration by design (`export default () => ({})`): the body is the raw provider payload, which the route reads off `ctx.request`.
 
 ## Reference implementation
 

@@ -1,6 +1,6 @@
 /**
  * Schema for POST /admin/hook
  */
-module.exports = () => ({
+export default() => ({
   path: { type: 'string', required: true },
 });

@@ -92,7 +92,7 @@ module.exports = async function notarize(context, { run = toolRunner() } = {}) {
   // an extension point. The consumer hook can do post-notarize work (custom stapling,
   // archiving, notifications, etc.). It is purely additive — @omega.js/desktop's real notarize always runs
   // first.
-  const runConsumerHook = require('../utils/run-consumer-hook.js');
+  const { runConsumerHook } = require('@omega.js/devkit/run-consumer-hook');
   await runConsumerHook('notarize/post', context);
 };
 

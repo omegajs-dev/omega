@@ -1,4 +1,4 @@
-module.exports = () => ({
+export default() => ({
   path: { type: 'string', required: true },
   document: { type: 'object', default: {} },
   merge: { type: 'boolean', default: true },

@@ -53,7 +53,7 @@ The resize happens in `downloadImage()` (after the `.jpg` extension check, befor
 - The consumer repo never sees the giant source
 - Future downstream optimization (web's imagemin, etc.) starts from a sane source size
 
-Constants live in `src/omega/routes/admin/post/post.js` (web's `imagemin.js` uses the same names and values):
+Constants live in `src/omega/routes/admin/post/images.js` (web's `imagemin.js` uses the same names and values):
 ```js
 const IMAGE_MAX_DIMENSION = 2048;
 const IMAGE_JPEG_QUALITY = 80;
@@ -71,7 +71,9 @@ If these need to become configurable later, promote to `config/omega.json5` rath
 
 ## Files
 
-- `src/omega/routes/admin/post/post.js`: POST handler (create), includes `downloadImage()` + `resizeImage()` helpers
+- `src/omega/routes/admin/post/post.js`: POST handler (create), includes the `downloadImage()` helper
+- `src/omega/routes/admin/post/images.js`: the image helpers and constants (`applyImageCDNParams`, `formatImageDownloadError`, `convertToJpeg`, `resizeImage`, `IMAGE_MAX_DIMENSION`, `IMAGE_JPEG_QUALITY`)
+- `src/omega/routes/admin/post/commit-all.js`: `commitAll()`, the one Git Trees commit; `upload-post.js` holds the edit's `uploadPost()`
 - `src/omega/routes/admin/post/put.js`: PUT handler (edit); does NOT download images, just edits frontmatter/body in place
 - `src/omega/routes/admin/post/templates/post.html`: Post template
 - `src/omega/helpers/web-target.js`: `resolveWebTarget()`, the one-or-many rule every CMS route resolves its target through, and `cmsContext()`, the one call each route makes for both facts it needs before touching content (the source repo it commits to, and that target): a response-shaped 500 when the brand names no repo, the same 400s otherwise

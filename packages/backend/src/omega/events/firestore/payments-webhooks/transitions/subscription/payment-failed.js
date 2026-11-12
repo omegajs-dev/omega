@@ -2,9 +2,9 @@
  * Transition: payment-failed
  * Triggered when a subscription payment fails (active → suspended)
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc }) {
+export default async function ({ ctx, before, after, order, uid, userDoc }) {
   ctx.log(`Transition [subscription/payment-failed]: uid=${uid}, product=${after.product?.id}, previousStatus=${before?.status}`);
 
   sendOrderEmail({

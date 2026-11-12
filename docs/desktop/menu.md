@@ -8,9 +8,13 @@ No config block. Path is conventional: `src/integrations/menu/index.js`. To opt 
 
 ## Definition file
 
+- The file is an ES module with one default export, loaded through `require()` once at boot. A `module.exports` file is refused, and boot throws `<file> must be an ES module with one default export (export default async (...) => {})`.
+- The body uses a top-level `import`, and `import.meta.dirname` for the file's folder. An edit shows on the next launch.
+- No top-level `await`: the file is loaded by `require()`, which refuses an async module. The default export is called without `await`, so it builds its items before any `await` of its own.
+
 ```js
 // src/integrations/menu/index.js
-module.exports = ({ omega, menu, defaults }) => {
+export default ({ omega, menu, defaults }) => {
   // Easiest: start from the platform-aware default template.
   menu.useDefaults();
 

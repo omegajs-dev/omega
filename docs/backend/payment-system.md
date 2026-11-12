@@ -210,7 +210,7 @@ user.subscription.status === 'suspended'
 A `User` (`@omega.js/account`, the same class on the backend and in the browser) derives the calculated subscription facts as getters, computed on every read. The raw data (`subscription.product.id`, `status`, `trial`, `cancellation`) stays on the document's own fields.
 
 ```javascript
-module.exports = async ({ ctx, user }) => {
+export default async ({ ctx, user }) => {
   user.plan;       // 'basic' when cancelled or suspended
   user.active;     // true for an active, trialing or cancelling paid plan
 };
@@ -324,10 +324,10 @@ Note: Trials are NOT a separate transition. The `new-subscription` handler check
 
 ### Handler Interface
 
-All handlers are in `src/omega/events/firestore/payments-webhooks/transitions/` and export a single async function:
+All handlers are in `src/omega/events/firestore/payments-webhooks/transitions/` and are ES modules whose default export is a single async function (the dispatcher loads them through the one handler loader, which refuses a CommonJS file by name):
 
 ```javascript
-module.exports = async function ({ ctx, before, after, order, uid, userDoc, refundDetails }) {
+export default async function ({ ctx, before, after, order, uid, userDoc, refundDetails }) {
   // ctx: the webhook event's Context (ctx.omega is the instance)
   // before: previous subscription state (null for new/one-time)
   // after: new unified state (subscription or one-time)
@@ -805,7 +805,7 @@ Both doors enforce that: the intent side throws inside `intent/providers/test.js
 
 Only the FIRST charge moves. Every code is `duration: 'once'`, so `users/{uid}.subscription.payment.price` keeps the full renewal price from config; the discount itself is recorded on the order (`order.discount`), which is what analytics reads.
 
-**The confirmation URL's `amount` is the ROUTE's job, not a provider's** ([#239](https://github.com/Omega-JS-Stack/omega/issues/239)). `buildConfirmationUrl()` in `routes/payments/intent/post.js` applies the validated discount, so the number is right on every provider. That placement is load-bearing: a real provider applies its coupon on its own hosted page and never revisits this URL, so doing the math provider-side left a discounted Stripe checkout landing on the confirmation page quoting the LIST price — and the client's tracking modules read that param straight into GA4/pixel revenue. A trial quotes `$0` and a coupon takes its cut off nothing.
+**The confirmation URL's `amount` is the ROUTE's job, not a provider's** ([#239](https://github.com/Omega-JS-Stack/omega/issues/239)). `buildConfirmationUrl()` in `routes/payments/intent/confirmation-url.js` applies the validated discount, so the number is right on every provider. That placement is load-bearing: a real provider applies its coupon on its own hosted page and never revisits this URL, so doing the math provider-side left a discounted Stripe checkout landing on the confirmation page quoting the LIST price — and the client's tracking modules read that param straight into GA4/pixel revenue. A trial quotes `$0` and a coupon takes its cut off nothing.
 
 **The confirmation URL names the product TYPE** ([#668](https://github.com/Omega-JS-Stack/omega/issues/668)). `buildConfirmationUrl()` sets `type=subscription|one-time` beside `frequency`, because the confirmation page holds nothing else about what was bought: it decides whether to WAIT for the webhook by asking whether the purchase writes account state at all, and a checkout that sent the wrong `frequency` (a one-time buy asking for `annually`) left it polling for a plan a one-time purchase never writes until it timed out, on a payment that had completed cleanly. The route also NORMALIZES what a one-time checkout bills on — `frequency` is written `once` beside `trial = false`, next to the guards, rather than taken from the caller — so the intent doc, the provider call and the confirmation URL cannot record a cadence the buyer will never be billed on. The one-time receipt names the PRODUCT in its summary row (`templates/order.js`), where it used to repeat the order id the header already prints.
 

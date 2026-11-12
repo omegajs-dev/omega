@@ -1,6 +1,6 @@
 /**
  * Schema for DELETE /marketing/contact
  */
-module.exports = () => ({
+export default() => ({
   email: { type: 'string', required: true },
 });

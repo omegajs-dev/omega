@@ -20,43 +20,30 @@
  *   - Brands without brand.url skipped silently
  */
 
-// Mock wonderful-fetch before requiring the route — the route does
-// `require('wonderful-fetch')` at module load time.
-//
-// CRITICAL: every test file is `require()`d into the SAME Node process by the
-// runner, so the require cache is shared. We MUST save the original
-// wonderful-fetch cache entry here and restore it in the suite-level `cleanup`
-// below — otherwise this mock leaks into every test file that runs afterwards
-// (e.g. emulator route tests whose `omega.require('wonderful-fetch')` would
-// then return our stub instead of doing a real HTTP round-trip).
-const originalFetchPath = require.resolve('wonderful-fetch');
-const originalFetchCacheEntry = require.cache[originalFetchPath];
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const route = loadHandler(require.resolve('../../dist/omega/routes/marketing/webhook/forward/post.js'));
+const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
+
+// The stand-in sits at globalThis.fetch, the network boundary wonderful-fetch
+// calls on every request. Each call is recorded as it reached the wire: the
+// URL less wonderful-fetch's `cb` cache breaker, and the JSON body.
+const realFetch = globalThis.fetch;
 const fetchCalls = [];
 let fetchMockBehavior = () => ({ received: true });
 
-// Intercept require cache so our mock takes the place of wonderful-fetch
-require.cache[originalFetchPath] = {
-  id: originalFetchPath,
-  filename: originalFetchPath,
-  loaded: true,
-  exports: async (url, opts) => {
-    fetchCalls.push({ url, opts });
-    return fetchMockBehavior(url, opts);
-  },
-};
+async function standInFetch(url, init) {
+  const target = new URL(url);
 
-const route = require('../../dist/omega/routes/marketing/webhook/forward/post.js');
-const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
+  target.searchParams.delete('cb');
 
-// Restore the real wonderful-fetch in the require cache so the mock is confined
-// to this file. Without this, the stub leaks process-wide and poisons every
-// later test file's HTTP calls.
-function restoreFetch() {
-  if (originalFetchCacheEntry) {
-    require.cache[originalFetchPath] = originalFetchCacheEntry;
-  } else {
-    delete require.cache[originalFetchPath];
-  }
+  const call = { url: target.toString(), body: JSON.parse(init.body) };
+
+  fetchCalls.push(call);
+
+  return new Response(JSON.stringify(fetchMockBehavior(call.url)), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 // --- Test scaffolding ---
@@ -136,10 +123,12 @@ module.exports = defineCases({
   description: 'webhook/forward unit tests (mocked admin + fetch)',
   type: 'group',
 
-  // Restore the real wonderful-fetch after this file's tests so the require-cache
-  // stub does not leak into any test file that runs later in the same process.
+  setup() {
+    globalThis.fetch = standInFetch;
+  },
+
   cleanup() {
-    restoreFetch();
+    globalThis.fetch = realFetch;
   },
 
   tests: [
@@ -253,7 +242,7 @@ module.exports = defineCases({
           expect(fetchCalls.length, 'should fan out to both brands').toBe(2);
           expect(fetchCalls[0].url, 'first child URL derived correctly').toBe('https://api.somiibo.com/omega/marketing/webhook?provider=sendgrid&key=test-key');
           expect(fetchCalls[1].url, 'second child URL derived correctly').toBe('https://api.chatsy.com/omega/marketing/webhook?provider=sendgrid&key=test-key');
-          expect(fetchCalls[0].opts.body, 'raw body forwarded unchanged').toEqual(body);
+          expect(fetchCalls[0].body, 'raw body forwarded unchanged').toEqual(body);
           expect(ctx._responses[0].data.succeeded, '2 children succeeded').toBe(2);
         });
       },
@@ -283,7 +272,7 @@ module.exports = defineCases({
 
           expect(fetchCalls.length).toBe(1);
           expect(fetchCalls[0].url.includes('provider=beehiiv'), 'provider param preserved').toBeTruthy();
-          expect(fetchCalls[0].opts.body, 'raw Beehiiv body forwarded unchanged').toEqual(body);
+          expect(fetchCalls[0].body, 'raw Beehiiv body forwarded unchanged').toEqual(body);
         });
       },
     },

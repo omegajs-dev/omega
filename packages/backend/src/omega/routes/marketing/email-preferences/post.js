@@ -18,12 +18,14 @@
  *      contact from ALL providers (Beehiiv too — compliance); subscribe re-adds the
  *      contact (sync when the email maps to a user, add when it doesn't).
  */
-const fetch = require('wonderful-fetch');
-const crypto = require('crypto');
-const env = require('../../../libraries/env.js');
-const { MARKETING_RATE_LIMIT } = require('../../../libraries/rate-limits.js');
+import fetch from 'wonderful-fetch';
+import crypto from 'crypto';
+import env from '../../../libraries/env.js';
+import rateLimits from '../../../libraries/rate-limits.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+const { MARKETING_RATE_LIMIT } = rateLimits;
+
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   // --- AUTHENTICATED MODE ---
   if (user.authenticated) {

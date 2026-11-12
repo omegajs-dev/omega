@@ -2,7 +2,7 @@
  * Schema: POST /payments/intent
  * Validates intent creation parameters
  */
-module.exports = () => ({
+export default() => ({
   provider: { type: 'string', required: true },
   productId: { type: 'string', required: true },
   frequency: { type: 'string', default: null },

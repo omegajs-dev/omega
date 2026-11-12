@@ -2,9 +2,9 @@
  * DELETE /omega/verts - Delete a house vert
  * Admin-only.
  */
-const { resetInventoryCache } = require('./utils.js');
+import { resetInventoryCache } from './utils.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });

@@ -1,28 +1,24 @@
 /**
- * Test: routes/admin/post/post.convertToJpeg + applyImageCDNParams
- * Unit tests for non-JPG ingest conversion and CDN pre-scale params used by
- * the admin/post route.
+ * Test: routes/admin/post/images.convertToJpeg + applyImageCDNParams, the
+ * non-JPG ingest conversion and CDN pre-scale params of the admin/post route.
  *
  * Run (from the framework repo): npm test routes/admin/post-convert-image
  *
  * Contract:
- *   - png/webp downloads are converted in place to progressive JPEG at
- *     IMAGE_JPEG_QUALITY; the result's path/filename/ext all become .jpg and
- *     the original file is removed.
- *   - Alpha channels are flattened onto white (JPEG has no transparency).
- *   - applyImageCDNParams adds w/q params for Unsplash and w/auto params for
- *     Pexels (without clobbering params already present), and leaves other
- *     hosts untouched.
+ *   - png/webp become progressive JPEG at IMAGE_JPEG_QUALITY in place (path,
+ *     filename and ext become .jpg; the original is removed), alpha on white.
+ *   - applyImageCDNParams adds w/q params for Unsplash and w/auto for Pexels,
+ *     keeping params already present, and leaves other hosts untouched.
  */
 const os = require('os');
 const path = require('path');
 const jetpack = require('fs-jetpack');
 const sharp = require('sharp');
 
-const post = require('../../../dist/omega/routes/admin/post/post');
+const images = require('../../../dist/omega/routes/admin/post/images.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
-const { convertToJpeg, applyImageCDNParams, IMAGE_MAX_DIMENSION } = post;
+const { convertToJpeg, applyImageCDNParams, IMAGE_MAX_DIMENSION } = images;
 
 // Generate a synthetic image of the given format and write it to a tmp path.
 async function makeImage(format, options) {
@@ -54,7 +50,7 @@ function makeAssistant() {
 }
 
 module.exports = defineCases({
-  description: 'routes/admin/post/post.convertToJpeg + applyImageCDNParams',
+  description: 'routes/admin/post/images.convertToJpeg + applyImageCDNParams',
   type: 'group',
 
   tests: [

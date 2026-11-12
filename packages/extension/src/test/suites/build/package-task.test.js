@@ -5,6 +5,8 @@
 // store descriptions, and the build hook paths and ctx. Each test stages a temp
 // project and requires the task fresh inside it (utils/package-project.js).
 
+require('@omega.js/devkit/test/temp-home');
+
 const path = require('path');
 const fs   = require('fs');
 const os   = require('os');
@@ -42,9 +44,10 @@ function withEnv(vars) {
 // A consumer build hook that records WHICH path the resolver found it at, and
 // the SHAPE of the argument it was handed (#591).
 const HOOK = (which) => `
-const fs = require('fs');
-const path = require('path');
-module.exports = async (ctx) => {
+import fs from 'node:fs';
+import path from 'node:path';
+
+export default async (ctx) => {
   fs.writeFileSync(path.join(process.cwd(), 'hook-ran.json'), JSON.stringify({
     which: '${which}',
     keys: Object.keys(ctx || {}).sort(),
@@ -54,6 +57,25 @@ module.exports = async (ctx) => {
   }));
 };
 `;
+
+// A packageable project carrying the given hook files, so a hook runs where a
+// consumer's runs: inside the real package lane.
+function stageHookProject(files) {
+  return stageProject({
+    config: `{ brand: { id: 'staged', name: 'Staged' }, targets: { extension: { type: 'extension' } } }`,
+    files: {
+      'dist/manifest.json': MANIFEST(`description: 'a packageable extension'`),
+      'dist/assets/js/x.js': `globalThis.probe = 1;\n`,
+      'dist/_locales/en/messages.json': `{ "appName": { "message": "Staged" } }`,
+      ...files,
+    },
+  });
+}
+
+// Run the package lane to its end, answering its failure (undefined when none).
+function runPackage(task) {
+  return new Promise((resolve) => task.packageFn(resolve));
+}
 
 module.exports = defineCases({
   type: 'suite',
@@ -888,12 +910,10 @@ module.exports = defineCases({
     {
       name: 'build hooks run from the NESTED hooks/build/pre.js setup migrates to (#571)',
       run: async (ctx) => {
-        const tmp = stageProject({
-          files: { 'hooks/build/pre.js': HOOK('nested') },
-        });
+        const tmp = stageHookProject({ 'hooks/build/pre.js': HOOK('nested') });
         try {
           await inProject(tmp, async (task) => {
-            await task.hook('build:pre');
+            ctx.expect(await runPackage(task)).toBe(undefined);
             const ran = JSON.parse(fs.readFileSync(path.join(tmp, 'hook-ran.json'), 'utf8'));
             ctx.expect(ran.which).toBe('nested');
           });
@@ -903,31 +923,12 @@ module.exports = defineCases({
       },
     },
     {
-      name: 'build hooks still run from the flat pre-migration hooks/build:pre.js (#571)',
-      run: async (ctx) => {
-        const tmp = stageProject({
-          files: { 'hooks/build:pre.js': HOOK('flat') },
-        });
-        try {
-          await inProject(tmp, async (task) => {
-            await task.hook('build:pre');
-            const ran = JSON.parse(fs.readFileSync(path.join(tmp, 'hook-ran.json'), 'utf8'));
-            ctx.expect(ran.which).toBe('flat');
-          });
-        } finally {
-          fs.rmSync(tmp, { recursive: true, force: true });
-        }
-      },
-    },
-    {
       name: 'a build hook receives the ONE OMEGA ctx shape: { build, projectRoot, mode } (#591)',
       run: async (ctx) => {
-        const tmp = stageProject({
-          files: { 'hooks/build/pre.js': HOOK('nested') },
-        });
+        const tmp = stageHookProject({ 'hooks/build/pre.js': HOOK('nested') });
         try {
           await inProject(tmp, async (task) => {
-            await task.hook('build:pre');
+            ctx.expect(await runPackage(task)).toBe(undefined);
 
             const ran = JSON.parse(fs.readFileSync(path.join(tmp, 'hook-ran.json'), 'utf8'));
             ctx.expect(ran.keys).toEqual(['build', 'mode', 'projectRoot']);
@@ -943,13 +944,13 @@ module.exports = defineCases({
     {
       name: 'a build hook run under OMEGA_BUILD_MODE gets mode: production (#591)',
       run: async (ctx) => {
-        const tmp = stageProject({
-          files: { 'hooks/build/pre.js': HOOK('nested') },
-        });
+        const tmp = stageHookProject({ 'hooks/build/pre.js': HOOK('nested') });
         const restore = withEnv({ OMEGA_BUILD_MODE: 'true' });
         try {
           await inProject(tmp, async (task) => {
-            await task.hook('build:pre');
+            // A build-mode package also zips the source from git, which this temp
+            // project has none of; the pre hook runs before that step.
+            await runPackage(task);
 
             const ran = JSON.parse(fs.readFileSync(path.join(tmp, 'hook-ran.json'), 'utf8'));
             ctx.expect(ran.mode).toBe('production');
@@ -963,15 +964,15 @@ module.exports = defineCases({
     {
       name: 'a project with no hook at all logs the miss through the framework logger, never a bare console.warn (#571)',
       run: async (ctx) => {
-        const tmp = stageProject({});
+        const tmp = stageHookProject({});
         const warned = [];
         const realWarn = console.warn;
         console.warn = (...args) => warned.push(args.join(' '));
         try {
           await inProject(tmp, async (task) => {
-            await task.hook('build:post');
+            ctx.expect(await runPackage(task)).toBe(undefined);
           });
-          ctx.expect(warned).toEqual([]);
+          ctx.expect(warned.filter((line) => /hook/i.test(line))).toEqual([]);
         } finally {
           console.warn = realWarn;
           fs.rmSync(tmp, { recursive: true, force: true });
