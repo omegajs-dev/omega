@@ -96,9 +96,10 @@ module.exports = defineCases({
           // Requiring is the point: a route's own imports are exercised here instead
           // of at cold start.
           for (const file of handlers) {
-            const handler = require(file);
+            // A route is an ES module: require() answers its namespace, the handler its default export
+            const handler = require(file).default;
 
-            expect(typeof handler, `${path.relative(APP_DIR, file)} does not export a handler function`).toBe('function');
+            expect(typeof handler, `${path.relative(APP_DIR, file)} has no default export handler function (export default async (...) => {})`).toBe('function');
             expect(handler.constructor.name, `${path.relative(APP_DIR, file)}'s handler is not async`).toBe('AsyncFunction');
           }
         }

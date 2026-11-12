@@ -95,7 +95,7 @@ The injection is YAML-text-level (preserves comments, idempotent, merges with ex
 When the user double-clicks a running hidden-mode app (or clicks its dock icon on macOS), @omega.js/desktop transparently surfaces the main window — no consumer wiring needed. Mechanisms:
 
 - **macOS**: `window-manager.initialize()` registers `app.on('activate')` which calls `windows.show('main')` if `main` is in the registry.
-- **Windows / Linux**: `deep-link.initialize()` registers `app.on('second-instance')` which does the same. (The OS spawns a duplicate process, the single-instance lock kills it, and forwards its argv to the original instance.)
+- **Windows / Linux**: the `second-instance` listener `deepLink.listenFirst()` prepends when the main module loads (ahead of every brand listener) does the same once `deep-link.initialize()` has run. (The OS spawns a duplicate process, the single-instance lock kills it, and forwards its argv to the original instance.)
 
 Both handlers are no-ops if `main` isn't in the registry, so consumers who genuinely never want a window can omit `windows.create('main', ...)` entirely. Otherwise, with the canonical pattern (`windows.create('main', { show: !isLaunchHidden() })`), hidden-mode apps come back to life on a second click — like CleanMyMac, Rectangle, etc.
 

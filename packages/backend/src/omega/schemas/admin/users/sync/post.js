@@ -3,4 +3,4 @@
  */
 
 // No specific parameters required, uses stored pageToken
-module.exports = () => ({});
+export default() => ({});

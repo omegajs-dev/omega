@@ -1,32 +1,14 @@
 /**
- * Assets service — the brand's derived visual collateral generated from
- * its logo sources: wordmark/combomark SVGs from the brandmark +
- * brand.font, color/black SVG variants + PNG size ladders, PSD templates
- * (seeded from the company root, logo/text layers refreshed, PNGs
- * exported), macOS/Windows app icons, social profile icons, and the web
- * favicon set.
+ * Assets service: the brand's derived visual collateral generated from its
+ * logo sources: wordmark/combomark SVGs, color/black variants + PNG size
+ * ladders, PSD template exports, macOS/Windows app icons and social profile
+ * icons. A target's build derives its own brand image (devkit's brand-image).
  *
- * Sources are committed brand collateral at `assets/logo/*.svg` and
- * `assets/templates/*.psd` in the brand repo (omega-manager read
- * `.brands/{id}/assets/`); derived files land in the gitignored
- * `.omega/assets/` (omega-manager's `.output/{id}/assets/`). Every
- * operation is mtime-diffed — only missing or stale outputs regenerate —
- * which replaces omega-manager's `--onboarding` gate on the write
- * operations (it regenerated blindly, so running every time was too
- * expensive; it also had no dry-run guard). `--reset-assets` forces a
- * rebuild the timestamps would skip by clearing the cache first
- * (lib/reset.js).
- *
- * The brandmark is the root of every derived asset. When it's missing
- * and MrLogo credentials are present (MRLOGO_SERVICE_ACCOUNT /
- * MRLOGO_API_KEY / LOGO_API_ID_TOKEN — the product-service ladder,
- * lib/brandmark-api.js; zero config options by design), the AI generation
- * flow runs; otherwise the service skips with guidance. Not ported:
- * omega-manager's social-images/store-images
- * write operations — dead code whose template-name lists never matched
- * TEMPLATE_CONFIG keys (they could never generate anything); their
- * intended outputs are the templates operation's og-image and
- * store/chrome exports.
+ * Sources are committed at `assets/logo/*.svg` and `assets/templates/*.psd`;
+ * derived files land in the gitignored `.omega/assets/`. Every operation is
+ * mtime-diffed, and `--reset-assets` clears the cache first (lib/reset.js).
+ * A missing brandmark is generated through MrLogo when a credential resolves
+ * (lib/brandmark-api.js), else the service skips with guidance.
  */
 const { join } = require('node:path');
 const chalk = require('chalk').default;

@@ -1,10 +1,10 @@
-const path = require('path');
-const powertools = require('node-powertools');
-const transitions = require('./transitions/index.js');
-const { trackPayment, isTrialConversion } = require('./analytics.js');
-const loadProvider = require('../../../libraries/load-provider.js');
-const { hasAuthUser } = require('../../../libraries/auth-user.js');
-const { User } = require('../../../helpers/account.js');
+import path from 'path';
+import powertools from 'node-powertools';
+import transitions from './transitions/index.js';
+import { trackPayment, isTrialConversion } from './analytics.js';
+import loadProvider from '../../../libraries/load-provider.js';
+import { hasAuthUser } from '../../../libraries/auth-user.js';
+import account from '../../../helpers/account.js';
 
 /**
  * Firestore trigger: payments-webhooks/{eventId} onWrite
@@ -20,7 +20,7 @@ const { User } = require('../../../helpers/account.js');
  * 4. Detects state transitions and dispatches handler files (non-blocking)
  * 5. Marks the webhook as completed
  */
-module.exports = async ({ ctx, context, change }) => {
+export default async ({ ctx, context, change }) => {
   const omega = ctx.omega;
   const admin = omega.firebase.admin;
 
@@ -91,7 +91,7 @@ module.exports = async ({ ctx, context, change }) => {
 
     // Load the shared library for this provider
     try {
-      library = loadProvider(path.join(__dirname, '../../../libraries/payment/providers'), provider);
+      library = loadProvider(path.join(import.meta.dirname, '../../../libraries/payment/providers'), provider);
     } catch (e) {
       throw new Error(`Unknown provider library: ${provider}`);
     }
@@ -609,7 +609,7 @@ async function processPaymentEvent({ category, library, resource, resourceType, 
 
   // Auto-fill user name from payment provider if not already set
   if (!userData?.personal?.name?.first) {
-    const customerName = extractCustomerName(resource, resourceType);
+    const customerName = await extractCustomerName(resource, resourceType);
     if (customerName?.first) {
       await admin.firestore().doc(`users/${uid}`).set({
         personal: { name: customerName },
@@ -790,7 +790,7 @@ async function processPaymentEvent({ category, library, resource, resourceType, 
       discountWrite = { resourceId: liveResourceId };
       ctx.log(`Adopting users/${uid}.subscription.discount onto ${liveResourceId}: the claim carries no subscription stamp, so it is the one it is riding`);
     } else if (claimedDiscount.resourceId !== liveResourceId) {
-      discountWrite = User.EMPTY_DISCOUNT;
+      discountWrite = account.User.EMPTY_DISCOUNT;
       ctx.log(`Clearing users/${uid}.subscription.discount: claimed on ${claimedDiscount.resourceId}, this event is for ${liveResourceId}, so the discount ended with the subscription it was applied to`);
     }
   }
@@ -893,7 +893,7 @@ async function processPaymentEvent({ category, library, resource, resourceType, 
   }
 
   // Mark abandoned cart as completed (non-blocking, fire-and-forget)
-  const { COLLECTION } = require('../../../libraries/abandoned-cart-config.js');
+  const { default: { COLLECTION } } = await import('../../../libraries/abandoned-cart-config.js');
   admin.firestore().doc(`${COLLECTION}/${uid}`).set({
     status: 'completed',
     metadata: {
@@ -1172,7 +1172,7 @@ function extractParentResourceId(resource) {
  * @param {string} resourceType - 'subscription' | 'session' | 'invoice'
  * @returns {{ first: string, last: string }|null}
  */
-function extractCustomerName(resource, resourceType) {
+async function extractCustomerName(resource, resourceType) {
   let fullName = null;
 
   // Checkout sessions have customer_details.name
@@ -1191,7 +1191,7 @@ function extractCustomerName(resource, resourceType) {
     const surname = resource.payer?.name?.surname;
 
     if (givenName) {
-      const { capitalize } = require('../../../libraries/infer-contact.js');
+      const { capitalize } = await import('../../../libraries/infer-contact.js');
       return {
         first: capitalize(givenName) || null,
         last: capitalize(surname) || null,
@@ -1203,7 +1203,7 @@ function extractCustomerName(resource, resourceType) {
   if (resourceType === 'subscription') {
     const addr = resource.shipping_address || resource.billing_address;
     if (addr?.first_name) {
-      const { capitalize } = require('../../../libraries/infer-contact.js');
+      const { capitalize } = await import('../../../libraries/infer-contact.js');
       return {
         first: capitalize(addr.first_name) || null,
         last: capitalize(addr.last_name) || null,
@@ -1215,7 +1215,7 @@ function extractCustomerName(resource, resourceType) {
     return null;
   }
 
-  const { capitalize } = require('../../../libraries/infer-contact.js');
+  const { capitalize } = await import('../../../libraries/infer-contact.js');
   const parts = fullName.trim().split(/\s+/);
   return {
     first: capitalize(parts[0]) || null,

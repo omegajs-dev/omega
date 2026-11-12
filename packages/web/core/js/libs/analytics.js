@@ -366,3 +366,18 @@ export function readPlatformCookies() {
 
   return cookies;
 }
+
+/**
+ * The provider rows the build bakes as `analytics.capabilities`. A config
+ * without them was not baked by the build, so there is nothing to fall back to.
+ * @returns {object} provider id → its row.
+ */
+export function getAnalyticsCapabilities() {
+  const capabilities = omega.config.analytics?.capabilities;
+
+  if (!capabilities) {
+    throw new Error('analytics.capabilities is missing from the build config: the page cannot tell which consent category gates each provider');
+  }
+
+  return capabilities;
+}

@@ -46,7 +46,7 @@ module.exports = omega.functions;
 Create `src/routes/myEndpoint/index.js`:
 
 ```javascript
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   ctx.log('Request data:', data);
 
   // Return response
@@ -57,7 +57,7 @@ module.exports = async ({ ctx, omega, user, data }) => {
 Create `src/schemas/myEndpoint/index.js`:
 
 ```javascript
-module.exports = ({ user, body, query }) => ({
+export default ({ user, body, query }) => ({
   message: { type: 'string', default: 'Hello World' },
 });
 ```
@@ -167,10 +167,10 @@ Routes handle HTTP requests. Create files in your `routes/` directory:
 - `routes/{name}/post.js` - Handles POST requests only
 - (also supports `put.js`, `delete.js`, `patch.js`)
 
-**Route File Pattern:** a route exports an async function receiving ONE object:
+**Route File Pattern:** a route is an ES module whose one default export is an async function receiving ONE object (a CommonJS `module.exports` handler is refused by name):
 
 ```javascript
-module.exports = async ({ ctx, omega, user, data, usage, analytics }) => {
+export default async ({ ctx, omega, user, data, usage, analytics }) => {
   // data: the input validated against the route's schema
   // The raw request stays on ctx.request
   const body = ctx.request.body;       // POST body
@@ -209,7 +209,7 @@ Everything in the argument is also on `ctx` (`ctx.user`, `ctx.data`, `ctx.usage`
 A schema file exports a function of the request and returns a plain field declaration. One adapter validates it with zod; a split on the plan, the request or the input is ordinary code:
 
 ```javascript
-module.exports = ({ user, body, query, path, method, headers, geolocation }) => {
+export default ({ user, body, query, path, method, headers, geolocation }) => {
   const fields = {
     message: { type: 'string', default: 'Hello' },
     count: { type: 'number', default: 10, min: 1, max: 100 },
@@ -303,10 +303,10 @@ The main API endpoint serves the framework's built-in routes and the MCP endpoin
 
 **Creating Custom Cron Jobs:**
 
-Create `src/hooks/cron/daily/myJob.js`. A job exports an async function receiving ONE object, and each job gets its own `ctx`:
+Create `src/hooks/cron/daily/myJob.js`. A job is an ES module whose default export is an async function receiving ONE object, and each job gets its own `ctx`:
 
 ```javascript
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   ctx.log('Running my daily job...');
 
   // Your job logic here (Firebase Admin is omega.firebase.admin)
@@ -388,7 +388,7 @@ Every route, event and cron job runs with ONE `Context`, the `ctx` its handler r
 Handles the request/response lifecycle, authentication, and logging. `ctx.request` is null outside HTTP.
 
 ```javascript
-module.exports = async ({ ctx, omega, user }) => {
+export default async ({ ctx, omega, user }) => {
   // The caller: a User, signed out until the pipeline's authenticate step resolves one
   ctx.user.authenticated;
 
@@ -508,6 +508,10 @@ usage.addWhitelistKeys(['another-key']);
 // An anonymous key is EXPLICIT — a SEPARATE counter, so a key can never move a
 // signed-in user's own counters into the anonymous store
 await usage.forKey(ctx.request.geolocation.ip).consume('signups', 1, { limit: 5 });
+
+// Another account is EXPLICIT too: a SEPARATE counter on users/{uid}, so that
+// account's plan decides and the use counts against it, never the caller
+await usage.forUser(sellerUid).consume('reviews');
 ```
 
 A feature is defined ONCE in the top-level `features` catalog (name, icon, definition, and the `usage` block that meters it); each product names only its VALUE. Mirrors are declared there too — no call-site mirror API. Full reference: [docs/backend/usage-rate-limiting.md](../../docs/backend/usage-rate-limiting.md).

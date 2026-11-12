@@ -2,9 +2,9 @@
  * Transition: plan-changed
  * Triggered when a user upgrades or downgrades their plan (product A → product B, both active + paid)
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc }) {
+export default async function ({ ctx, before, after, order, uid, userDoc }) {
   // Direction comes from what the plan costs, and only when the two prices are
   // comparable — different billing cadences are not, and product IDs never were.
   const beforePrice = Number(before.payment?.price) || 0;

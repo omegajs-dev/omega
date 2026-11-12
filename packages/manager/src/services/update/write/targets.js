@@ -26,7 +26,7 @@ const path = require('node:path');
 const chalk = require('chalk').default;
 const jetpack = require('fs-jetpack');
 
-const { envLayerFiles, ENV_ENVIRONMENTS, resolveCompany } = require('@omega.js/config');
+const { envLayerFiles, ENV_ENVIRONMENTS, resolveCompany, targetType } = require('@omega.js/config');
 const { resolvePackageDir } = require('@omega.js/devkit/local');
 const { ENV_FILE } = require('@omega.js/devkit/env-file');
 
@@ -169,12 +169,12 @@ module.exports = async ({ brandRoot, targets, options }) => {
       console.log(`      ${chalk.yellow('⊘')} ${entry.name}: would run npm run build ${chalk.dim('[DRY RUN]')}`);
       steps.push({ phase: 'build', success: true, skipped: true, dryRun: true });
     } else {
-      // Non-interactive runs (pipeline, CI, and `omega dev`'s boot manage
-      // cycle — #228) must be deterministic: web builds use the committed
-      // translation cache only — never a live LLM pass mid-run (the same law
-      // deploys follow). New strings translate on the next interactive run.
+      // Non-interactive runs (pipeline, CI, `omega dev`'s boot manage cycle)
+      // must be deterministic: every build that translates reads the committed
+      // cache only, never a live provider call mid-run (the law deploys follow).
+      // New strings translate on the next interactive run.
       const buildArgs = ['run', 'build'];
-      if (entry.target === 'web' && process.env.OMEGA_NON_INTERACTIVE === '1') {
+      if (targetType(entry.target)?.translates && process.env.OMEGA_NON_INTERACTIVE === '1') {
         buildArgs.push('--', '--cached-only');
       }
       console.log(`      ${chalk.dim('→')} ${entry.name}: npm ${buildArgs.join(' ')}`);

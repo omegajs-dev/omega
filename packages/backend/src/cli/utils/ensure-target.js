@@ -349,7 +349,7 @@ async function ensureTarget(options) {
     root: projectDir,
     srcDir: 'src',
     frameworkRoot: FRAMEWORK_ROOT,
-    door: (name) => `omega.require('${name}')`,
+    door: (name) => `omega.require('${name}') inside the handler body`,
     warn,
   });
 

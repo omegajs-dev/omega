@@ -17,13 +17,15 @@ const path = require('node:path');
 const http = require('node:http');
 const https = require('node:https');
 const { isDeepStrictEqual } = require('node:util');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const { afterExit } = require('./boot-child.js');
 const { scrubCredentialEnv } = require('./credential-scrub.js');
 const { targetOfType } = require('./target-of-type.js');
 const { resolvePackageRealDir } = require('../local.js');
+const processTree = require('../process-tree.js');
 const { missingMachineTools, machineToolLine } = require('../machine-tools.js');
 const { ENV_FILE } = require('../env-file.js');
+const { TARGET_TYPE_TWIN } = require('../verbs.js');
 
 // Ceilings, not expectations — cold-cache registry installs and the four
 // real target builds dominate; a warm rerun finishes far inside them.
@@ -36,11 +38,10 @@ const TIMEOUTS = {
   manage: 2400000,
 };
 
-// Boot ordering preference (cosmetic — matches the rehearsal); targets
-// themselves come from the scaffold output on disk, never from a map here. The
-// words are TYPES, which are also the names the wizard gives a brand's first
-// target of each type (#886).
-const TARGET_ORDER = ['web', 'backend', 'desktop', 'extension', 'mobile'];
+// The type ids in schema order, a cosmetic boot ordering: the targets come from
+// the scaffold output on disk. A type id is also the name the wizard gives a
+// brand's first target of that type.
+const TARGET_TYPE_IDS = TARGET_TYPE_TWIN.map((row) => row.id);
 
 // Lockstep with @omega.js/backend cli/commands/emulator.js (same marker the
 // devkit e2e-harness waits for — it fires AFTER persona seeding).
@@ -107,7 +108,7 @@ function latestRunFile(brandRoot) {
   return names.length > 0 ? path.join(runsDir, names.at(-1)) : null;
 }
 
-/** The brand's target dirs (scaffold output truth), in TARGET_ORDER. */
+/** The brand's target dirs (scaffold output truth), in TARGET_TYPE_IDS order. */
 function discoverBrandTargets(brandRoot) {
   const targetsDir = path.join(brandRoot, 'targets');
   let entries;
@@ -119,7 +120,7 @@ function discoverBrandTargets(brandRoot) {
   return entries
     .filter((name) => fs.existsSync(path.join(targetsDir, name, 'package.json')))
     .sort((a, b) => {
-      const rank = (name) => { const i = TARGET_ORDER.indexOf(name); return i === -1 ? TARGET_ORDER.length : i; };
+      const rank = (name) => { const i = TARGET_TYPE_IDS.indexOf(name); return i === -1 ? TARGET_TYPE_IDS.length : i; };
       return rank(a) - rank(b) || a.localeCompare(b);
     })
     .map((name) => path.join(targetsDir, name));
@@ -594,15 +595,12 @@ async function stopGroup(child, graceMs = 20000) {
  * where `ps` is unavailable, and the caller skips the check.
  */
 function emulatorOrphans() {
-  const ps = spawnSync('ps', ['ax', '-o', 'pid=,ppid=,command='], { encoding: 'utf8' });
-  if (ps.error || ps.status !== 0) return null;
-  return ps.stdout.split('\n').reduce((orphans, line) => {
-    const match = line.match(/^\s*(\d+)\s+1\s+(.*)$/);
-    if (match && /firebase emulators:start|cloud-firestore-emulator|pubsub-emulator/.test(match[2])) {
-      orphans.push({ pid: Number(match[1]), command: match[2] });
-    }
-    return orphans;
-  }, []);
+  // A machine always has processes, so an empty read is one that failed.
+  const text = processTree.readProcessTableText();
+  if (!text) return null;
+  return processTree.parseProcessTable(text)
+    .filter((row) => row.ppid === 1 && /firebase emulators:start|cloud-firestore-emulator|pubsub-emulator/.test(row.command))
+    .map((row) => ({ pid: row.pid, command: row.command }));
 }
 
 module.exports = { JourneyRun, TIMEOUTS, checkPreconditions, latestRunFile, discoverBrandTargets };

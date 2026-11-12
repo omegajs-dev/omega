@@ -1,6 +1,6 @@
 /**
  * Schema for POST /admin/payment
  */
-module.exports = () => ({
+export default() => ({
   payload: { type: 'object', default: {} },
 });

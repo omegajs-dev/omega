@@ -3,13 +3,16 @@
  * cheapest place to pin what each provider is told.
  */
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const fs = require('node:fs');
+const path = require('node:path');
+const { ANALYTICS_PROVIDERS } = require('@omega.js/config');
 
 const { CATALOG, PLACEMENTS, KINDS, entryFor } = require('../src/catalog.js');
-const ga4 = require('../src/adapters/ga4.js');
+const google = require('../src/adapters/google.js');
 const meta = require('../src/adapters/meta.js');
 const tiktok = require('../src/adapters/tiktok.js');
 
-const ADAPTERS = [ga4, meta, tiktok];
+const ADAPTERS = [google, meta, tiktok];
 
 // The 2026-08-27 live cross-check ([#652]): every `standard` claim is spelled
 // the way the platform's own list spells it, and a name the platform does not
@@ -67,7 +70,6 @@ module.exports = defineCases({
       run: (ctx) => {
         for (const [name, entry] of Object.entries(CATALOG)) {
           for (const [provider, mapping] of Object.entries(entry.providers)) {
-            ctx.expect(['ga4', 'meta', 'tiktok'].includes(provider), `${name} maps a known provider, got "${provider}"`).toBeTruthy();
             ctx.expect(mapping.name && typeof mapping.name === 'string', `${name}.${provider} has a native name`).toBeTruthy();
             ctx.expect(KINDS.includes(mapping.kind), `${name}.${provider} kind is standard|custom, got "${mapping.kind}"`).toBeTruthy();
             if (mapping.map !== undefined) {
@@ -75,6 +77,38 @@ module.exports = defineCases({
             }
           }
         }
+      },
+    },
+
+    {
+      name: 'every provider the catalog maps is a provider row',
+      run: (ctx) => {
+        const ids = Object.values(ANALYTICS_PROVIDERS).map((row) => row.id);
+
+        for (const [name, entry] of Object.entries(CATALOG)) {
+          for (const provider of Object.keys(entry.providers)) {
+            ctx.expect(ids.includes(provider), `${name} maps "${provider}", which has no row`).toBeTruthy();
+          }
+        }
+      },
+    },
+
+    {
+      name: 'every adapter file has a row, and every row has an adapter file named by its id',
+      run: (ctx) => {
+        const dir = path.join(__dirname, '..', 'src', 'adapters');
+        // An adapter is a module answering for one provider; the shared mechanism beside them answers for none
+        const adapters = fs.readdirSync(dir)
+          .filter((file) => file.endsWith('.js'))
+          .map((file) => ({ file: path.basename(file, '.js'), adapter: require(path.join(dir, file)) }))
+          .filter(({ adapter }) => typeof adapter.provider === 'string');
+
+        for (const { file, adapter } of adapters) {
+          ctx.expect(adapter.provider, `adapters/${file}.js answers for the provider it is named after`).toBe(file);
+          ctx.expect(typeof adapter.resolve, `adapters/${file}.js resolves descriptors`).toBe('function');
+        }
+
+        ctx.expect(adapters.map(({ file }) => file).sort()).toEqual(Object.values(ANALYTICS_PROVIDERS).map((row) => row.id).sort());
       },
     },
 
@@ -101,7 +135,7 @@ module.exports = defineCases({
 
         for (const name of live) {
           ctx.expect(entryFor(name), `${name} is in the catalog`).toBeTruthy();
-          ctx.expect(ga4.resolve(name, {}), `${name} resolves for GA4`).toBeTruthy();
+          ctx.expect(google.resolve(name, {}), `${name} resolves for GA4`).toBeTruthy();
         }
 
         // Spot check on the shape, not just the presence.
@@ -174,10 +208,10 @@ module.exports = defineCases({
         ctx.expect(entryFor('email_unsubscribe'), 'the unprefixed opt-out name is gone').toBe(null);
 
         for (const name of ['marketing_email_subscribe', 'marketing_email_unsubscribe']) {
-          const google = ga4.resolve(name, { content_type: 'marketing' });
+          const ga = google.resolve(name, { content_type: 'marketing' });
 
-          ctx.expect(google.name, `${name} resolves on GA4 under its own name`).toBe(name);
-          ctx.expect(google.kind, `${name} is a GA4 custom event`).toBe('custom');
+          ctx.expect(ga.name, `${name} resolves on GA4 under its own name`).toBe(name);
+          ctx.expect(ga.kind, `${name} is a GA4 custom event`).toBe('custom');
         }
 
         // Meta's wire names are the live custom ones, untouched by the rename: the
@@ -197,10 +231,10 @@ module.exports = defineCases({
         // the catalog is what tells each platform about a page now.
         const params = { page_path: '/pricing', page_title: 'Pricing', page_location: 'https://brand.test/pricing' };
 
-        const google = ga4.resolve('page_view', params);
-        ctx.expect(google.name).toBe('page_view');
-        ctx.expect(google.kind).toBe('standard');
-        ctx.expect(google.payload.page_path, 'GA4 is pass-through, so the page params ride as-is').toBe('/pricing');
+        const ga = google.resolve('page_view', params);
+        ctx.expect(ga.name).toBe('page_view');
+        ctx.expect(ga.kind).toBe('standard');
+        ctx.expect(ga.payload.page_path, 'GA4 is pass-through, so the page params ride as-is').toBe('/pricing');
 
         const facebook = meta.resolve('page_view', params);
         ctx.expect(facebook.name, 'Meta defines PageView — the pixel snippet\'s own standard event').toBe('PageView');
@@ -230,16 +264,16 @@ module.exports = defineCases({
     {
       name: 'purchase maps to Purchase on both ad platforms, with value and currency intact',
       run: (ctx) => {
-        const google = ga4.resolve('purchase', PURCHASE_PARAMS);
-        ctx.expect(google.name).toBe('purchase');
-        ctx.expect(google.kind).toBe('standard');
-        ctx.expect(google.payload.items, 'GA4 keeps its own items array').toEqual(PURCHASE_PARAMS.items);
-        ctx.expect(google.payload.value).toBe(49.99);
-        ctx.expect(google.payload.currency).toBe('USD');
+        const ga = google.resolve('purchase', PURCHASE_PARAMS);
+        ctx.expect(ga.name).toBe('purchase');
+        ctx.expect(ga.kind).toBe('standard');
+        ctx.expect(ga.payload.items, 'GA4 keeps its own items array').toEqual(PURCHASE_PARAMS.items);
+        ctx.expect(ga.payload.value).toBe(49.99);
+        ctx.expect(ga.payload.currency).toBe('USD');
         // GA4 deduplicates `purchase` on transaction_id, so the param is not optional
         // decoration — it is the key the browser and the webhook halves collapse on
         // ([#656](https://github.com/Omega-JS-Stack/omega/issues/656)).
-        ctx.expect(google.payload.transaction_id).toBe('ORD-1');
+        ctx.expect(ga.payload.transaction_id).toBe('ORD-1');
 
         const facebook = meta.resolve('purchase', PURCHASE_PARAMS);
         ctx.expect(facebook.name).toBe('Purchase');
@@ -446,9 +480,9 @@ module.exports = defineCases({
 
         // GA4's trial_start is a custom event: no standard purchase to deduplicate,
         // so the server owns it outright and the browser half names ads only.
-        const google = ga4.resolve('trial_start', params);
-        ctx.expect(google.name).toBe('trial_start');
-        ctx.expect(google.kind).toBe('custom');
+        const ga = google.resolve('trial_start', params);
+        ctx.expect(ga.name).toBe('trial_start');
+        ctx.expect(ga.kind).toBe('custom');
       },
     },
 
@@ -456,9 +490,9 @@ module.exports = defineCases({
       name: 'the recurring events ride GA4 purchase with is_recurring set, and Purchase on the ad platforms',
       run: (ctx) => {
         for (const name of ['subscription_renew', 'payment_recovered']) {
-          const google = ga4.resolve(name, { ...PURCHASE_PARAMS, is_recurring: false });
-          ctx.expect(google.name, `${name} → GA4 purchase`).toBe('purchase');
-          ctx.expect(google.payload.is_recurring, `${name} is flagged recurring for GA4`).toBe(true);
+          const ga = google.resolve(name, { ...PURCHASE_PARAMS, is_recurring: false });
+          ctx.expect(ga.name, `${name} → GA4 purchase`).toBe('purchase');
+          ctx.expect(ga.payload.is_recurring, `${name} is flagged recurring for GA4`).toBe(true);
 
           // Every real charge is a Purchase: Meta's Subscribe means the START of a
           // paid subscription, so a renewal counted a new subscriber every month
@@ -484,12 +518,12 @@ module.exports = defineCases({
       run: (ctx) => {
         const params = { ...PURCHASE_PARAMS, is_trial: true, is_recurring: false };
 
-        const google = ga4.resolve('trial_convert', params);
-        ctx.expect(google.name, 'the first real charge belongs in GA4\'s revenue report').toBe('purchase');
-        ctx.expect(google.kind).toBe('standard');
-        ctx.expect(google.payload.value).toBe(49.99);
-        ctx.expect(google.payload.is_trial, 'the pair of flags is what marks it inside GA4 purchase').toBe(true);
-        ctx.expect(google.payload.is_recurring, 'a conversion is the FIRST payment, never a renewal').toBe(false);
+        const ga = google.resolve('trial_convert', params);
+        ctx.expect(ga.name, 'the first real charge belongs in GA4\'s revenue report').toBe('purchase');
+        ctx.expect(ga.kind).toBe('standard');
+        ctx.expect(ga.payload.value).toBe(49.99);
+        ctx.expect(ga.payload.is_trial, 'the pair of flags is what marks it inside GA4 purchase').toBe(true);
+        ctx.expect(ga.payload.is_recurring, 'a conversion is the FIRST payment, never a renewal').toBe(false);
 
         const facebook = meta.resolve('trial_convert', params);
         ctx.expect(facebook.name, 'Meta already heard StartTrial — and money moving is a Purchase').toBe('Purchase');
@@ -529,8 +563,8 @@ module.exports = defineCases({
         }
 
         // GA4 is where the money is netted, so it keeps the real number.
-        ctx.expect(ga4.resolve('refund', PURCHASE_PARAMS).payload.value).toBe(49.99);
-        ctx.expect(ga4.resolve('subscription_cancel', PURCHASE_PARAMS).payload.value).toBe(49.99);
+        ctx.expect(google.resolve('refund', PURCHASE_PARAMS).payload.value).toBe(49.99);
+        ctx.expect(google.resolve('subscription_cancel', PURCHASE_PARAMS).payload.value).toBe(49.99);
       },
     },
 
@@ -542,10 +576,10 @@ module.exports = defineCases({
         // from. The other two are dark to an ad platform for the older reason — no
         // money moved, and a platform optimizes toward conversions.
         for (const name of ['trial_lapse', 'subscription_uncancel', 'subscription_plan_change']) {
-          const google = ga4.resolve(name, PURCHASE_PARAMS);
+          const ga = google.resolve(name, PURCHASE_PARAMS);
 
-          ctx.expect(google.name, `${name} resolves on GA4 under its own name`).toBe(name);
-          ctx.expect(google.kind, `no platform defines a standard ${name}`).toBe('custom');
+          ctx.expect(ga.name, `${name} resolves on GA4 under its own name`).toBe(name);
+          ctx.expect(ga.kind, `no platform defines a standard ${name}`).toBe('custom');
           ctx.expect(meta.resolve(name, PURCHASE_PARAMS), `${name} has no Meta mapping`).toBe(null);
           ctx.expect(tiktok.resolve(name, PURCHASE_PARAMS), `${name} has no TikTok mapping`).toBe(null);
         }
@@ -561,17 +595,17 @@ module.exports = defineCases({
           ctx.expect(entry.params.includes(param), `subscription_plan_change declares ${param}`).toBeTruthy();
         }
 
-        const google = ga4.resolve('subscription_plan_change', {
+        const ga = google.resolve('subscription_plan_change', {
           ...PURCHASE_PARAMS,
           previous_item_id: 'starter',
           previous_item_name: 'Starter',
           previous_value: 9.99,
         });
 
-        ctx.expect(google.payload.previous_item_id, 'GA4 is pass-through, so the from-plan rides as-is').toBe('starter');
-        ctx.expect(google.payload.previous_item_name).toBe('Starter');
-        ctx.expect(google.payload.previous_value).toBe(9.99);
-        ctx.expect(google.payload.items[0].item_id, 'and items[] is still the plan they moved TO').toBe('pro');
+        ctx.expect(ga.payload.previous_item_id, 'GA4 is pass-through, so the from-plan rides as-is').toBe('starter');
+        ctx.expect(ga.payload.previous_item_name).toBe('Starter');
+        ctx.expect(ga.payload.previous_value).toBe(9.99);
+        ctx.expect(ga.payload.items[0].item_id, 'and items[] is still the plan they moved TO').toBe('pro');
       },
     },
 
@@ -617,7 +651,7 @@ module.exports = defineCases({
         ctx.expect(tiktok.resolve('generate_lead', { lead_source: 'pricing' }).name).toBe('SubmitForm');
         ctx.expect(tiktok.resolve('generate_lead', {}).kind).toBe('standard');
         ctx.expect(meta.resolve('generate_lead', {}).name).toBe('Lead');
-        ctx.expect(ga4.resolve('generate_lead', {}).name).toBe('generate_lead');
+        ctx.expect(google.resolve('generate_lead', {}).name).toBe('generate_lead');
       },
     },
 
@@ -626,7 +660,7 @@ module.exports = defineCases({
       run: (ctx) => {
         const params = { search_term: 'omega', content_category: 'blog' };
 
-        ctx.expect(ga4.resolve('search', params).payload.search_term).toBe('omega');
+        ctx.expect(google.resolve('search', params).payload.search_term).toBe('omega');
         ctx.expect(meta.resolve('search', params).payload.search_string).toBe('omega');
         ctx.expect(meta.resolve('search', params).payload.search_term).toBe(undefined);
         ctx.expect(tiktok.resolve('search', params).payload.search_string).toBe('omega');
@@ -639,7 +673,7 @@ module.exports = defineCases({
         const params = { ...PURCHASE_PARAMS };
         meta.resolve('purchase', params);
         tiktok.resolve('purchase', params);
-        ga4.resolve('subscription_renew', params);
+        google.resolve('subscription_renew', params);
 
         ctx.expect(params, 'the caller object is untouched').toEqual(PURCHASE_PARAMS);
       },
@@ -651,7 +685,7 @@ module.exports = defineCases({
       name: 'an unmapped provider resolves to null',
       run: (ctx) => {
         // vert_click is GA4-only; user_refund_request likewise.
-        ctx.expect(ga4.resolve('vert_click', { vert_id: 'x' })).toBeTruthy();
+        ctx.expect(google.resolve('vert_click', { vert_id: 'x' })).toBeTruthy();
         ctx.expect(meta.resolve('vert_click', { vert_id: 'x' })).toBe(null);
         ctx.expect(tiktok.resolve('vert_click', { vert_id: 'x' })).toBe(null);
         ctx.expect(tiktok.resolve('cookie_banner_show')).toBe(null);
@@ -670,25 +704,16 @@ module.exports = defineCases({
     // ─── Consent categories + attribution ───
 
     {
-      name: 'each adapter exports its consent category',
-      run: (ctx) => {
-        ctx.expect(ga4.CONSENT_CATEGORY).toBe('analytics');
-        ctx.expect(meta.CONSENT_CATEGORY).toBe('marketing');
-        ctx.expect(tiktok.CONSENT_CATEGORY).toBe('marketing');
-      },
-    },
-
-    {
       name: 'attribution lands where each provider wants it',
       run: (ctx) => {
         const attribution = { campaign: 'summer', source: 'newsletter', fbc: 'fb.1.x', ttclid: 'tt-1', gclid: 'g-1' };
         const context = { attribution };
 
-        const google = ga4.resolve('sign_up', { method: 'google' }, context);
-        ctx.expect(google.payload.campaign, 'GA4 takes campaign as a flat event param').toBe('summer');
-        ctx.expect(google.payload.source).toBe('newsletter');
-        ctx.expect(google.payload.gclid, 'GA4 has no match block, so the Google click id is a param too').toBe('g-1');
-        ctx.expect(google.payload.fbc, 'another platform\'s click id never rides GA4').toBe(undefined);
+        const ga = google.resolve('sign_up', { method: 'google' }, context);
+        ctx.expect(ga.payload.campaign, 'GA4 takes campaign as a flat event param').toBe('summer');
+        ctx.expect(ga.payload.source).toBe('newsletter');
+        ctx.expect(ga.payload.gclid, 'GA4 has no match block, so the Google click id is a param too').toBe('g-1');
+        ctx.expect(ga.payload.fbc, 'another platform\'s click id never rides GA4').toBe(undefined);
 
         const facebook = meta.resolve('sign_up', { method: 'google' }, context);
         ctx.expect(facebook.userData.fbc, 'Meta match data lands in userData').toBe('fb.1.x');
@@ -719,10 +744,10 @@ module.exports = defineCases({
 
         // GA4's Measurement Protocol has no slot the campaign params do not already
         // fill, and an invented one is worse than an absent one.
-        const google = ga4.resolve('purchase', { value: 9.99, currency: 'USD' }, context);
+        const ga = google.resolve('purchase', { value: 9.99, currency: 'USD' }, context);
 
-        ctx.expect(Object.hasOwn(google, 'page'), 'GA4 is untouched').toBe(false);
-        ctx.expect(google.payload.url, 'and gains no url param').toBe(undefined);
+        ctx.expect(Object.hasOwn(ga, 'page'), 'GA4 is untouched').toBe(false);
+        ctx.expect(ga.payload.url, 'and gains no url param').toBe(undefined);
       },
     },
 

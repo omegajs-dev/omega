@@ -22,11 +22,14 @@
  * extended-mode marketing-lifecycle suite.
  */
 const expect = require('../../../dist/vendor/devkit/test/expect.js');
-const cron = require('../../../dist/omega/events/cron/daily/marketing-prune.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const cron = loadHandler(require.resolve('../../../dist/omega/events/cron/daily/marketing-prune.js'));
+const pruneHelpers = require('../../../dist/omega/events/cron/helpers/marketing-prune.js');
 const omega = require('../../../dist/omega/index.js');
 const sendgridProvider = require('../../../dist/omega/libraries/email/providers/sendgrid.js');
 const beehiivProvider = require('../../../dist/omega/libraries/email/providers/beehiiv.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
+const { onPruneDay, fakeProviderApi, withProviderApi, campaignCtx } = require('../_campaign-harness.js');
 
 const {
   stagePrune,
@@ -34,7 +37,7 @@ const {
   isNewsletterInactive,
   NEWSLETTER_RECEIVED_FLOOR,
   NEWSLETTER_MIN_AGE_DAYS,
-} = cron;
+} = pruneHelpers;
 
 const DAY = 24 * 60 * 60 * 1000;
 const BRAND = { id: 'acme', name: 'Acme' };
@@ -108,37 +111,6 @@ function withEmail(ctx, sentCampaigns) {
   };
 
   return ctx;
-}
-
-/**
- * Run with the clock pinned to the 1st of the CURRENT month — the cron entry
- * acts on that day alone, so a gate test on any other day would return before
- * ever reaching the gate and pass without proving anything. The current month
- * (rather than a fixed date) keeps the subscription ages the seams build
- * inside the window honest.
- */
-async function onPruneDay(run) {
-  const RealDate = Date;
-  const today = new RealDate();
-  const frozen = new RealDate(today.getFullYear(), today.getMonth(), 1, 12, 0, 0).getTime();
-
-  class FrozenDate extends RealDate {
-    constructor(...args) {
-      super(...(args.length ? args : [frozen]));
-    }
-
-    static now() {
-      return frozen;
-    }
-  }
-
-  global.Date = FrozenDate;
-
-  try {
-    return await run();
-  } finally {
-    global.Date = RealDate;
-  }
 }
 
 /**
@@ -326,6 +298,85 @@ module.exports = defineCases({
         expect(writes.length, `Stage 2 writes one prune log, got ${writes.length}`).toBe(1);
         expect(writes[0].path, `The SendGrid lane keeps its run doc path, got ${writes[0].path}`).toBe(`marketing-prune-logs/${BRAND.id}/runs/${logKey()}`);
         expect(writes[0].data.emails, 'The log keeps the deleted emails for recoverability').toEqual(['newsletter.reader@gmail.com']);
+      },
+    },
+
+    {
+      name: 'stage 2: a paid segment whose query cannot be scoped deletes nobody and logs one error',
+
+      async run() {
+        const inactive = 'SELECT c.contact_id, c.updated_at FROM contact_data as c WHERE "engagement_last" <= timestampadd(day, -180, CURRENT_TIMESTAMP)';
+
+        // An empty query, then one with no WHERE: neither can exclude a paying customer
+        for (const paidQuery of [null, 'SELECT c.contact_id, c.updated_at FROM contact_data as c']) {
+          const api = fakeProviderApi({
+            sendgridSegments: {
+              engagement_inactive_6m: { id: 'sg_inactive_6m', query: inactive },
+              subscription_paid: { id: 'sg_paid', query: paidQuery },
+            },
+          });
+          const deleted = [];
+          const errors = [];
+
+          await withProviderApi(api, async (load) => {
+            const sendgrid = load('libraries/email/providers/sendgrid.js');
+
+            // Every export answers both; only the missing paid exclusion would let them be deleted
+            sendgrid.getSegmentContacts = async () => ({ success: true, contacts: [contact('cold@gmail.com', 'sg_cold'), contact('payer@gmail.com', 'sg_payer')] });
+            sendgrid.bulkDeleteContacts = async (ids) => { deleted.push(...ids); return { success: true }; };
+
+            const { stagePrune: stage } = load('events/cron/helpers/marketing-prune.js');
+            const ctx = campaignCtx(load, { error: (...args) => errors.push(args.join(' ')) });
+
+            await stage(ctx.omega, ctx);
+          });
+
+          expect(deleted, `paid query ${JSON.stringify(paidQuery)}: nobody is deleted`).toEqual([]);
+          expect(errors.length, `paid query ${JSON.stringify(paidQuery)}: one error line, got ${JSON.stringify(errors)}`).toBe(1);
+        }
+      },
+    },
+
+    {
+      name: 'stage 2: a failed paid export deletes nobody and logs one error; an empty one still prunes',
+
+      async run() {
+        // Each temp segment is named for what it scopes, so each export answers its own
+        const exports = (paidExport) => ({
+          temp_seg_inactive: { success: true, contacts: [contact('cold@gmail.com', 'sg_cold')] },
+          temp_seg_paid: paidExport,
+        });
+
+        const prune = async (paidExport) => {
+          const { admin } = buildAdmin();
+          const { ctx, calls } = buildAssistant();
+          const deleted = [];
+          const answers = exports(paidExport);
+
+          await withProviders({
+            sendgrid: {
+              resolveSegmentIds: async () => ({ engagement_inactive_6m: 'seg_inactive', subscription_paid: 'seg_paid' }),
+              createBrandScopedSegment: async (segmentIds) => ({ segmentId: `temp_${segmentIds[0]}`, cleanup: async () => {} }),
+              getSegmentContacts: async (segmentId) => {
+                expect(segmentId in answers, `an export of an unknown segment: ${segmentId}`).toBe(true);
+                return answers[segmentId];
+              },
+              bulkDeleteContacts: async (ids) => { deleted.push(...ids); return { success: true }; },
+            },
+            env: { SENDGRID_API_KEY: 'test-key' },
+          }, () => stagePrune(buildOmega(NEWSLETTER_ENABLED, admin), ctx));
+
+          return { deleted, errors: calls.errors };
+        };
+
+        const failed = await prune({ success: false, error: 'Export job failed' });
+
+        expect(failed.deleted, 'without the paid list nobody can be spared, so nobody is deleted').toEqual([]);
+        expect(failed.errors.length, `one error line, got ${JSON.stringify(failed.errors)}`).toBe(1);
+
+        const empty = await prune({ success: true, contacts: [] });
+
+        expect(empty.deleted, 'an export that answers no payer still prunes the cold contact').toEqual(['sg_cold']);
       },
     },
 

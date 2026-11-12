@@ -25,9 +25,10 @@
  * Run: npx omega test framework:events/payments/transition-order-emails
  */
 const expect = require('../../../dist/vendor/devkit/test/expect.js');
-const newSubscription = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/subscription/new-subscription.js');
-const purchaseCompleted = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-completed.js');
-const checkoutDeclined = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/subscription/checkout-declined.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const newSubscription = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/transitions/subscription/new-subscription.js'));
+const purchaseCompleted = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-completed.js'));
+const checkoutDeclined = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/transitions/subscription/checkout-declined.js'));
 const capture = require('../../../dist/test/utils/email-capture.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 

@@ -18,7 +18,7 @@
 //   development/{open-exe-folder, open-user-data, open-logs, open-app-config,
 //                test-error}                                                       (dev only)
 
-module.exports = ({ omega, menu, defaults }) => {
+export default ({ omega, menu, defaults }) => {
   // Start from the platform-appropriate default template. Don't add anything
   // by default: leave it identical to what the framework would do without
   // this file. Add your own customizations below.

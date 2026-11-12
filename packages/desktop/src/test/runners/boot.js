@@ -2,7 +2,8 @@
 // (`<project>/.omega/test-app`, never the project's own dist/, which a running
 // watcher writes), boots that app in Electron with harness/boot-entry.js, and
 // reports every envelope line the booted app writes. A suite with `view: '<name>'`
-// runs in that view's window; every other boot suite runs in the app's main process.
+// runs in that view's window, a suite with `secondLaunch` runs here over a two-launch
+// run of the app, and every other boot suite runs in the app's main process.
 
 const path = require('path');
 const fs = require('fs');
@@ -14,6 +15,8 @@ const jetpack = require('fs-jetpack');
 const distSnapshot = require('../utils/dist-snapshot.js');
 const { serializeSuite, specKey } = require('@omega.js/devkit/test/serialize');
 const { reportEvery, createEventTracker } = require('@omega.js/devkit/test/events');
+const { runSuite } = require('@omega.js/devkit/test/run-case');
+const expect = require('@omega.js/devkit/test/expect');
 const {
   NO_ELECTRON_REASON, KILL_GRACE_MS, resolveElectron, electronArgs, readChildOutput, childEnded, exitError, endChild,
 } = require('./app-child.js');
@@ -26,17 +29,19 @@ const DEFAULT_BOOT_TIMEOUT_MS = 60000;
 const FRAMEWORK_DIST_ROOT = path.resolve(__dirname, '..', '..');
 
 /**
- * Split the boot row's suites: a suite with `view` runs in that view's window,
- * any other boot suite in the booted app's main process.
+ * Split the boot row's suites: a suite with `view` runs in that view's window, a suite
+ * with `secondLaunch` here over a two-launch run, any other in the booted app's main process.
  * @param {object[]} suites - Normalized suites.
- * @returns {{mainSuites: object[], viewSuites: object[]}} Suites of any other layer join neither.
+ * @returns {{mainSuites: object[], viewSuites: object[], launchSuites: object[]}} Suites of any other layer join none.
  */
 function partitionBootSuites(suites) {
   const boot = suites.filter((suite) => suite.layer === 'boot');
   const hasView = (suite) => typeof specKey(suite, 'view') === 'string';
+  const isLaunch = (suite) => Boolean(specKey(suite, 'secondLaunch'));
   return {
-    mainSuites: boot.filter((suite) => !hasView(suite)),
+    mainSuites: boot.filter((suite) => !hasView(suite) && !isLaunch(suite)),
     viewSuites: boot.filter(hasView),
+    launchSuites: boot.filter(isLaunch),
   };
 }
 
@@ -47,16 +52,18 @@ const bootDriver = {
    * @returns {Promise<{finished: Promise<void>, stop: Function}>} The row's handle.
    */
   async start({ projectRoot, suites, report }) {
-    const { mainSuites, viewSuites } = partitionBootSuites(suites);
+    const { mainSuites, viewSuites, launchSuites } = partitionBootSuites(suites);
 
     // A suite skipped whole needs no build: its cases report here.
-    const all = [...mainSuites, ...viewSuites];
+    const all = [...mainSuites, ...viewSuites, ...launchSuites];
     all.filter((suite) => suite.skip).forEach((suite) => {
       reportEvery(suite.cases, report, { status: 'skip', reason: typeof suite.skip === 'string' ? suite.skip : 'skipped' });
     });
-    const live = { mainSuites: mainSuites.filter((suite) => !suite.skip), viewSuites: viewSuites.filter((suite) => !suite.skip) };
+    const unskipped = (list) => list.filter((suite) => !suite.skip);
+    const live = { mainSuites: unskipped(mainSuites), viewSuites: unskipped(viewSuites), launchSuites: unskipped(launchSuites) };
     const cases = [...live.mainSuites, ...live.viewSuites].flatMap((suite) => suite.cases);
-    if (cases.length === 0) return { finished: Promise.resolve(), stop() {} };
+    const launchCases = live.launchSuites.flatMap((suite) => suite.cases);
+    if (cases.length === 0 && launchCases.length === 0) return { finished: Promise.resolve(), stop() {} };
 
     // OMEGA_TEST_BOOT_PROJECT boots another project than the run's (the self-test's bundled fixture).
     const effectiveRoot = process.env.OMEGA_TEST_BOOT_PROJECT
@@ -68,25 +75,29 @@ const bootDriver = {
     // the desktop link points at the repo that contains the fixture, a directory cycle.
     const createdLinks = ensureFixtureDeps(effectiveRoot, path.resolve(FRAMEWORK_DIST_ROOT, '..'));
 
-    let child = null;
-    const finished = bootProject({ ...live, cases, effectiveRoot, report, onSpawn: (spawned) => { child = spawned; } })
+    const children = new Set();
+    const finished = bootProject({ ...live, cases, launchCases, effectiveRoot, report, onSpawn: (spawned) => { children.add(spawned); } })
       .finally(() => removeFixtureDeps(createdLinks));
 
     return {
       finished,
       async stop() {
-        if (child && child.exitCode === null && child.signalCode === null) endChild(child, KILL_GRACE_MS);
+        for (const child of children) {
+          if (child.exitCode === null && child.signalCode === null) endChild(child, KILL_GRACE_MS);
+        }
         await finished.catch(() => {});
       },
     };
   },
 };
 
-// Build, write the spec, and boot: the actual boot run against effectiveRoot.
-async function bootProject({ mainSuites, viewSuites, cases, effectiveRoot, report, onSpawn }) {
+// Build once, then boot: the harness run of the main and view suites, then each
+// two-launch suite after it, so no two runs of the app ever hold the lock at once.
+async function bootProject({ mainSuites, viewSuites, launchSuites, cases, launchCases, effectiveRoot, report, onSpawn }) {
+  const everyCase = [...cases, ...launchCases];
   const electronBin = resolveElectron(effectiveRoot);
   if (!electronBin) {
-    reportEvery(cases, report, { status: 'skip', reason: NO_ELECTRON_REASON });
+    reportEvery(everyCase, report, { status: 'skip', reason: NO_ELECTRON_REASON });
     return;
   }
 
@@ -97,14 +108,41 @@ async function bootProject({ mainSuites, viewSuites, cases, effectiveRoot, repor
 
   const buildError = buildTestApp(effectiveRoot, testApp);
   if (buildError) {
-    reportEvery(cases, report, { status: 'fail', error: new Error(buildError) });
+    reportEvery(everyCase, report, { status: 'fail', error: new Error(buildError) });
     return;
   }
 
+  const spawnFn = (...spawnArgs) => {
+    const spawned = childProcess.spawn(...spawnArgs);
+    onSpawn(spawned);
+    return spawned;
+  };
+  const launch = { electronBin, entry: testApp.appRoot, effectiveRoot, report, spawnFn };
+  if (cases.length > 0) await bootHarness({ ...launch, mainSuites, viewSuites, cases, distSnapshotBefore });
+  for (const suite of launchSuites) await runLaunchSuite({ ...launch, suite, childEnv: appEnv() });
+}
+
+// The booted app's environment for this lane, before the harness variables.
+function appEnv() {
+  const env = Object.assign({}, process.env, {
+    OMEGA_ENVIRONMENT:             'testing',   // the one environment input: this lane names it
+    // Tray on macOS pops a real menubar icon; suppress to keep the test invisible.
+    OMEGA_TEST_HEADLESS:              '1',
+    // Suppress dev-mode dock-bounce / startup item changes during the test.
+    NODE_ENV:                      process.env.NODE_ENV || 'test',
+  });
+  // Defensive scrub at the spawn: the CLI boundary strips it,
+  // but paths that bypass the boundary must not boot Electron as plain node.
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
+
+// Write the spec and boot the app once with the harness, which runs the main and view suites.
+async function bootHarness({ electronBin, entry, effectiveRoot, report, spawnFn, mainSuites, viewSuites, cases, distSnapshotBefore }) {
   const specFile = path.join(os.tmpdir(), `desktop-boot-spec-${process.pid}-${Date.now()}.json`);
   jetpack.write(specFile, {
     projectRoot: effectiveRoot,
-    appRoot: testApp.appRoot,
+    appRoot: entry,
     frameworkDistRoot: FRAMEWORK_DIST_ROOT,
     distSnapshotBefore,
     mainSuites: mainSuites.map(serializeSuite),
@@ -120,35 +158,103 @@ async function bootProject({ mainSuites, viewSuites, cases, effectiveRoot, repor
   //                           even though main.js is esbuild-bundled into the consumer bundle)
   //   OMEGA_TEST_BOOT_SPEC     — JSON file with the test definitions
   // Argv would be cleaner but Electron rejects unknown CLI flags.
-  const childEnv = Object.assign({}, process.env, {
-    OMEGA_ENVIRONMENT:             'testing',   // the one environment input (#817): this lane names it
+  const childEnv = Object.assign(appEnv(), {
     OMEGA_TEST_BOOT:                  '1',      // boot-runner-specific dispatch marker (main.js reads this to load the harness instead of doing normal init)
     OMEGA_TEST_BOOT_HARNESS:          bootEntry,
     OMEGA_TEST_BOOT_SPEC:             specFile,
-    // Tray on macOS pops a real menubar icon; suppress to keep the test invisible.
-    OMEGA_TEST_HEADLESS:              '1',
-    // Suppress dev-mode dock-bounce / startup item changes during the test.
-    NODE_ENV:                      process.env.NODE_ENV || 'test',
   });
-  // Defensive scrub at the spawn (friction 17c) — the CLI boundary strips it,
-  // but paths that bypass the boundary must not boot Electron as plain node.
-  delete childEnv.ELECTRON_RUN_AS_NODE;
 
   // The staged target root is the app: Electron loads it the way it loads a real project dir.
   await runBootChild({
     electronBin,
-    entry: testApp.appRoot,
+    entry,
     childEnv,
     effectiveRoot,
     specFile,
     cases,
     report,
-    spawnFn: (...spawnArgs) => {
-      const spawned = childProcess.spawn(...spawnArgs);
-      onSpawn(spawned);
-      return spawned;
-    },
+    spawnFn,
   });
+}
+
+/**
+ * Run one `secondLaunch` suite: launch the built app as a user would (no harness), and once
+ * the primary prints `secondLaunch.afterLine`, launch it again; `secondLaunch.env` joins both
+ * launches' environment. The suite's cases then run here with `ctx.exits`: each process that
+ * exited on its own, in exit order, as `{ role: 'primary'|'duplicate', code, signal }`.
+ * A process still running at the budget is ended and left out.
+ * @param {object} options - `{ suite, electronBin, entry, childEnv, effectiveRoot, report, spawnFn, timeoutMs, killGraceMs }`.
+ * @returns {Promise<void>} Resolves once every launched process has ended and every case reported.
+ */
+async function runLaunchSuite({ suite, electronBin, entry, childEnv: baseEnv, effectiveRoot, report, spawnFn, timeoutMs = bootTimeoutMs(), killGraceMs = KILL_GRACE_MS }) {
+  const { afterLine, env: suiteEnv } = specKey(suite, 'secondLaunch');
+  const childEnv = { ...baseEnv, ...suiteEnv };
+  const exits = [];
+  const launched = [];
+
+  function launch(role, env) {
+    const child = spawnFn(electronBin, electronArgs(entry, { env }), { cwd: effectiveRoot, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const record = { role, child, stopped: false };
+    readChildOutput(child, () => {});
+    child.once('exit', (code, signal) => {
+      if (!record.stopped) exits.push({ role, code, signal });
+    });
+    record.ended = childEnded(child).catch(() => {});
+    launched.push(record);
+    return record;
+  }
+
+  const primary = launch('primary', childEnv);
+  const ready = await printedWithin(primary.child, afterLine, timeoutMs);
+  if (ready) {
+    // The duplicate keeps the testing userData the primary holds its lock in.
+    launch('duplicate', { ...childEnv, OMEGA_TEST_KEEP_USERDATA: '1' });
+    await endedWithin(launched.map((record) => record.ended), timeoutMs);
+  }
+
+  for (const record of launched) {
+    if (record.child.exitCode !== null || record.child.signalCode !== null) continue;
+    record.stopped = true;
+    endChild(record.child, killGraceMs);
+  }
+  await Promise.all(launched.map((record) => record.ended));
+
+  if (!ready) {
+    const error = new Error(`boot: the primary launch never printed "${afterLine}"; last runtime.log line: "${lastRuntimeLogLine(effectiveRoot)}"`);
+    reportEvery(suite.cases, report, { status: 'fail', error });
+    return;
+  }
+  await runSuite({ ...suite, layer: 'boot' }, { expect, extras: { exits }, report });
+}
+
+// True once the child prints a stdout line holding `text`; false when it exits or the time runs out first.
+function printedWithin(child, text, timeoutMs) {
+  return new Promise((resolve) => {
+    let buffer = '';
+    const done = (found) => {
+      clearTimeout(timer);
+      child.stdout.removeListener('data', onData);
+      child.removeListener('exit', onExit);
+      resolve(found);
+    };
+    const onData = (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      if (lines.some((line) => line.includes(text))) done(true);
+    };
+    const onExit = () => done(false);
+    const timer = setTimeout(() => done(false), timeoutMs);
+    child.stdout.on('data', onData);
+    child.once('exit', onExit);
+  });
+}
+
+// Resolves when every promise has settled or the time runs out, whichever comes first.
+function endedWithin(promises, timeoutMs) {
+  let timer = null;
+  const limit = new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); });
+  return Promise.race([Promise.all(promises), limit]).finally(() => clearTimeout(timer));
 }
 
 /**

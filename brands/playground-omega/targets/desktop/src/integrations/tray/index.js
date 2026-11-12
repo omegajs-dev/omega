@@ -22,9 +22,9 @@
 //
 // This file is OPTIONAL — delete it and @omega.js/desktop still ships a working tray.
 
-const { trayLabel } = require('../../lib/notes.js');
+import { trayLabel } from '../../lib/notes.js';
 
-module.exports = ({ omega, tray }) => {
+export default ({ omega, tray }) => {
   // Use @omega.js/desktop's default template + auto-resolved icon + auto-resolved tooltip.
   tray.useDefaults();
 

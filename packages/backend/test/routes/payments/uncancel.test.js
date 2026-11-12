@@ -21,7 +21,8 @@
  */
 const { buildUser, callHandler, recordingResponse, withEnvironment } = require('./_route-harness.js');
 
-const handler = require('../../../dist/omega/routes/payments/uncancel/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/uncancel/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 const Context = require('../../../dist/omega/context.js');
 

@@ -20,8 +20,8 @@
       country: 'United States',
     },
     images: {
-      // Served by the web build's static channel (minted set bridged from
-      // .omega/assets to /assets/images/{favicon,brand} at build)
+      // Served by the web build's static channel: the target's own files, else
+      // derived from assets/logo/brandmark.svg at build
       brandmark: 'https://sandbox-brand.example.com/assets/images/brand/brandmark.png',
       social: 'https://sandbox-brand.example.com/assets/images/brand/social.png',
     },

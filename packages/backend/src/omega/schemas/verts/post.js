@@ -1,12 +1,12 @@
 /**
  * Schema for POST /verts
  */
-// The one Omega instance, read at call time (a schema loads per request, long after boot)
-const instance = () => require('../../index.js');
+// The one Omega instance: a schema loads per request, long after boot
+import omega from '../../index.js';
 
-module.exports = () => ({
+export default () => ({
   // A fresh id per request: the caller cannot set it
-  id: { type: 'string', value: instance().utilities.randomId() },
+  id: { type: 'string', value: omega.utilities.randomId() },
   enabled: { type: 'boolean', default: true },
   title: { type: 'string', required: true },
   description: { type: 'string', default: '' },

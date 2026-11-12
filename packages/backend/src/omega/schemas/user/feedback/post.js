@@ -1,4 +1,4 @@
-module.exports = () => ({
+export default() => ({
   rating: { type: 'string', required: true },
   positive: { type: 'string', default: '' },
   negative: { type: 'string', default: '' },

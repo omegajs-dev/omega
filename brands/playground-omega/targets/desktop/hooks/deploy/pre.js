@@ -5,4 +5,6 @@
 // it drifted from the brand's number. The lane itself is shared with the
 // extension target, at `scripts/release-lane.js`.
 
-module.exports = (ctx) => require('../../../../scripts/release-lane.js')(ctx, { tagFamily: /^v\d/ });
+import prepareRelease from '../../../../scripts/release-lane.js';
+
+export default (ctx) => prepareRelease(ctx, { tagFamily: /^v\d/ });

@@ -1,8 +1,8 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
-const powertools = require('node-powertools');
-const safeCompare = require('../../../helpers/safe-compare.js');
-const env = require('../../../libraries/env.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
+import powertools from 'node-powertools';
+import safeCompare from '../../../helpers/safe-compare.js';
+import env from '../../../libraries/env.js';
 
 /**
  * POST /payments/webhook?provider=stripe&key=XXX
@@ -13,7 +13,7 @@ const env = require('../../../libraries/env.js');
  *   - parseWebhook(req) — extracts { eventId, eventType, category, resourceType, resourceId, chargeId, refundId, raw, uid }
  *   - isSupported(eventType) — returns true for events we should process
  */
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
   const admin = omega.firebase.admin;
   const data = ctx.request.data;
   const query = ctx.request.query;
@@ -50,7 +50,7 @@ module.exports = async ({ ctx, omega }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });
   }

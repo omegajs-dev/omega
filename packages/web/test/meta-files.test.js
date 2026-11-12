@@ -217,7 +217,7 @@ module.exports = defineCases({
 
         const opensearch = pages.get('/opensearch.xml');
         ctx.expect(opensearch.includes('<ShortName>MiniCo</ShortName>')).toBeTruthy();
-        ctx.expect(opensearch.includes('https://mini.example.com/assets/images/favicon/favicon-32x32.png'), 'minted favicon path').toBeTruthy();
+        ctx.expect(opensearch.includes('https://mini.example.com/assets/images/favicon/favicon-32x32.png'), 'the favicon set\'s path').toBeTruthy();
 
         const security = pages.get('/.well-known/security.txt');
         ctx.expect(security.includes('Contact: https://mini.example.com/contact')).toBeTruthy();

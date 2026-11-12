@@ -3,10 +3,10 @@
  * Triggered when a user subscribes for the first time (basic/null → active paid)
  * Check after.trial.claimed to determine if this is a trial subscription
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
-const discountCodes = require('../../../../../libraries/payment/discount-codes.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
+import discountCodes from '../../../../../libraries/payment/discount-codes.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc }) {
+export default async function ({ ctx, before, after, order, uid, userDoc }) {
   const isTrial = after.trial?.claimed === true;
   const brandName = ctx.omega.config.brand?.name || '';
   const planName = after.product?.name || '';

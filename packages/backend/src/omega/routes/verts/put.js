@@ -3,12 +3,12 @@
  * Admin-only. Only provided fields are updated; id and metadata.created
  * are immutable.
  */
-const { isHttpUrl, resetInventoryCache } = require('./utils.js');
+import { isHttpUrl, resetInventoryCache } from './utils.js';
 
 // Fields a PUT may update (id + metadata are immutable)
 const EDITABLE_FIELDS = ['enabled', 'title', 'description', 'button', 'link', 'image', 'footer', 'weight', 'targeting', 'whitelist', 'blacklist'];
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });

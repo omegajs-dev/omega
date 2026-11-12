@@ -2,7 +2,7 @@
  * Schema for PUT /marketing/campaign
  * All fields optional except id — only provided fields are updated.
  */
-module.exports = () => ({
+export default() => ({
   id: { type: 'string', required: true },
   type: { type: 'string', default: '' },
 

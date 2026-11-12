@@ -2,7 +2,7 @@
  * Surface: route, GET /notes (list the caller's notes, newest first)
  * Doc: node_modules/@omega.js/manager/docs/backend/routes.md
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
   }

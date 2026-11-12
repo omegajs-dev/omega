@@ -77,6 +77,29 @@ A boot case is `{ name, run(ctx), timeout?, skip? }`, the case every other layer
 
 A boot suite that names a project view (`layer: 'boot'` + `view: '<name>'`) runs in that view: it needs exactly what this lane already produces, the staged, freshly built app. After the main-process suites finish, `boot-entry.js` opens each such suite's view in a real window of the booted app (through the app's own window manager, hidden), evaluates the page engine `harness/renderer-entry.js` inside the page with the text of devkit's `run-case.js` and `expect.js` (one suite loop, one `expect`, the harness page's own engine), runs the suite there with `ctx.page` set to the page's `window`, and destroys the window. So the page carries the project's real preload, the booted main process's real IPC handlers, and the real config. A standalone spec names its `view` at the top level like any other. The knob and its rules are documented in [test-framework.md](test-framework.md#testing-your-own-views).
 
+## Two-launch suites
+
+A boot suite that declares `secondLaunch: { afterLine, env }` tests what happens when the app is launched while a copy already runs. Its cases never run inside the app: after the harness run ends, the driver launches the built app twice with no harness. The first launch (the primary) starts, and once a line on its stdout holds `afterLine`, the driver launches the app again (the duplicate). `env` is optional and joins both launches' environment. The duplicate keeps the testing userData (`OMEGA_TEST_KEEP_USERDATA=1`), so its boot never wipes the lock the primary holds.
+
+The suite's cases then run in the driver, and their ctx carries `exits`: one `{ role, code, signal }` per process that exited on its own, in the order they exited, `role` being `'primary'` or `'duplicate'`. A process still running when the boot budget ends is ended by the driver and left out of `exits`, so a launch that stalls shows up as a missing entry. A primary that never prints `afterLine` inside the budget fails every case of the suite, naming the line and the last `runtime.log` line.
+
+```js
+module.exports = defineCases({
+  type:         'group',
+  layer:        'boot',
+  description:  'a forwarded launch exits as a duplicate',
+  secondLaunch: { afterLine: 'main initialized' },
+  tests: [
+    {
+      name: 'the duplicate exits first, then the primary',
+      run: (ctx) => ctx.expect(ctx.exits.map((exit) => exit.role)).toEqual(['duplicate', 'primary']),
+    },
+  ],
+});
+```
+
+The framework's own two-launch suite is [src/test/suites/boot/second-instance-quit.test.js](../../packages/desktop/src/test/suites/boot/second-instance-quit.test.js). Its primary is the bundled fixture with no window open (`OMEGA_TEST_FIXTURE_WINDOWLESS=1` through `env`), whose `second-instance` listener (`OMEGA_TEST_FIXTURE_QUIT_ON_FORWARD=1`, through the same `env`) calls `omega.quit()`, so its quit lands as fast as a tray-only brand's does.
+
 ## Running
 
 ```bash
@@ -138,7 +161,7 @@ The gate decides *whether* the framework boot suite runs; the env var decides *w
 `src/test/fixtures/consumer-app/` — a minimal, committed @omega.js/desktop consumer (source only):
 
 - `config/omega.json5` — fake brand (`desktop-fixture`), `releases.enabled: false` (no repo discovery during the build), empty `cloud.config` (no Firebase hang).
-- `src/main.js` / `src/preload.js` — the one-line bootstraps a real consumer ships; `main.js` creates the `main` window (`show: false`).
+- `src/main.js` / `src/preload.js` — the one-line bootstraps a real consumer ships; `main.js` creates the `main` window (`show: false`) unless `OMEGA_TEST_FIXTURE_WINDOWLESS=1`, and under `OMEGA_TEST_FIXTURE_QUIT_ON_FORWARD=1` its own `second-instance` listener, registered before it requires the framework, calls `omega.quit()`.
 - `src/views/main/index.html` + `src/assets/js/components/main/index.js` + `src/assets/scss/main.scss` — a real view/renderer/theme so the bundle + sass tasks run exactly as for a consumer.
 
 **Runtime-only, gitignored** (never committed): before the boot build, the runner symlinks `@omega.js/desktop` (→ the @omega.js/desktop repo root) and `electron` (→ @omega.js/desktop's own copy) into the fixture's `node_modules` — the only two deps resolved by *explicit path* (the gulpfile location, the bundle's `require('@omega.js/desktop/main')`, and the runner's electron-binary lookup). Everything else (gulp, esbuild, …) resolves via the upward `node_modules` walk because the fixture lives inside the @omega.js/desktop repo. The links are **removed again when the run finishes** — the `@omega.js/desktop` link points back at the repo root, which *contains* the fixture, so a leftover link forms an infinite directory cycle inside `dist/` that crashes the next prepare-package tree walk (`npm run prepare` / `npm publish` → `ENAMETOOLONG`). The fixture `.gitignore` is belt-and-suspenders for crashed runs. See `ensureFixtureDeps()` / `removeFixtureDeps()` in [src/test/runners/boot.js](../../packages/desktop/src/test/runners/boot.js).

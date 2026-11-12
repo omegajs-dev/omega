@@ -1,22 +1,13 @@
 /**
- * #467 (Phase 2, item 2) — the VISIBLE logo prefers the bridged svg.
- *
- * `brand.images.brandmark` is a RASTER by contract: the manager's payment
- * service hands that same URL to Stripe/PayPal as the product image, and
- * OG/social cards need a raster too. So the config value never moves. What
- * moves is the read: the manager's assets service mints `color-x.svg` beside
- * the png ladder and web's static bridge ships BOTH
- * (`assets/images/brand/brandmark.{svg,png}`), so every template that renders
- * the VISIBLE lockup — nav, footer, the app sidebar, the auth cards, the app
- * launch mark, the checkout head, the email-preferences portal, the extension
- * installed page and the download page's cards — takes the svg when the mint
- * produced one and falls back to the configured raster when it did not.
- *
- * "When the mint produced one" is a BUILD-TIME fact, resolved exactly the way
- * the favicon links already resolve theirs (`hasFaviconSet`): the static lane
- * reports what it is about to ship, the build records it on the asset
- * manifest, and the template reads `assetManifest.brandmarkSvg`. No config
- * key, and no template guessing a filename it never saw on disk.
+ * The VISIBLE logo prefers the shipped svg. `brand.images.brandmark` stays a
+ * RASTER (payment providers and OG cards read it); every template rendering
+ * the visible lockup (nav, footer, sidebar, auth cards, launch mark, checkout
+ * head, email-preferences portal, extension installed page, download cards)
+ * takes `assets/images/brand/brandmark.svg` when the build ships one, else the
+ * configured raster. "When the build ships one" is a BUILD-TIME fact, resolved the way the
+ * favicon links resolve theirs: the static lane reports what it is about to
+ * ship, the build records it on the asset manifest, and the template reads
+ * `assetManifest.brandmarkSvg`.
  */
 const fs = require('node:fs');
 const os = require('node:os');
@@ -36,7 +27,7 @@ const PNG_URL = '/assets/images/brand/brandmark.png';
 const rasterData = { ...miniData, brand: { ...miniData.brand, images: { brandmark: PNG_URL } } };
 
 /**
- * The fixture asset manifest, optionally carrying the bridged svg url
+ * The fixture asset manifest, optionally carrying the shipped svg url
  * (critical-css.test.js's manifestWith, same reason: the head's own links
  * ride along so nothing else in the page changes between cases).
  * @param {string|null} [brandmarkSvg]
@@ -111,8 +102,8 @@ async function home(brandmarkSvg, name, siteData = rasterData) {
 
 // ─── The build-time fact ─────────────────────────────────────────────────────
 
-/** A brand root whose mint output is seeded by `files` (path → contents). */
-function mintRoot(t, files) {
+/** A scratch root seeded by `files` (path → contents). */
+function scratchRoot(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-web-brandmark-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -126,36 +117,11 @@ module.exports = defineCases({
   description: 'brandmark-svg',
   tests: [
     {
-      name: '#467: the static lane reports the bridged svg url when the mint produced one',
-      run: (ctx) => {
-        const root = mintRoot(ctx, {
-          '.omega/assets/logo/brandmark/color-x.svg': '<svg/>',
-          '.omega/assets/logo/brandmark/color-512.png': 'png',
-        });
-
-        const dirs = resolveStaticDirs({ brandRoot: root, assetsDir: path.join(root, 'src', 'assets') });
-
-        ctx.expect(brandmarkSvgUrl(dirs)).toBe(SVG_URL);
-      },
-    },
-
-    {
-      name: '#467: a mint with only the raster ladder reports nothing',
-      run: (ctx) => {
-        const root = mintRoot(ctx, { '.omega/assets/logo/brandmark/color-512.png': 'png' });
-
-        const dirs = resolveStaticDirs({ brandRoot: root, assetsDir: path.join(root, 'src', 'assets') });
-
-        ctx.expect(brandmarkSvgUrl(dirs), 'no svg on disk, no url').toBe(null);
-      },
-    },
-
-    {
       name: "#467: a consumer's own src/assets svg counts — it wins the same collision",
-      run: (ctx) => {
-        const root = mintRoot(ctx, { 'src/assets/images/brand/brandmark.svg': '<svg/>' });
+      run: async (ctx) => {
+        const root = scratchRoot(ctx, { 'src/assets/images/brand/brandmark.svg': '<svg/>' });
 
-        const dirs = resolveStaticDirs({ brandRoot: null, assetsDir: path.join(root, 'src', 'assets') });
+        const dirs = await resolveStaticDirs({ brandRoot: null, assetsDir: path.join(root, 'src', 'assets') });
 
         ctx.expect(brandmarkSvgUrl(dirs)).toBe(SVG_URL);
       },
@@ -164,7 +130,7 @@ module.exports = defineCases({
     // ─── The read ────────────────────────────────────────────────────────────────
 
     {
-      name: '#467: nav and footer take the bridged svg when the mint produced one',
+      name: '#467: nav and footer take the shipped svg when the build ships one',
       run: async (ctx) => {
         const html = await home(SVG_URL, 'brandmark-svg-present');
 
@@ -174,7 +140,7 @@ module.exports = defineCases({
     },
 
     {
-      name: '#467: no minted svg → both fall back to the configured raster',
+      name: '#467: no shipped svg → both fall back to the configured raster',
       run: async (ctx) => {
         const html = await home(null, 'brandmark-svg-absent');
 
@@ -222,7 +188,7 @@ module.exports = defineCases({
     // ─── The one home of the rule ───────────────────────────────────────────────
 
     {
-      name: 'the brandmark-src include answers the manifest svg when the mint produced one, else the config brandmark',
+      name: 'the brandmark-src include answers the manifest svg when the build ships one, else the config brandmark',
       run: async (ctx) => {
         // A consumer page standing in for any template that reads the rule. The
         // include either assigns `brandmark_src` or renders the url, so the
@@ -251,7 +217,7 @@ module.exports = defineCases({
           return match[1];
         };
 
-        ctx.expect(await probe(SVG_URL, 'brandmark-src-svg'), 'the minted svg wins').toBe(SVG_URL);
+        ctx.expect(await probe(SVG_URL, 'brandmark-src-svg'), 'the shipped svg wins').toBe(SVG_URL);
         ctx.expect(await probe(null, 'brandmark-src-raster'), 'no svg on disk, the configured raster answers').toBe(PNG_URL);
       },
     },
@@ -259,7 +225,7 @@ module.exports = defineCases({
     // ─── The rest of the visible lockups ─────────────────────────────────────────
 
     {
-      name: '#467: the other visible lockups take the bridged svg too',
+      name: '#467: the other visible lockups take the shipped svg too',
       run: async (ctx) => {
         const pages = await sitePages(SVG_URL, 'brandmark-svg-lockups');
 

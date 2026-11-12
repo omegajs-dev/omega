@@ -25,7 +25,8 @@
 const path = require('path');
 const jetpack = require('fs-jetpack');
 
-const postRoute = require('../../../dist/omega/routes/user/connections/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const postRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/post.js'));
 const { encryptState } = require('../../../dist/omega/routes/user/connections/_state.js');
 const { assertProviderShape } = require('../../../dist/omega/routes/user/connections/_providers.js');
 const google = require('../../../dist/omega/routes/user/connections/providers/google.js');

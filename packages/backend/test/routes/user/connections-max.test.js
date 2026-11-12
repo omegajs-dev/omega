@@ -14,9 +14,10 @@
 const path = require('path');
 const jetpack = require('fs-jetpack');
 
-const getRoute = require('../../../dist/omega/routes/user/connections/get.js');
-const postRoute = require('../../../dist/omega/routes/user/connections/post.js');
-const deleteRoute = require('../../../dist/omega/routes/user/connections/delete.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const getRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/get.js'));
+const postRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/post.js'));
+const deleteRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/delete.js'));
 const { encryptState } = require('../../../dist/omega/routes/user/connections/_state.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 const { recordingFirestore } = require('../../helpers/_recording-firestore.js');

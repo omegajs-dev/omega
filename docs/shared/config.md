@@ -188,6 +188,27 @@ targets: {
   standalone project, whose dir name is arbitrary). `targetEntries(config)` is the ONE
   enumeration, `{ name, type, ...entry }` in config order; `targetsOfType(config, 'web')`
   filters it. Nothing derives a folder any other way.
+- **One row per type is the one home of every per-type rule** (`src/target-types.js`, also the
+  `@omega.js/config/target-types` subpath). `TARGET_TYPE_ROWS` holds one frozen row per type in
+  the schema's order (web, backend, desktop, extension, mobile), and `targetType(id)` answers a
+  row or null. A row carries `id`; `framework` (the package that runs it, null for a reserved
+  type); `walkRank` (its place in the order every `each` verb walks, lowest first: backend, web,
+  extension, desktop, mobile); `deploy` (`'direct'`: the target's deploy script run from this
+  machine, `'verb'`: the framework's deploy verb, null: none); `publishes` (its deploy ships an
+  artifact somebody installs); `verify` (the live checks `omega pipeline` runs after its deploy:
+  web's `site`, `domain`, `cloudflare`); `onboardDefault` (onboarding with no pick writes it:
+  web); `devDefault` (`omega dev` with no pick boots it: web, backend); `reserved` (a slot
+  with no framework yet: `mobile`, which the onboarding picker labels reserved); and
+  `translates` (its build translates, so a non-interactive `omega update` build passes it
+  `--cached-only`: web, extension). Every reader derives from the rows: the schema's `TARGETS`
+  (and so `TARGET_TYPES`), the manager's framework lookups, the pipeline's deploy and publish
+  gate, the verify sweep, the publishing service's ship set (the rows that publish), the update
+  service's cached-only builds, and both default lists. The pipeline keeps the command for each
+  deploy mode; the rows say only which mode. `custom` is no row: it carries no rules. The
+  dispatcher cannot depend on this package, so `@omega.js/devkit`'s `src/verbs.js` keeps a
+  stdlib twin of the `id`, `framework` and `walkRank` facts, `TARGET_TYPE_TWIN` (its
+  `TARGET_ORDER` derives from it), which `omega-bin.js`, `test/scope.js` and
+  `test/journey-harness.js` read and a test pins against the rows.
 - **The merge chain is by NAME**: `defaults ← company ← brand shared ← brand targets.<name> ←
   local shared ← local targets.<name>`. A shared key inside an entry still overrides the shared
   value for that surface, exactly as before.
@@ -328,6 +349,13 @@ targets: {
   self-hosted Windows keys, until the format is turned off with `false`. The schema is also where each key's
   `label`, `url` (the page that mints it) and `hint` live: one home for what a key is and
   where it comes from (see "The env schema" below).
+- **The snap's two facts live beside the table.** `snapName(config)` answers `brand.id`: the
+  name the desktop build pins, the `publishing` walk registers on the Snap Store, and the
+  site's `/download/linux/snap` link ends in, so `snapNameError(config)` fails a brand that
+  ships the snap with a `brand.id` no snap name allows (`.`, `+`). `formatKeysSet(target,
+  platform, format, env)` answers whether every key one format requires holds a value (the
+  one presence test, `env-has-value.js`): a Linux desktop `package` or `release` checks each
+  `store` format against its own keys and refuses, naming the format and the key.
 - **The one translation points.** Node's `darwin`/`win32` becomes OMEGA's word in
   @omega.js/desktop's `utils/platform.js`; electron-builder's `mac`/`win`/`AppImage`/`nsis`
   is spelled only in its `gulp/tasks/build-config.js`; GitHub's runner labels only in the
@@ -1492,6 +1520,9 @@ the strict load, and `omega migrate` names the block it derives from and drops i
   `targets.desktop.app.productName` → `brand.name`; no product name, no `downloads` (a
   guessed filename is a dead button). A platform or format the brand dropped is absent
   here too, so the site never renders a button for something nobody builds.
+  `downloadKinds.<platform>.<format>` beside it is the format table's `kind` (`asset` or
+  `store`), derived from `downloads` alone, so the page hands a store link over as a plain
+  link with no install walkthrough.
 - **Extension listings**: `targets.extension.listings.<store>.{url,state}` for the six
   stores the theme renders (chrome, firefox, edge, opera, safari, brave) —
   schema-declared; url must be http(s). Entries with neither url nor state stay absent.
@@ -2021,8 +2052,8 @@ with a note and moves the currency.
 
 | Retired path | New home |
 |---|---|
-| `targets.web.favicon` | nothing for the path: the favicon set is MINTED from the brand images (manager assets service) and bridged to `/assets/images/favicon`, so an override pointed the whole site at an unminted folder. Change the source image, **`brand.images.favicon`**. The `theme-color` half is **`brand.color`**, the one place a brand states its hex |
-| `targets.web.manifest` | nothing: no reader anywhere in @omega.js/web. The web app manifest that ships is the minted set's own `site.webmanifest` |
+| `targets.web.favicon` | nothing for the path: the web build ships the target's own favicon set or one derived from the brand's **`assets/logo/brandmark.svg`** at `/assets/images/favicon`, so an override pointed the site at a folder no build fills. The `theme-color` half is **`brand.color`**, the one place a brand states its hex |
+| `targets.web.manifest` | nothing: no reader anywhere in @omega.js/web. The web app manifest that ships is the favicon set's own `site.webmanifest` |
 | `targets.web.icons` | **the `icon` on the link itself**, as Font Awesome classes (`icon: 'fa-brands fa-github'`): one icon mechanism ([#619](https://github.com/Omega-JS-Stack/omega/issues/619), [icons.md](icons.md)), so there is no name-to-markup map |
 | `targets.web.currency` | **`payment.currency`**: the price currency belongs to the payment section every other surface reads it from, and the pricing JSON-LD reads it there |
 
@@ -2144,7 +2175,7 @@ brand config itself: the brand-root config pass is the one place that does
 | `socials` | **`socials`** (top level) — a SHARED_SCHEMA key, so the root is its home and the scaffold emits it there ([#483](https://github.com/Omega-JS-Stack/omega/issues/483)). A web load resolves `targets.web.socials` identically, which is why the converter used to leave it in the target; the handles are brand identity, read past the website too |
 | `translation` | **`translation`** (top level): a SHARED_SECTIONS key, so the root is its home and the scaffold emits it there ([#526](https://github.com/Omega-JS-Stack/omega/issues/526)). A web load resolves `targets.web.translation` identically, which is why the converter used to leave it in the target; but disperse copies the SHARED sections, so a target-scoped engine config is invisible to every other target that translates (the extension's `_locales`). `translation.include` stays a web-only key at that shared home, and the legacy `exclude` list CONVERTS to it on the way through ([#858](https://github.com/Omega-JS-Stack/omega/issues/858)): `exclude: ['docs']` becomes `include: ['**', '!docs']`, one note, so the brand keeps translating exactly what it was |
 | `meta` | **`targets.web.meta.index`, and nothing else**: the title/description half is DROPPED ([#607](https://github.com/Omega-JS-Stack/omega/issues/607), Ian 2026-08-26: meta never exists in two places): the site-wide defaults are `brand.name` / `brand.description` (what @omega.js/web's head falls back to) and everything per-page is that page's own `meta:` frontmatter ([docs/web/frontmatter.md](../web/frontmatter.md)). The `index` half lives on under the SAME name a page writes ([#564](https://github.com/Omega-JS-Stack/omega/issues/564), Ian 2026-09-09). `omega migrate` drops the legacy title/description with a note, and a config still carrying `meta.title` / `meta.description` fails the strict load |
-| `download`, `extension`, `favicon`, `manifest`, `icons`, `currency` | **DROPPED with a note, every one** (nothing lands under `targets.web`): `download` / `extension` derive from the desktop and extension targets ([#610](https://github.com/Omega-JS-Stack/omega/issues/610)); `favicon`, `manifest` and `icons` retire with [#850](https://github.com/Omega-JS-Stack/omega/issues/850) (the favicon set is minted and `theme-color` comes from `brand.color`, nothing reads a manifest block, and a link carries its own `fa-*` classes). `currency` MOVES to **`payment.currency`**. Each one is a registered retired path, so carrying it forward would write a config the validator refuses |
+| `download`, `extension`, `favicon`, `manifest`, `icons`, `currency` | **DROPPED with a note, every one** (nothing lands under `targets.web`): `download` / `extension` derive from the desktop and extension targets ([#610](https://github.com/Omega-JS-Stack/omega/issues/610)); `favicon`, `manifest` and `icons` retire with [#850](https://github.com/Omega-JS-Stack/omega/issues/850) (the build derives the favicon set and `theme-color` comes from `brand.color`, nothing reads a manifest block, and a link carries its own `fa-*` classes). `currency` MOVES to **`payment.currency`**. Each one is a registered retired path, so carrying it forward would write a config the validator refuses |
 | `recaptcha` (incl. `site-key`) | **`captcha.providers.recaptcha`** (`siteKey` — every key is camelCase, #23) |
 | `cloudflare` (the purge `zone`) | **`edge.providers.cloudflare`** — one cloudflare home, shared with the manager's zone reconciliation (#23) |
 | `advertising.google-adsense` (flat or under `providers`) | **`advertising.providers.adsense`** with camelCase slots (`displaySlot`, `inArticleSlot`, `inFeedSlot`, `multiplexSlot`) — provider ids drop the vendor prefix (#23). An `enabled` or `units` gate beside them is DROPPED with a note ([#628](https://github.com/Omega-JS-Stack/omega/issues/628)): `client` presence is the one switch, so carrying the gate forward would validate as retired while the id turned the account and the units back on |
@@ -2189,13 +2220,11 @@ const {
   recordBrand,         // ({ id, root, name, url }) → wrote?: the machine registry line every loadConfig refreshes, unless it is passed `record: false` (`omega status`)
   readRegistry,        // () → { <brand.id>: { root, name, url, updatedAt } }: ~/.omega/brands.json (OMEGA_HOME moves it)
   COMPANY_RESOLVED_FILE, // 'config/company-resolved.json5': the generated layer a deploy hands a runner
-  // The mint bridge (mint-bridge.js): the minted identity files a site ships, read by the web build and the deploy snapshot
+  // The brand's logo names (mint-bridge.js): the committed sources, the manager's mint root, the web's brand-image site paths
   MINT_ROOT,           // '.omega/assets': where the manager's assets service mints, brand-root relative
   LOGO_SOURCES_DIR,    // 'assets/logo': the committed logo sources
-  BRANDMARK_SOURCE,    // 'assets/logo/brandmark.svg': the one source the whole mint derives from
-  MINT_BRIDGE,         // [{ src, dest }]: brand-root relative source to site path, the four files a site ships
-  FAVICON_DEST, BRANDMARK_SVG_DEST, BRANDMARK_PNG_DEST, // the bridge's site paths read by name
-  mintBridgeSources,   // (brandRoot) → the bridge sources that exist, brand-root relative, in bridge order
+  BRANDMARK_SOURCE,    // 'assets/logo/brandmark.svg': the one source every brand image derives from
+  FAVICON_DEST, BRANDMARK_SVG_DEST, BRANDMARK_PNG_DEST, SOCIAL_PNG_DEST, // the site paths the web build ships the brand image at, read by name
   hasLogoSources,      // (brandRoot) → whether BRANDMARK_SOURCE exists: the question the mint asks before it runs
   resolveHook,         // (startRoot, 'account/password') → hook file | null (brand → company)
   loadHook,            // (startRoot, hookPath) → { fn, file } | null — broken hooks THROW
@@ -2238,6 +2267,8 @@ const {
   apiAddress,          // (url, projectId, region = FUNCTIONS_REGION) → https://api.<hostname> | the functions address of omega_api on a *.github.io host (the backend passes its project.resourceZone) | '' (no url, or Pages with no project id). Home: `src/api-address.js`, browser-safe, also the `@omega.js/config/api-address` subpath and `@omega.js/client/modules/api-address.js`
   FUNCTIONS_REGION,    // 'us-central1': the region apiAddress, the client's and desktop's getFunctionsUrl and the client's local functions url name (the backend reads its own `project.resourceZone`)
   TARGET_NAME_PATTERN, TARGET_TYPES, // the name slug rule and [web, backend, desktop, extension, mobile, custom]
+  TARGET_TYPE_ROWS,    // one frozen row per target type, every per-type rule (target-types.js; see Targets)
+  targetType,          // (id) → that type's row | null (`custom`, an unknown id)
   // The browser subset (#894): what a browser surface may see, and the one wrapper it is baked in
   clientConfig,        // (resolved + this build's facts) → the blob every browser surface bakes as OMEGA_BUILD_JSON.config
   CLIENT_FACT_KEYS,    // the build facts that ride beside the client sections (runtime, environment, version, buildTime, target, url, dev)

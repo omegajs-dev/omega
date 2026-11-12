@@ -1,7 +1,7 @@
 /**
  * Schema for GET /marketing/campaign
  */
-module.exports = () => ({
+export default() => ({
   id: { type: 'string', default: '' },
   start: { type: ['string', 'number'], default: '' },
   end: { type: ['string', 'number'], default: '' },

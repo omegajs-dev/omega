@@ -1,6 +1,6 @@
 /**
  * Schema for DELETE /marketing/campaign
  */
-module.exports = () => ({
+export default() => ({
   id: { type: 'string', required: true },
 });

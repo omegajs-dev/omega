@@ -20,9 +20,9 @@
  * Run: npx omega test backend:routes/admin/deploy-branch-publish
  */
 const dispatchDeploy = require('../../../dist/omega/routes/admin/post/dispatch-deploy.js');
-const { commitAll } = require('../../../dist/omega/routes/admin/post/post.js');
-const { uploadPost } = require('../../../dist/omega/routes/admin/post/put.js');
-const { uploadContent } = require('../../../dist/omega/routes/admin/repo/content/post.js');
+const { commitAll } = require('../../../dist/omega/routes/admin/post/commit-all.js');
+const { uploadPost } = require('../../../dist/omega/routes/admin/post/upload-post.js');
+const { uploadContent } = require('../../../dist/omega/routes/admin/repo/content/upload-content.js');
 const { SNAPSHOT_REF } = require('../../../dist/vendor/devkit/deploy.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 

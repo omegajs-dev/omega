@@ -31,7 +31,8 @@
 
 ## Campaign Types
 
-- **Email**: dispatches to SendGrid (Single Send) + Beehiiv (Post) via `mailer.sendCampaign()`
+- **Email**: dispatches through each role via `mailer.sendCampaign()`: the `campaigns` role's provider (SendGrid, a Single Send) and the `newsletter` role's (Beehiiv, a post). `settings.providers` names the roles to send through (`['campaigns']`, `['newsletter']`, as the admin calendar's checkboxes send them); omitted, every role that is on sends. The provider behind each role is its row in `@omega.js/config`'s `EMAIL_PROVIDERS` ([email-system.md](email-system.md#email-providers-and-roles)). A word in `settings.providers` that is no role fails the campaign with a coded 400 naming the word (keyed by that word in the results), and nothing is sent on any role
+- **One publish point**: `sendCampaign()` is the one place a campaign is published, generator campaigns included (the newsletter generator builds the content and creates no post). Its newsletter leg makes one post whose title is the campaign's `subject` (else its `name`), whose tags are the settings' `contentTags`, and which is a draft whenever the run is a testing one (`ctx.isTesting()`), whatever `sendAt` says
 - **Push**: dispatches to FCM via `notification.send()` (shared library). The icon falls back to `brand.images.brandmark` and is omitted when unset; the click target falls back to `brand.url` and throws when unset — a push never wears a framework identity.
 - Content is **markdown** — converted to HTML at send time. Template variables resolved before conversion.
 
@@ -74,7 +75,7 @@ Campaigns with a `generator` field (e.g. `generator: 'newsletter'`) are handled 
 
 **Test gating:** `generate()` short-circuits to `null` under `ctx.isTesting()` without `TEST_EXTENDED_MODE` — same convention as the marketing providers and the blog cron. A normal consumer test run never spends AI tokens or touches GitHub/Beehiiv; extended runs are production-equivalent.
 
-In production, Beehiiv posts are published (`status: 'confirmed'`). In testing, they're forced to draft (`status: 'draft'`). The report email always goes to `alerts@{brandDomain}` with all asset links; its subject adapts to whether Beehiiv upload succeeded.
+The generator creates no post: the send in step 3 publishes it, through `sendCampaign()`'s newsletter leg (see [Campaign Types](#campaign-types)), published in production and a draft on a testing run. The generator returns the post's tags as `contentTags` and the report email's facts as `report`; once the send has answered, the cron mails the report (`generators/newsletter.js` `sendReport()`) to `alerts@{brandDomain}` with all asset links, its subject adapting to whether the post was published.
 
 ## Email Rendering
 
@@ -115,7 +116,15 @@ Defaults: `utm_source=brand.id`, `utm_medium=email`, `utm_campaign=name`, `utm_c
 | Lifecycle (5) | `lifecycle_7d`, `lifecycle_30d`, `lifecycle_90d`, `lifecycle_6m`, `lifecycle_1y` |
 | Engagement (5) | `engagement_active_30d`, `engagement_active_90d`, `engagement_inactive_90d`, `engagement_inactive_5m`, `engagement_inactive_6m` |
 
-Campaigns reference segments by SSOT key: `segments: ['subscription_free']`. Auto-translated to provider IDs.
+Campaigns reference segments by SSOT key: `segments: ['subscription_free']`. Auto-translated to each role's provider IDs.
+
+**A campaign whose audience resolves to nothing fails before anything is sent**, with a coded 400 (`{ success: false, error, code: 400 }` on the role's result) that names the key, so the cron finalizes it as `failed` instead of retrying:
+
+- a segment key (include or exclude) the role's provider does not know;
+- a requested segment whose query has no `WHERE` condition (it would drop out of the AND and widen the audience to the whole brand);
+- a `campaigns` send with no segments, no lists and no brand list.
+
+Any one of these on any role sends nothing on every role: each role's audience is resolved before the first send. A campaign that names no segment keys never lists a provider's segments. A provider that cannot be reached while resolving segment ids is a code-less failure instead (`{ success: false, error }`, no `code`) that fails its own role only: the other roles still send. It is not finalized as a config fault: it rides the `success: false` bookkeeping, which marks a one-off `failed` when no role succeeded and moves a recurring campaign on to its next occurrence. It is not retried.
 
 ## Brand-Scoped Dynamic Segments (SendGrid)
 
@@ -130,7 +139,7 @@ At **send time**, the marketing pipeline creates a temporary SendGrid segment th
 **Flow:**
 1. Resolve segment names → SendGrid IDs (cached `resolveSegmentIds()`)
 2. Fetch each segment's `query_dsl` via `GET /marketing/segments/2.0/{id}`
-3. Extract WHERE clauses, combine with `AND "brand_id" = '<brand>'`
+3. Extract WHERE clauses (a query may span lines), combine with `AND "brand_id" = '<brand>'`; a segment with no WHERE clause makes the whole temp segment resolve to nothing
 4. `POST /marketing/segments/2.0` → creates temp segment (~3s)
 5. Use temp segment ID in `send_to.segment_ids`
 6. Schedule the Single Send — SendGrid evaluates the query at dispatch time
@@ -161,17 +170,17 @@ Per-brand subusers provide full contact/segment/field isolation under one billin
 |---------|------|
 | Dynamic segment creation | `sendgrid.js` → `createBrandScopedSegment()` |
 | Segment query fetch | `sendgrid.js` → `getSegmentQuery()` |
-| Send pipeline integration | `marketing/index.js` → `_sendCampaignSendGrid()` |
+| Send pipeline integration | `marketing/index.js` → `campaignsAudience()`, `sendCampaignsEmail()` (the `campaigns` row of `ROLE_LEGS`) |
 | Segment SSOT (conditions) | `constants.js` → `SEGMENTS` |
-| OMEGA segment setup | `omega-manager/src/services/sendgrid/ensure/segments.js` |
+| OMEGA segment setup | `@omega.js/manager` `src/services/campaigns/ensure/segments.js` |
 
 ## Contact Pruning
 
 **Pruning is ON by default** ([#478](https://github.com/Omega-JS-Stack/omega/issues/478), superseding #422's opt-in): the config schema's default supplies `marketing.prune.enabled: true` through the resolved chain, so a brand with no `marketing` block, no `prune` key, or `prune: {}` prunes. The ONLY shape that stops it is an explicit `enabled: false`, which logs the skip and deletes nothing. The per-provider safety floors below bound the blast radius of the on-default.
 
 `cron/daily/marketing-prune.js` — runs 1st of each month. Pruning is strictly PER-PROVIDER: each provider's own engagement decides that provider's removals, so a reader who opens every newsletter but ignores offer mail is never deleted from the newsletter on a SendGrid-only signal ([#365](https://github.com/Omega-JS-Stack/omega/issues/365)). Three stages:
-1. **Re-engagement**: send email to `engagement_inactive_5m` (excluding `engagement_inactive_6m`). Each provider resolves the segment key against its own engagement tracking.
-2. **Prune (SendGrid)**: export `engagement_inactive_6m` contacts, bulk delete from SendGrid only. Never prunes paying customers: the `subscription_paid` segment is excluded from the delete list.
+1. **Re-engagement**: send email to `engagement_inactive_5m` (excluding `engagement_inactive_6m`), its text in `data.content.message`, through the `campaigns` role alone (`providers: ['campaigns']`): that provider holds the engagement segments, which Beehiiv cannot create by API.
+2. **Prune (SendGrid)**: export `engagement_inactive_6m` contacts, bulk delete from SendGrid only. Never prunes paying customers: the `subscription_paid` segment is excluded from the delete list, and when that exclusion cannot be built (the paid segment has no usable query, or its export fails) the stage logs one error line and deletes nothing that run. An export that comes back empty is no failure: nobody is paying, and the prune goes on.
 3. **Prune (Beehiiv)**: list the publication's active subscriptions with Beehiiv's own per-subscriber stats (`expand[]=stats`) and delete the ones that have received at least `NEWSLETTER_RECEIVED_FLOOR` newsletters, joined more than `NEWSLETTER_MIN_AGE_DAYS` ago, and have never opened or clicked. A quiet channel keeps everyone under the floor and prunes nobody, which is the guard working. Never prunes paying customers either: Beehiiv cannot see app subscriptions, so each candidate's email is resolved to its user doc and skipped when its `User` reads `active` (an active paid plan), which is the same `subscription_paid` rule stage 2 uses. The skipped count rides the run log as `skippedPaid`, as it does for SendGrid.
 
 Both lanes DELETE the contact/subscription and never unsubscribe it (an unsubscribe revokes marketing consent in Firestore permanently), and both log the deleted emails to `marketing-prune-logs/{brandId}/runs/{YYYY-MM}` (the Beehiiv lane under `{YYYY-MM}-newsletter`) for recoverability.
@@ -288,10 +297,10 @@ marketing-campaigns/{newId}: {
     markdownUrl,          // https://raw.githubusercontent.com/.../newsletter.md    — per-section blocks (ads between)
     summaryUrl,           // https://raw.githubusercontent.com/.../summary.md       — share-snippet recap
     imageUrls: [...],     // raw.githubusercontent.com URLs already embedded in contentHtml
-    beehiivPostId,        // ID of the draft post created on Beehiiv (null if disabled/failed)
-    tags: [...]           // AI-generated content tags (also passed to Beehiiv `content_tags`)
+    tags: [...]           // AI-generated content tags (also the settings' `contentTags`, the post's tags)
   },
   meta:        { tokens, cost, durations, source scores },
+  results:     { newsletter: { success, id } },   // the post sendCampaign() published
   ...
 }
 ```
@@ -303,7 +312,7 @@ marketing-campaigns/{newId}: {
 | `subject` | Email subject (≤80 chars) |
 | `preheader` | Inbox preview text (≤120 chars) |
 | `summary` | 2-3 sentence editorial recap (≤600 chars) — written to `summary.md` and used as share snippet. Distinct from preheader (which is an inbox hook). |
-| `tags` | 0-5 topical tags (lowercase kebab-case) — passed to Beehiiv `content_tags` |
+| `tags` | 0-5 topical tags (lowercase kebab-case), returned as the settings' `contentTags`, which the newsletter post carries as Beehiiv `content_tags` |
 | `signoff` | Two-line closing |
 | `citations` | 0-10 `{note, source}` pairs rendered as footnotes |
 
@@ -311,8 +320,8 @@ Templates add their own fields on top (e.g. classic adds `intro` + `sections`; f
 
 **No AI-authored CTAs in generated content.** The schema intentionally does NOT include section-level CTAs / outbound links. The AI cannot author URLs reliably — it has no browse access to your site and no real source URLs to reference, so any URL it produces is invented. Newsletters are self-contained reads; outbound links come from sponsorship blocks rendered by the template shell (driven by `marketing.newsletter.content.sponsorships[]`), not from generated section bodies. The **one exception** is the linked-article CTA: when `article.enabled` is on, `section.cta = { label, url }` is injected onto the lead section by code *after* the article is published (a real, verified URL) — never authored by the AI. Both `sectionCard` (MJML) and the markdown renderer render `section.cta` when present.
 
-**Newsletter report email — always sent.** After every generation, the generator sends an internal report email via `sender: 'internal'` (resolves to `alerts@{brandDomain}`) with:
-- Beehiiv status (uploaded, or the failure reason when it failed — subject line adapts)
+**Newsletter report email: sent after every generated send.** Once `sendCampaign()` has answered, the cron calls the generator's `sendReport()` with the send's newsletter result, which mails an internal report via `sender: 'internal'` (resolves to `alerts@{brandDomain}`) with:
+- The post's status (published with its id, or the failure reason; the subject line adapts)
 - A prominent "Preview Newsletter" button (GitHub Pages viewer)
 - Subject, preheader, tags
 - Direct links to the rendered HTML, per-section markdown, and summary

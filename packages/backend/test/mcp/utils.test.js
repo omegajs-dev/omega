@@ -236,11 +236,41 @@ module.exports = defineCases({
         const { loadConsumerTools } = require('../../dist/mcp/utils.js');
         const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-backend-mcp-'));
 
-        fs.writeFileSync(path.join(cwd, 'mcp.js'), `module.exports = [
+        fs.writeFileSync(path.join(cwd, 'mcp.js'), `export default [
           { name: 'list_notes', description: 'List notes', method: 'GET', path: 'notes' },
         ];`);
 
         expect(() => loadConsumerTools(cwd), 'the path is taken as served, so a relative one is a load-time error').toThrow(/Consumer tool "list_notes" path "notes" must be the HTTP path as served, starting with "\/"/);
+      },
+    },
+
+    {
+      // A half-converted file: export default beside a leftover top-level require
+      name: 'loadConsumerTools: an mcp.js that throws at load is refused by name, not answered with an empty list',
+      async run({ after }) {
+        const { loadConsumerTools } = require('../../dist/mcp/utils.js');
+        const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-backend-mcp-'));
+        const mcpPath = path.join(cwd, 'mcp.js');
+
+        after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+        fs.writeFileSync(mcpPath, `const { join } = require('node:path');
+
+export default [
+  { name: 'list_notes', description: 'List notes', method: 'GET', path: '/notes' },
+];
+`);
+
+        let thrown = null;
+
+        try {
+          loadConsumerTools(cwd);
+        } catch (e) {
+          thrown = e;
+        }
+
+        expect(thrown, 'a broken mcp.js throws instead of answering no tools').not.toBe(null);
+        expect(thrown.message, 'the load failure names the file and its cause').toContain(`${mcpPath} failed to load: require is not defined`);
+        expect(thrown.cause instanceof ReferenceError, 'the cause is kept').toBe(true);
       },
     },
 

@@ -130,7 +130,7 @@ async function buildSite(options) {
     return icons;
   });
 
-  // ---- static assets: minted brand identity bridge + consumer src/assets
+  // ---- static assets: core images, derived brand images, consumer src/assets
   if (options.staticDirs && options.staticDirs.length) {
     await phase('static', () => copyStaticAssets({ staticDirs: options.staticDirs, outDir: options.outDir }));
   }

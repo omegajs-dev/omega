@@ -211,7 +211,7 @@ module.exports = defineCases({
         try {
           a.event('screen_view', { screen_name: 'Settings' });
           ctx.expect(sent.length).toBe(1);
-          ctx.expect(sent[0].provider).toBe('ga4');
+          ctx.expect(sent[0].provider).toBe('google');
           ctx.expect(sent[0].name).toBe('screen_view');
           ctx.expect(sent[0].payload.screen_name).toBe('Settings');
           // The enrichment desktop still owns rides the payload
@@ -223,6 +223,31 @@ module.exports = defineCases({
           ctx.expect(sent.length).toBe(0);
         } finally {
           a._send = origSend;
+          await restore();
+        }
+      },
+    },
+    {
+      // Main's sender is the Measurement Protocol alone, so a descriptor for a
+      // provider whose row has none is refused rather than posted to Google.
+      name: 'the sender answers false for a provider whose row has no Measurement Protocol',
+      run: async (ctx) => {
+        const { ANALYTICS_PROVIDERS } = require('@omega.js/config');
+        const { adapters } = require('@omega.js/analytics');
+        const restore = await reinit(ctx, { GOOGLE_ANALYTICS_SECRET: 'fake-secret' }, {
+          enabled: true,
+          providers: { google: { id: 'G-TESTID12' } },
+        });
+
+        try {
+          const without = Object.values(ANALYTICS_PROVIDERS).filter((row) => !row.measurementProtocol).map((row) => row.id).sort();
+          ctx.expect(without, 'the ad platforms have no Measurement Protocol').toEqual(['meta', 'tiktok']);
+
+          for (const provider of without) {
+            const descriptor = adapters[provider].resolve('sign_up', { method: 'email' });
+            ctx.expect(ctx.omega.analytics._send(descriptor), `${provider} is never posted`).toBe(false);
+          }
+        } finally {
           await restore();
         }
       },

@@ -22,7 +22,8 @@ const path = require('node:path');
 const Settings = require('../../dist/omega/services/settings.js');
 const { validate, pathParams } = require('../../dist/omega/helpers/schema.js');
 const { User } = require('../../dist/omega/helpers/account.js');
-const referenceSchema = require('../../dist/omega/schemas/test/schema/post.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const referenceSchema = loadHandler(require.resolve('../../dist/omega/schemas/test/schema/post.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 const basicUser = new User({ auth: { uid: 'basic-uid' } });
@@ -66,7 +67,7 @@ function one(field, input) {
   return error ? `refused: ${error}` : data.v;
 }
 
-const NAME_SCHEMA = 'module.exports = () => ({ name: { type: \'string\', default: \'%LABEL%\' } });';
+const NAME_SCHEMA = 'export default () => ({ name: { type: \'string\', default: \'%LABEL%\' } });';
 
 const FULL_INPUT = {
   requiredField: 'provided', stringField: 'custom', numberField: '77', booleanField: 'false',
@@ -316,19 +317,19 @@ module.exports = defineCases({
 
     {
       // The masking guard: a schema file that EXISTS but throws, or whose own
-      // require fails (MODULE_NOT_FOUND too, and its "Require stack:" names the
-      // schema file), surfaces its own error, never the index fallback
+      // import fails (ERR_MODULE_NOT_FOUND too, its message naming the schema
+      // file), surfaces its own error, never the index fallback
       name: 'a-broken-schema-file-surfaces-its-own-error',
       async run({ expect }) {
         const index = NAME_SCHEMA.replace('%LABEL%', 'from-index');
-        const throwing = schemaDir({ 'thing/post.js': 'throw new Error("the schema itself is broken");', 'thing/index.js': index });
-        const innerRequire = schemaDir({ 'thing/post.js': 'require("a-package-that-does-not-exist");', 'thing/index.js': index });
-        const brokenIndex = schemaDir({ 'thing/index.js': 'require("another-package-that-does-not-exist");' });
+        const throwing = schemaDir({ 'thing/post.js': 'throw new Error("the schema itself is broken");\nexport default () => ({});', 'thing/index.js': index });
+        const innerRequire = schemaDir({ 'thing/post.js': 'import "a-package-that-does-not-exist";\nexport default () => ({});', 'thing/index.js': index });
+        const brokenIndex = schemaDir({ 'thing/index.js': 'import "another-package-that-does-not-exist";\nexport default () => ({});' });
 
         expect(thrownBy(() => new Settings(makeCtx()).resolve({ dir: throwing, schema: 'thing' })).message).toBe('the schema itself is broken');
 
         const inner = thrownBy(() => new Settings(makeCtx()).resolve({ dir: innerRequire, schema: 'thing' }));
-        expect(inner.code).toBe('MODULE_NOT_FOUND');
+        expect(inner.code).toBe('ERR_MODULE_NOT_FOUND');
         expect(inner.message).toMatch(/a-package-that-does-not-exist/);
 
         const broken = thrownBy(() => new Settings(makeCtx()).resolve({ dir: brokenIndex, schema: 'thing' }));
@@ -340,8 +341,8 @@ module.exports = defineCases({
       name: 'a-schema-that-returns-no-declaration-is-a-500-and-a-refusal-a-400',
       async run({ expect }) {
         const dir = schemaDir({
-          'none/post.js': 'module.exports = () => null;',
-          'strict/post.js': 'module.exports = () => ({ email: { type: \'string\', required: true } });',
+          'none/post.js': 'export default () => null;',
+          'strict/post.js': 'export default () => ({ email: { type: \'string\', required: true } });',
         });
 
         const none = thrownBy(() => new Settings(makeCtx()).resolve({ dir, schema: 'none' }));
@@ -360,7 +361,7 @@ module.exports = defineCases({
       name: 'the-schema-receives-the-raw-parts-by-name-and-the-declaration-is-kept',
       async run({ expect }) {
         const dir = schemaDir({
-          'echo/post.js': `module.exports = (context) => {
+          'echo/post.js': `export default (context) => {
             global.__omegaSchemaContext = context;
             return { html: { type: 'string', default: '', sanitize: false }, title: { type: 'string', default: '' } };
           };`,
@@ -400,7 +401,7 @@ module.exports = defineCases({
       name: 'split-on-query-path-method-and-header',
       async run({ expect }) {
         const dir = schemaDir({
-          'items/index.js': `module.exports = ({ query, path, method, headers }) => {
+          'items/index.js': `export default ({ query, path, method, headers }) => {
             const fields = {
               id: { type: 'string', path: true },
               tags: { type: 'array', default: [], max: 2 },

@@ -28,6 +28,7 @@ const {
   GROUP_KEYS,
   DEFAULT_GROUP_KEY,
   SENDERS,
+  senderFrom,
   sanitizeImagesForEmail,
   encode,
   errorWithCode,
@@ -112,10 +113,7 @@ function resolveSender({ sender, from, group }, brand, brandDomain, omega) {
   const senderConfig = SENDERS[sender] || null;
 
   const resolvedFrom = from
-    || (senderConfig && {
-      email: `${senderConfig.localPart}@${brandDomain}`,
-      name: senderConfig.displayName.replace('{brand}', brand.name || ''),
-    })
+    || senderFrom(sender, { brandName: brand.name || '', domain: brandDomain })
     || { email: brand.contact.email, name: brand.name };
 
   const groupId = group != null

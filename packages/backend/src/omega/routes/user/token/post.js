@@ -2,7 +2,7 @@
  * POST /user/token - Create custom Firebase token
  * Creates a custom auth token for the authenticated user
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

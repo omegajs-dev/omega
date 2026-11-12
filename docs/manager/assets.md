@@ -2,22 +2,21 @@
 
 The `assets` service generates everything derived from the brand's logo sources: the wordmark
 and combomark, colour and black SVG variants with PNG size ladders, the PSD templates and
-their exports, the macOS/Windows app icons, the social profile icons, and the web favicon set.
+their exports, the macOS/Windows app icons and the social profile icons.
 It runs on the BOOT lane too — `omega dev` and a brand-root `omega deploy` both redistribute
 it — because it is local file work the target legs consume.
 
 **Sources** are committed brand collateral in the brand repo: `assets/logo/*.svg` and
 `assets/templates/*.psd`. **Derived files** land in the gitignored `.omega/assets/`.
 
-**What a deployed site gets.** A web build copies a small part of the derived set into the
-site: the favicon set, the brandmark (`color-x.svg` and `color-512.png`) and the social image
-(`color-1024.png`). That list is `@omega.js/config`'s `MINT_BRIDGE`. The deploy snapshot
-force-adds those files to the pushed mirror, since the CI runner never runs this service
-([docs/shared/deploys.md](../shared/deploys.md), "What rides along"). So mint first, then
-deploy: a CI build of a brand with `assets/logo/brandmark.svg` and no minted favicon set
-(no `site.webmanifest` in it) stops with
-`Run: npx omega manage --service=assets, then deploy again.` That brandmark check is
-`@omega.js/config`'s `hasLogoSources`, the same one this service asks before it runs.
+**What a deployed site gets.** Nothing from `.omega/assets/`. A web build takes its brand
+image through the one lookup order of [`@omega.js/devkit/brand-image`](../devkit/index.md):
+the target's own file, then the brand's `assets/logo/brandmark.svg`, then the framework
+default. It derives the favicon set, the brandmark png and the social image it lacks into the
+brand's cache and its build output, never into the target's source
+([docs/web/index.md](../web/index.md), the static channel), so this service need not run
+before a deploy and nothing it makes rides the snapshot. The `social-icons` operation and the
+web build share one social-square recipe (`makeSocialSquare`).
 
 ## What it reconciles
 
@@ -27,8 +26,7 @@ deploy: a CI build of a brand with `assets/logo/brandmark.svg` and no minted fav
 | `process` | Per logo source: the colour SVG as-is plus an all-black conversion, exported as SVG + PNGs at every ladder size. |
 | `templates` | Seeds the brand's PSDs from the company tree's `assets/templates/` when missing (a brand of a company, [#677](https://github.com/Omega-JS-Stack/omega/issues/677)), replaces the logo and text layers, writes the PSD back, composites and exports the PNGs. |
 | `icons` | macOS `.icns` and Windows `.ico`, from the composited `icon.png` the templates op produced when there is one, else the brandmark. |
-| `social-icons` | The square brandmark centred on white with padding, for profile pictures. |
-| `favicons` | The favicon PNG ladder, a multi-size `favicon.ico`, and `site.webmanifest` (content-diffed, since it derives from config rather than an image). |
+| `social-icons` | The square brandmark centred on white with padding, for profile pictures, through the shared `makeSocialSquare`. |
 | `reconcile` | Deletes the files inside the operations' own output dirs that the brand's current sources no longer derive ([#636](https://github.com/Omega-JS-Stack/omega/issues/636)) — dropping `assets/logo/wordmark.svg` takes its variants and ladders with it. Runs last, so everything this walk generated is already derived; the derived NAMES come from the same lib the writers generate from (`lib/derived.js`). The brand's committed sources are never touched. |
 
 ## Config
@@ -39,8 +37,7 @@ deploy: a CI build of a brand with `assets/logo/brandmark.svg` and no minted fav
   generate a wordmark with (noted and passed); configured but not found is an ERROR — the
   config intent failed. There is no default: omega-manager packaged the company's licensed
   fonts, this port ships none.
-- `brand.name`, `brand.images.brandmark` and the other brand values the templates and
-  webmanifest read.
+- `brand.name`, `brand.images.brandmark` and the other brand values the templates read.
 
 **Credentials** (optional): `MRLOGO_SERVICE_ACCOUNT` / `MRLOGO_API_KEY` / `LOGO_API_ID_TOKEN`
 — the product-service ladder for AI brandmark generation via MrLogo when the brand has no
@@ -50,7 +47,7 @@ mint. With no credentials the service skips with guidance.
 
 ## The force refresh
 
-The `assets` service is mtime-diffed, so a converged brand rebuilds nothing; `omega manage --reset-assets` ([#214](https://github.com/Omega-JS-Stack/omega/issues/214)) is the force refresh for the cases no timestamp records. It clears the derived cache under `.omega/assets/` before the walk, then the same operations regenerate it and the run names what was cleared. Bare resets both kinds; `--reset-assets=logos` takes the logo variants, app icons, social icons and favicons, `--reset-assets=templates` the PSD exports. The brand's committed `assets/logo/*.svg` and `assets/templates/*.psd` are sources, never cache, so they are never touched (the port of omega-manager's `--reset-logos` / `--reset-templates`).
+The `assets` service is mtime-diffed, so a converged brand rebuilds nothing; `omega manage --reset-assets` ([#214](https://github.com/Omega-JS-Stack/omega/issues/214)) is the force refresh for the cases no timestamp records. It clears the derived cache under `.omega/assets/` before the walk, then the same operations regenerate it and the run names what was cleared. Bare resets both kinds; `--reset-assets=logos` takes the logo variants, app icons and social icons, `--reset-assets=templates` the PSD exports. The brand's committed `assets/logo/*.svg` and `assets/templates/*.psd` are sources, never cache, so they are never touched (the port of omega-manager's `--reset-logos` / `--reset-templates`).
 
 Invalidation IS deletion: `isStale()` calls a missing derived file stale, so removing a kind's
 outputs is precisely what makes the same walk regenerate them — no second freshness mechanism

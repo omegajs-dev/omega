@@ -1,7 +1,7 @@
 // The ship-credential check every publish runs FIRST. A format ships unless it
 // is `false`, so a brand that never mentions the snap owes the Snap login
-// (missingEnvKeys for `publish`). A plain local BUILD keeps its clean skip: it
-// puts nothing in front of users.
+// (missingEnvKeys for `publish`). A local PACKAGE checks only the platform it
+// packages: a Linux one refuses without the snap login (assertStoreLogins).
 
 const { missingEnvKeys } = require('@omega.js/config');
 const { shipPlan, shipKeyRefusal } = require('@omega.js/devkit/ship-plan');

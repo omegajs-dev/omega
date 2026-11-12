@@ -3,9 +3,9 @@
  * Admin-only endpoint to send push notifications.
  * Uses shared notification library (also used by marketing-campaigns cron).
  */
-const notification = require('../../../libraries/notification.js');
+import notification from '../../../libraries/notification.js';
 
-module.exports = async ({ ctx, user, data, analytics }) => {
+export default async ({ ctx, user, data, analytics }) => {
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
   }

@@ -27,15 +27,20 @@ const { createConsentGate, GRANT_ALL, CATEGORIES } = require('./consent.js');
 const { createLogger } = require('./logger.js');
 const core = require('./core.js');
 const identity = require('./identity.js');
-const ga4 = require('./adapters/ga4.js');
+const { ANALYTICS_PROVIDERS, analyticsProvider } = require('@omega.js/config/analytics-providers');
+const google = require('./adapters/google.js');
 const meta = require('./adapters/meta.js');
 const tiktok = require('./adapters/tiktok.js');
 const browser = require('./transports/browser.js');
 
 const logger = createLogger('events');
 
-// Every provider, in fire order. A new platform joins here and in the catalog.
-const ADAPTERS = [ga4, meta, tiktok];
+// Every adapter by provider id. A new platform joins here, in the catalog and
+// as a row in @omega.js/config's analytics-providers.
+const ADAPTERS = { google, meta, tiktok };
+
+// The fire order is the rows' order.
+const FIRE_ORDER = Object.keys(ANALYTICS_PROVIDERS).map((id) => ADAPTERS[id]);
 
 const DEFAULTS = {
   // No transport = resolve and log, deliver nothing. A host that never calls
@@ -83,8 +88,9 @@ function fire(adapter, canonicalName, params, { eventId, providers }) {
     return { provider, outcome: 'skipped (not selected)' };
   }
 
-  if (!state.consent.granted(adapter.CONSENT_CATEGORY)) {
-    return { provider, outcome: `skipped (consent: ${adapter.CONSENT_CATEGORY})` };
+  const category = ANALYTICS_PROVIDERS[provider].consentCategory;
+  if (!state.consent.granted(category)) {
+    return { provider, outcome: `skipped (consent: ${category})` };
   }
 
   const descriptor = adapter.resolve(canonicalName, params, state.context);
@@ -139,7 +145,18 @@ function event(canonicalName, params = {}, options = {}) {
     return { event: canonicalName, results: [] };
   }
 
-  const results = ADAPTERS.map((adapter) => fire(adapter, canonicalName, params, options));
+  // An id no row has would select nothing in silence: the same programmer error
+  // as an unknown event name, so it gets the same answer.
+  const unknown = (options.providers || []).filter((id) => !analyticsProvider(id));
+  if (unknown.length) {
+    if (isDevelopment()) {
+      throw new Error(`Unknown analytics provider "${unknown.join('", "')}" in the providers option of "${canonicalName}": every provider is a row in @omega.js/config/analytics-providers`);
+    }
+
+    logger.warn(`Unknown provider "${unknown.join('", "')}" in the providers option of "${canonicalName}", selects nothing`);
+  }
+
+  const results = FIRE_ORDER.map((adapter) => fire(adapter, canonicalName, params, options));
 
   if (isDevelopment()) {
     logger.log(`${canonicalName} → ${results.map((result) => `${result.provider} ${result.outcome}`).join(', ')}`);
@@ -157,7 +174,7 @@ module.exports = {
   // The pure pieces, for the hosts that need one without the facade
   catalog: CATALOG,
   entryFor,
-  adapters: { ga4, meta, tiktok },
+  adapters: ADAPTERS,
   transports: { browser },
   core,
   // Identity is not an event, so it never walks the catalog: a host hashes the

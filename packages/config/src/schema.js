@@ -72,6 +72,7 @@ const { DOMAIN_RULES } = require('./schema-domain.js');
 const { EDGE_RULES } = require('./schema-edge.js');
 const { OVERRIDE_RULES } = require('./schema-overrides.js');
 const { WINDOWS_SIGNING_STRATEGIES, WINDOWS_CLOUD_PROVIDERS } = require('./windows-signing.js');
+const { TARGET_TYPE_ROWS } = require('./target-types.js');
 
 // The durations a winback coupon can be built for on every provider that
 // supports the offer (#268). Stripe's third option ('repeating') needs a
@@ -101,9 +102,9 @@ const HOSTING_PROVIDERS = ['github'];
 const AMO_CATEGORIES = ['alerts-updates', 'appearance', 'bookmarks', 'download-management', 'feeds-news-blogging', 'games-entertainment', 'language-support', 'photos-music-videos', 'privacy-security', 'search-tools', 'shopping', 'social-communication', 'tabs', 'web-development', 'other'];
 
 // Canonical target TYPES: the frameworks a `targets.<name>.type` may name
-// (#886). Key presence in a config's `targets` object = "this brand enables a
-// target by that name" (absorbs the legacy brand-config targets ARRAY).
-const TARGETS = ['web', 'backend', 'desktop', 'extension', 'mobile'];
+// (#886), one per target-types.js row. Key presence in a config's `targets`
+// object = "this brand enables a target by that name".
+const TARGETS = TARGET_TYPE_ROWS.map((row) => row.id);
 
 // A brand also runs targets no framework owns — a Render API, a worker, a
 // script (#603). Those declare `type: 'custom'` like any other target

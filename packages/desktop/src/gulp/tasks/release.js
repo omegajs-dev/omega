@@ -15,6 +15,7 @@
 const path    = require('path');
 const jetpack = require('fs-jetpack');
 const build = require('../../build.js');
+const { assertStoreLogins } = require('./build-config.js');
 
 const logger = build.logger('release');
 
@@ -24,6 +25,13 @@ const logger = build.logger('release');
 const SKIP_WARNINGS = ['skipped publishing', 'GitHub release not created'];
 
 module.exports = function release(done) {
+  // Installers are made here, so a store format with no login stops it first
+  try {
+    assertStoreLogins(build.getConfig());
+  } catch (error) {
+    return done(error);
+  }
+
   const projectRoot = process.cwd();
   const config = path.join(require('../../utils/dist-root.js')(projectRoot), 'electron-builder.yml');
 

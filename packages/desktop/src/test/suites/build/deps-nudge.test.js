@@ -1,4 +1,4 @@
-// The deps nudge, desktop half: a consumer hook requiring a package
+// The deps nudge, desktop half: a consumer hook importing a package
 // @omega.js/desktop declares, without declaring it, keeps working by hoisting,
 // and every verb's ensure-target prints ONE warning naming both fixes: declare
 // it, or load the framework's copy through the desktop door. Never an error.
@@ -17,14 +17,14 @@ const { ensureTarget } = require(path.join(SRC, 'commands', 'lib', 'ensure-targe
 const defineCases = require('@omega.js/devkit/test/define-cases');
 
 const package = build.getPackage('main');
-const DOOR = "require('@omega.js/desktop').require('fs-jetpack')";
+const DOOR = "desktop.require('fs-jetpack') after import desktop from '@omega.js/desktop'";
 
-// A consumer whose peer deps are satisfied, its hooks/build/pre.js requiring fs-jetpack.
+// A consumer whose peer deps are satisfied, its hooks/build/pre.js importing fs-jetpack.
 function stageConsumer(dependencies) {
   const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-deps-nudge-')));
   const devDependencies = { [package.name]: `^${package.version}`, ...package.peerDependencies };
   jetpack.write(path.join(tmp, 'package.json'), `${JSON.stringify({ name: 'staged-app', version: '1.0.0', dependencies, devDependencies }, null, 2)}\n`);
-  jetpack.write(path.join(tmp, 'hooks', 'build', 'pre.js'), "const jetpack = require('fs-jetpack');\n\nmodule.exports = async () => jetpack;\n");
+  jetpack.write(path.join(tmp, 'hooks', 'build', 'pre.js'), "import jetpack from 'fs-jetpack';\n\nexport default async () => jetpack;\n");
   return tmp;
 }
 
@@ -48,7 +48,7 @@ module.exports = defineCases({
   description: 'deps-nudge: an undeclared framework dependency in a consumer hook names the desktop door',
   tests: [
     {
-      name: 'an undeclared require of a desktop-declared package gets one warning naming the door',
+      name: 'an undeclared import of a desktop-declared package gets one warning naming the door',
       run: async (ctx) => {
         const tmp = stageConsumer({});
 

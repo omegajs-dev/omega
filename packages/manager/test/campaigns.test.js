@@ -18,6 +18,7 @@ const { buildQueryDsl } = require('../src/services/campaigns/lib/segment-query.j
 const service = require('../src/services/campaigns/index.js');
 const { GROUP_DEFINITIONS } = require('../src/services/campaigns/ensure/unsubscribe-groups.js');
 const { openTtyPrompt } = require('./lib/interactive.js');
+const { emailProviderForRole } = require('@omega.js/config');
 
 const DOWN = '\x1B[B';
 
@@ -28,7 +29,22 @@ delete process.env.CLOUDFLARE_TOKEN;
 
 const DOMAIN = 'fixture-brand.test';
 const BRAND_NAME = 'Fixture Brand';
-const FROM_EMAIL = `offers@${DOMAIN}`;
+
+// What each backend SENDERS row sends as for this brand, at its contact-email domain.
+const SENDER_ROWS = {
+  orders: { email: `orders@${DOMAIN}`, name: `${BRAND_NAME} Orders` },
+  hello: { email: `hello@${DOMAIN}`, name: BRAND_NAME },
+  account: { email: `account@${DOMAIN}`, name: `${BRAND_NAME} Account` },
+  marketing: { email: `offers@${DOMAIN}`, name: BRAND_NAME },
+  security: { email: `security@${DOMAIN}`, name: `${BRAND_NAME} Security` },
+  newsletter: { email: `newsletter@${DOMAIN}`, name: BRAND_NAME },
+  internal: { email: `alerts@${DOMAIN}`, name: `${BRAND_NAME} Alerts` },
+};
+const SENDER_KEYS = Object.keys(SENDER_ROWS);
+const nicknameOf = (key) => `${BRAND_NAME} (${key})`;
+
+// The account's verified senders as SendGrid lists them, one per row, ids from 220.
+const rowSenders = () => SENDER_KEYS.map((key, i) => ({ id: 220 + i, nickname: nicknameOf(key), from_email: SENDER_ROWS[key].email, verified: true }));
 const WEBHOOK_KEY = 'fixture-webhook-key';
 const WEBHOOK_URL = `https://api.${DOMAIN}/omega/marketing/webhook/forward?provider=sendgrid&key=${WEBHOOK_KEY}`;
 
@@ -172,7 +188,7 @@ function convergedResponses() {
   return {
     getAuthenticatedDomains: [{ id: 111, domain: DOMAIN, valid: true }],
     getBrandedLinks: [{ id: 333, domain: DOMAIN, subdomain: LINK_SUBDOMAIN, valid: true }],
-    getVerifiedSenders: [{ id: 222, from_email: FROM_EMAIL, verified: true }],
+    getVerifiedSenders: rowSenders(),
     getList: { id: 'lst_1', name: BRAND_NAME },
     getListByName: { id: 'lst_1', name: BRAND_NAME },
     getUnsubscribeGroups: accountGroups(),
@@ -188,6 +204,49 @@ function convergedResponses() {
     },
   };
 }
+
+/**
+ * A sender account that remembers: what is created is listed, verified, on the
+ * next read, and what is deleted is gone. Spread `responses` into fakeSendgrid.
+ */
+function senderAccount(initial = []) {
+  const senders = structuredClone(initial);
+  let nextId = 900;
+
+  const responses = {
+    getVerifiedSenders: () => structuredClone(senders),
+    createVerifiedSender: (sender) => {
+      const made = { id: nextId++, nickname: sender.nickname, from_email: sender.fromEmail, verified: true };
+      senders.push(made);
+      return structuredClone(made);
+    },
+    deleteVerifiedSender: (id) => {
+      const index = senders.findIndex((sender) => sender.id === id);
+      if (index < 0) throw new Error(`senderAccount: no sender ${id} to delete`);
+      senders.splice(index, 1);
+      return null;
+    },
+  };
+
+  return { responses, senders };
+}
+
+/** Each create call's sender, ordered by address so a run's row order never matters. */
+const createdSenders = (api) => api.callsTo('createVerifiedSender').map((call) => call.args[0]).sort((a, b) => a.fromEmail.localeCompare(b.fromEmail));
+
+/** The sender a row is made with: its address, from name and nickname, the brand's reply-to and address. */
+function expectedSender(key, address = ADDRESS) {
+  return {
+    nickname: nicknameOf(key),
+    fromEmail: SENDER_ROWS[key].email,
+    fromName: SENDER_ROWS[key].name,
+    replyToEmail: `support@${DOMAIN}`,
+    replyToName: BRAND_NAME,
+    address: { street: address.line1, street2: address.line2, city: address.city, state: address.region, zip: address.postalCode, country: address.country },
+  };
+}
+
+const expectedSenders = (keys, address) => keys.map((key) => expectedSender(key, address)).sort((a, b) => a.fromEmail.localeCompare(b.fromEmail));
 
 const { makeBrandRoot, readConfigSource } = require('./lib/config-fixture.js');
 
@@ -259,15 +318,6 @@ module.exports = defineCases({
     // ─── Setup / skip semantics ──────────────────────────────────────────────────
 
     {
-      name: 'campaigns: skips without SENDGRID_API_KEY in .env',
-      run: async (ctx) => {
-        const result = await runService(brandConfig()); // no injected api → the creds check applies
-        ctx.expect(result.status).toBe('skipped');
-        ctx.expect(result.reason).toMatch(/SENDGRID_API_KEY/);
-      },
-    },
-
-    {
       name: 'campaigns: marketing.campaigns.enabled = false skips the service',
       run: async (ctx) => {
         const result = await runService(brandConfig({ campaigns: { enabled: false } }), { sendgrid: fakeSendgrid() });
@@ -291,6 +341,23 @@ module.exports = defineCases({
         const result = await runService(brandConfig({ campaigns: { providers: {} } }), { sendgrid: fakeSendgrid() });
         ctx.expect(result.status).toBe('skipped');
         ctx.expect(result.reason).toMatch(/no marketing\.campaigns\.providers entry/);
+      },
+    },
+
+    {
+      name: 'campaigns: the service answers to the provider row of the campaigns role',
+      run: async (ctx) => {
+        const row = emailProviderForRole('campaigns');
+        const otherRole = emailProviderForRole('newsletter');
+
+        const unkeyed = await runService(brandConfig()); // no injected api, so the credential check applies
+        ctx.expect(unkeyed.status).toBe('skipped');
+        ctx.expect(unkeyed.reason, 'the missing credential is the row\'s env key').toContain(row.envKey);
+
+        // The newsletter role's provider chosen under campaigns is not this service's
+        const misrouted = await runService(brandConfig({ campaigns: { providers: { [otherRole.id]: {} } } }), { sendgrid: fakeSendgrid() });
+        ctx.expect(misrouted.status).toBe('skipped');
+        ctx.expect(misrouted.reason).toContain(`marketing.campaigns.providers.${otherRole.id}`);
       },
     },
 
@@ -591,92 +658,109 @@ module.exports = defineCases({
     // ─── sender-identity ─────────────────────────────────────────────────────────
 
     {
-      name: 'campaigns: an unverified sender is recreated with the brand address',
+      name: 'campaigns: a brand with no verified sender gets one per backend sender row',
       run: async (ctx) => {
-        const api = fakeSendgrid({
-          ...convergedResponses(),
-          getVerifiedSenders: [{ id: 9, from_email: FROM_EMAIL, verified: false }],
-          deleteVerifiedSender: null,
-          createVerifiedSender: { id: 10, from_email: FROM_EMAIL, verified: true },
-        });
+        const api = fakeSendgrid({ ...convergedResponses(), ...senderAccount().responses });
 
         const result = await runService(brandConfig(), { sendgrid: api, serviceData: { listId: 'lst_1' } });
 
-        ctx.expect(result.status).toBe('success');
-        ctx.expect(api.callsTo('deleteVerifiedSender')[0].args).toEqual([9]);
-        ctx.expect(api.callsTo('createVerifiedSender')[0].args[0]).toEqual({
-          nickname: BRAND_NAME,
-          fromEmail: FROM_EMAIL,
-          fromName: BRAND_NAME,
-          replyToEmail: `support@${DOMAIN}`,
-          replyToName: BRAND_NAME,
-          address: { street: ADDRESS.line1, street2: ADDRESS.line2, city: ADDRESS.city, state: ADDRESS.region, zip: ADDRESS.postalCode, country: ADDRESS.country },
-        });
+        ctx.expect(result.status, result.error).toBe('success');
+        ctx.expect(createdSenders(api), 'each row made with its address, name and nickname').toEqual(expectedSenders(SENDER_KEYS));
+        ctx.expect(api.callsTo('deleteVerifiedSender')).toEqual([]);
       },
     },
 
     {
-      name: 'campaigns: a stale unverified sender squatting the nickname is deleted before create',
+      name: 'campaigns: a verified offers@ sender is kept whatever its nickname, and the other rows are made',
       run: async (ctx) => {
-        // contact.email changed → the derivation moved; the old sender holds the
-        // account-unique nickname and would 400 the create
-        const api = fakeSendgrid({
-          ...convergedResponses(),
-          getVerifiedSenders: [{ id: 9376, nickname: BRAND_NAME, from_email: 'offers@old-domain.test', verified: false }],
-          deleteVerifiedSender: null,
-          createVerifiedSender: { id: 10, from_email: FROM_EMAIL, verified: true },
-        });
+        const offers = { id: 222, nickname: BRAND_NAME, from_email: SENDER_ROWS.marketing.email, verified: true };
+        const api = fakeSendgrid({ ...convergedResponses(), ...senderAccount([offers]).responses });
 
         const result = await runService(brandConfig(), { sendgrid: api, serviceData: { listId: 'lst_1' } });
 
-        ctx.expect(result.status).toBe('success');
-        ctx.expect(api.callsTo('deleteVerifiedSender')[0].args).toEqual([9376]);
-        ctx.expect(api.callsTo('createVerifiedSender')[0].args[0].fromEmail).toBe(FROM_EMAIL);
+        ctx.expect(result.status, result.error).toBe('success');
+        ctx.expect(api.callsTo('deleteVerifiedSender'), 'the verified offers@ sender is kept').toEqual([]);
+        ctx.expect(createdSenders(api)).toEqual(expectedSenders(SENDER_KEYS.filter((key) => key !== 'marketing')));
       },
     },
 
     {
-      name: 'campaigns: a VERIFIED sender on the nickname with another address warns instead of deleting',
+      name: 'campaigns: a second sender-identity run on a finished brand writes nothing',
       run: async (ctx) => {
-        const api = fakeSendgrid({
-          ...convergedResponses(),
-          getVerifiedSenders: [{ id: 9376, nickname: BRAND_NAME, from_email: 'offers@old-domain.test', verified: true }],
-        });
+        const account = senderAccount();
+        const api = fakeSendgrid({ ...convergedResponses(), ...account.responses });
 
-        const result = await runService(brandConfig(), { sendgrid: api, serviceData: { listId: 'lst_1' } });
+        await runService(brandConfig(), { sendgrid: api, serviceData: { listId: 'lst_1' } });
+        const firstRunWrites = api.mutations().length;
 
-        ctx.expect(result.status).toBe('warned');
-        ctx.expect(result.output.senderIdentity.staleNickname).toBe('offers@old-domain.test');
-        ctx.expect(api.callsTo('deleteVerifiedSender').length).toBe(0);
-        ctx.expect(api.callsTo('createVerifiedSender').length).toBe(0);
+        ctx.expect(account.senders.map((sender) => sender.from_email).sort(), 'the first run finished every row').toEqual(SENDER_KEYS.map((key) => SENDER_ROWS[key].email).sort());
+
+        const second = await runService(brandConfig(), { sendgrid: api, serviceData: { listId: 'lst_1' } });
+
+        ctx.expect(second.status, second.error).toBe('success');
+        ctx.expect(api.mutations().slice(firstRunWrites), 'the second run makes no call that writes').toEqual([]);
       },
     },
 
     {
-      name: 'campaigns: missing sender without brand.address warns with CAN-SPAM guidance',
+      name: 'campaigns: one row\'s unverified sender is remade and the other rows are left alone',
       run: async (ctx) => {
-        const api = fakeSendgrid({
-          ...convergedResponses(),
-          getVerifiedSenders: [],
-        });
+        const senders = rowSenders().map((sender) => (sender.from_email === SENDER_ROWS.hello.email ? { ...sender, verified: false } : sender));
+        const unverified = senders.find((sender) => !sender.verified);
+        const api = fakeSendgrid({ ...convergedResponses(), ...senderAccount(senders).responses });
+
+        const result = await runService(brandConfig(), { sendgrid: api, serviceData: { listId: 'lst_1' } });
+
+        ctx.expect(result.status, result.error).toBe('success');
+        ctx.expect(api.callsTo('deleteVerifiedSender').map((call) => call.args), 'only the unverified one is removed').toEqual([[unverified.id]]);
+        ctx.expect(createdSenders(api), 'only that row is made again').toEqual([expectedSender('hello')]);
+      },
+    },
+
+    {
+      name: 'campaigns: a row\'s nickname on another address is replaced when unverified and warns when verified, for that row only',
+      run: async (ctx) => {
+        // The newsletter row's nickname holds an address from before the contact domain moved
+        const squatted = (verified) => rowSenders().map((sender) => (sender.nickname === nicknameOf('newsletter')
+          ? { id: 9376, nickname: sender.nickname, from_email: 'newsletter@old-domain.test', verified }
+          : sender));
+
+        const unverifiedApi = fakeSendgrid({ ...convergedResponses(), ...senderAccount(squatted(false)).responses });
+        const replaced = await runService(brandConfig(), { sendgrid: unverifiedApi, serviceData: { listId: 'lst_1' } });
+
+        ctx.expect(replaced.status, replaced.error).toBe('success');
+        ctx.expect(unverifiedApi.callsTo('deleteVerifiedSender').map((call) => call.args), 'the unverified squatter is removed').toEqual([[9376]]);
+        ctx.expect(createdSenders(unverifiedApi), 'and that row alone is made').toEqual([expectedSender('newsletter')]);
+
+        const verifiedApi = fakeSendgrid({ ...convergedResponses(), ...senderAccount(squatted(true)).responses });
+        const warned = await runService(brandConfig(), { sendgrid: verifiedApi, serviceData: { listId: 'lst_1' } });
+        const identities = warned.output.senderIdentities;
+
+        ctx.expect(warned.status).toBe('warned');
+        ctx.expect(verifiedApi.mutations(), 'a verified squatter is never deleted, and nothing else is written').toEqual([]);
+        ctx.expect(identities.newsletter.staleNickname, 'the warning is on the newsletter row').toBe('newsletter@old-domain.test');
+        ctx.expect(SENDER_KEYS.filter((key) => key !== 'newsletter' && identities[key]?.staleNickname), 'no other row warns').toEqual([]);
+      },
+    },
+
+    {
+      name: 'campaigns: no brand.address and no prompt warns once and makes no sender',
+      run: async (ctx) => {
+        const api = fakeSendgrid({ ...convergedResponses(), ...senderAccount().responses });
 
         const result = await runService(brandConfig({ address: null }), { sendgrid: api, serviceData: { listId: 'lst_1' } });
 
         ctx.expect(result.status).toBe('warned');
-        ctx.expect(result.output.senderIdentity.missingAddress).toBe(true);
-        ctx.expect(api.callsTo('createVerifiedSender').length).toBe(0);
+        ctx.expect(result.warned.filter((entry) => entry.operation === 'sender-identity').length, 'one warning for the operation').toBe(1);
+        ctx.expect(api.callsTo('createVerifiedSender')).toEqual([]);
       },
     },
 
     {
-      name: 'campaigns: a missing brand.address is ASKED for behind ONE gate and lands as one object (#635)',
+      name: 'campaigns: a missing brand.address is ASKED for once, behind ONE gate, and every row is made with it (#635)',
       run: async (ctx) => {
         const brandRoot = makeBrandRoot(WRITEBACK_CONFIG);
-        const api = fakeSendgrid({
-          ...convergedResponses(),
-          getVerifiedSenders: [],
-          createVerifiedSender: { id: 10, from_email: FROM_EMAIL, verified: true },
-        });
+        const api = fakeSendgrid({ ...convergedResponses(), ...senderAccount().responses });
 
         const tty = openTtyPrompt();
         try {
@@ -689,11 +773,11 @@ module.exports = defineCases({
           await tty.answer('Country', 'USA\r');
           const result = await run;
 
-          ctx.expect(result.status).toBe('success');
-          // The pass continued on the address just entered
-          ctx.expect(api.callsTo('createVerifiedSender')[0].args[0].address).toEqual({
-            street: '500 Fixture Ave', street2: '', city: 'Testville', state: 'CA', zip: '90210', country: 'USA',
-          });
+          // A second ask would wait on keys never typed, so the run settling proves one ask
+          ctx.expect(result.status, result.error).toBe('success');
+          ctx.expect(createdSenders(api), 'every row is made on the address just entered').toEqual(expectedSenders(SENDER_KEYS, {
+            line1: '500 Fixture Ave', line2: '', city: 'Testville', region: 'CA', postalCode: '90210', country: 'USA',
+          }));
           // ...and it landed as ONE brand.address object, comments intact
           const written = readConfigSource(brandRoot);
           ctx.expect(written).toMatch(/500 Fixture Ave/);
@@ -718,7 +802,7 @@ module.exports = defineCases({
           const result = await run;
 
           ctx.expect(result.status).toBe('warned');
-          ctx.expect(result.output.senderIdentity.missingAddress).toBe(true);
+          ctx.expect(result.warned.filter((entry) => entry.operation === 'sender-identity').length).toBe(1);
           ctx.expect(api.callsTo('createVerifiedSender').length).toBe(0);
           ctx.expect(readConfigSource(brandRoot)).not.toMatch(/address/);
         } finally {
@@ -912,16 +996,14 @@ module.exports = defineCases({
     // ─── custom-fields ───────────────────────────────────────────────────────────
 
     {
-      name: 'campaigns: the catalog skips the two name fields SendGrid stores itself (#695)',
+      name: 'campaigns: the two name fields SendGrid stores natively are never custom fields (#695)',
       run: async (ctx) => {
-        // SendGrid keeps first/last name in its RESERVED contact columns, which the
-        // backend's addContact writes natively — so the custom-field lane skips them
-        // on BOTH sides (one `fieldsForProvider()` derivation): never provisioned
-        // here, never written by the contact sync, so the old "no SendGrid ID
-        // (skipped)" warn cannot come back and no duplicate field is ever created.
+        // First/last name live in SendGrid's RESERVED contact columns, native on its
+        // provider row, so the one `fieldsForProvider()` derivation leaves them out on
+        // BOTH sides: never provisioned here, never written by the contact sync.
         const names = SENDGRID_FIELDS.map((field) => field.name);
-        ctx.expect(!names.includes('user_personal_name_first'), `the catalog skips the first-name field, got ${names.join(', ')}`).toBeTruthy();
-        ctx.expect(!names.includes('user_personal_name_last'), `the catalog skips the last-name field, got ${names.join(', ')}`).toBeTruthy();
+        ctx.expect(!names.includes('user_personal_name_first'), `the first-name field is native, got ${names.join(', ')}`).toBeTruthy();
+        ctx.expect(!names.includes('user_personal_name_last'), `the last-name field is native, got ${names.join(', ')}`).toBeTruthy();
 
         // And an account carrying that view converges with nothing created — the two
         // names are not missing fields, they are fields SendGrid owns
@@ -1154,7 +1236,8 @@ module.exports = defineCases({
         ctx.expect(cf.writes()).toEqual([]);
         ctx.expect(result.output.domainAuth.planned).toEqual(['authenticate-domain', 'dns-records', 'validate']);
         ctx.expect(result.output.linkBranding.planned).toEqual(['brand-links', 'dns-records', 'validate', 'proxy-record']);
-        ctx.expect(result.output.senderIdentity.planned).toBe('create-sender');
+        ctx.expect(Object.entries(result.output.senderIdentities || {}).map(([key, row]) => [key, row.planned]).sort(), 'one planned sender per row')
+          .toEqual(SENDER_KEYS.map((key) => [key, 'create-sender']).sort());
         ctx.expect(result.output.list.planned).toBe('create');
         ctx.expect(result.output.unsubscribeGroups.planned.create).toEqual(GROUP_KEYS.map((key) => GROUP_DEFINITIONS[key].name));
         ctx.expect(result.output.customFields.planned.create.length).toBe(SENDGRID_FIELDS.length);

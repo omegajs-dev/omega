@@ -11,7 +11,7 @@
     "./consent": "./src/consent.js",
     "./identity": "./src/identity.js",
     "./logger": "./src/logger.js",
-    "./adapters/ga4": "./src/adapters/ga4.js",
+    "./adapters/google": "./src/adapters/google.js",
     "./adapters/meta": "./src/adapters/meta.js",
     "./adapters/tiktok": "./src/adapters/tiktok.js",
     "./transports/browser": "./src/transports/browser.js"
@@ -20,6 +20,7 @@
     "test": "node ../devkit/src/test/cli.js"
   },
   "dependencies": {
+    "@omega.js/config": "*",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

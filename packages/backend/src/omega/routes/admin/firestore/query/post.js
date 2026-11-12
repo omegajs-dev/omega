@@ -1,11 +1,11 @@
-const _ = require('lodash');
-const powertools = require('node-powertools');
+import _ from 'lodash';
+import powertools from 'node-powertools';
 
 /**
  * POST /admin/firestore/query - Query Firestore collections
  * Admin-only endpoint to run complex queries
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

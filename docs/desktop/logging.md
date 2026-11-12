@@ -180,8 +180,19 @@ activate (macOS) — surfacing main (visible=false, minimized=false)
 _ensureDockVisible — calling dock.show()
 _ensureDockVisible — dock already visible
 second-instance argv=["..."] eventArgv=["..."] cwd=/...
-second-instance — surfacing main (visible=false, minimized=false)
+second-instance: surfacing main (visible=false, minimized=false)
 ```
+
+**Single-instance lock and boot guard** ([deep-link.md](deep-link.md#single-instance-behavior), [boot-sequence.md](boot-sequence.md#boot-guard)):
+
+```
+single-instance lock taken over from a holder that exited (pid 12345)
+quit held until the forwarded launch exits (pid 12388)
+quit held 5 s and the forwarded launch has not exited (pid 12388); quitting anyway
+boot did not finish within 60 s; last step: when-ready
+```
+
+The first is a launch that was sent to forward but took the lock instead; the second is a quit asked while a forwarding duplicate is still alive, waiting for it; the third is that wait reaching its 5 s limit, after which the app quits anyway; the fourth is the boot guard ending a boot that stalled, naming the step it stopped at, before the app exits with code 1.
 
 These cover everything you'd want when debugging "why did the app go invisible / crash / fail to surface" without needing to attach a debugger.
 

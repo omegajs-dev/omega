@@ -47,28 +47,27 @@ const chalk = require('chalk').default;
 const attachLogFile = require('@omega.js/devkit/attach-log-file');
 
 const { resolveBrandRoot, loadBrand, discoverTargets } = require('../lib/brand.js');
-const { runVerifyLegs, VERIFY_LEGS } = require('../lib/verify-live.js');
+const { TARGET_TYPE_ROWS, targetType } = require('@omega.js/config');
+const { runVerifyLegs } = require('../lib/verify-live.js');
 
-// deploy target → the command run in that target's dir (desktop/
-// extension targets carry no deploy script: their D13 verb is the local bin).
-//
-// The pipeline is the LOCAL lane: it proves the brand deploys from THIS
-// machine, so the two targets that can publish from here pass `--direct`
-// ([#872](https://github.com/Omega-JS-Stack/omega/issues/872) gave backend the
-// same CI default web has had, and the same `--direct` escape from it). The
-// publish legs below stay gated rather than direct.
-const DEPLOY_LEGS = {
-  web: ['npm', 'run', 'deploy', '--', '--direct'],
-  backend: ['npm', 'run', 'deploy', '--', '--direct'],
-  desktop: ['npx', 'omega', 'deploy'],
-  extension: ['npx', 'omega', 'deploy'],
+// A type row's deploy mode → the command run in that target's dir. The pipeline
+// proves the brand deploys from THIS machine, so a 'direct' target passes
+// `--direct`; a 'verb' target has no deploy script and runs the local bin.
+const DEPLOY_COMMANDS = {
+  direct: ['npm', 'run', 'deploy', '--', '--direct'],
+  verb: ['npx', 'omega', 'deploy'],
 };
 
-// Legs that PUBLISH (desktop → the GH release flow, extension → the store
-// CI workflow dispatch). Releases and Actions dispatches are Ian-gated, so
-// these run only with the explicit `--publish` flag — otherwise the leg
-// records a gated skip.
-const PUBLISH_LEGS = new Set(['desktop', 'extension']);
+/**
+ * The deploy command a target type runs in its dir, from its row's mode.
+ *
+ * @param {string} target - A target type (`web`, `desktop`, …).
+ * @returns {string[]|null} The argv, or null for a type that has no deploy.
+ */
+function deployLeg(target) {
+  const row = targetType(target);
+  return row && row.deploy ? DEPLOY_COMMANDS[row.deploy] : null;
+}
 
 // Services that must RUN green on a full pipeline pass — these are the
 // provisioning spine; a skip here means a seed is missing, not a choice.
@@ -94,7 +93,7 @@ function resolveVerifyTargets(argv, deployTargets) {
   if (deployTargets.length > 0) {
     return deployTargets;
   }
-  return argv.verify ? Object.keys(VERIFY_LEGS) : [];
+  return argv.verify ? TARGET_TYPE_ROWS.filter((row) => row.verify.length > 0).map((row) => row.id) : [];
 }
 
 /**
@@ -238,22 +237,23 @@ module.exports = async (argv = {}) => {
   // evaluator's any-error rule covers them
   const deployTargets = String(argv.deploy || '').split(',').map((s) => s.trim()).filter(Boolean);
   for (const target of deployTargets) {
-    const leg = DEPLOY_LEGS[target];
+    const leg = deployLeg(target);
     const entry = discoverTargets(brandRoot).find((item) => item.target === target);
 
     if (!leg || !entry) {
+      const deployable = TARGET_TYPE_ROWS.filter((row) => row.deploy).map((row) => row.id);
       found.record.services.push({
         service: `deploy:${target}`,
         status: 'error',
         output: null,
-        error: leg ? `no ${target} dir in this brand` : `unknown deploy target (${Object.keys(DEPLOY_LEGS).join(', ')})`,
+        error: leg ? `no ${target} dir in this brand` : `unknown deploy target (${deployable.join(', ')})`,
       });
       continue;
     }
 
-    // Publish legs stay behind their own flag: running them means a GH
-    // release / store CI dispatch, and both are gated until Ian opens them.
-    if (PUBLISH_LEGS.has(target) && !argv.publish) {
+    // A leg that publishes (desktop: the GH release flow, extension: the store
+    // CI dispatch) stays behind its own flag: both are gated until Ian opens them.
+    if (targetType(target).publishes && !argv.publish) {
       console.log(chalk.yellow(`\n⊘ Deploy leg ${target}: publish leg gated — pass --publish to run it (releases/dispatches are gated)`));
       found.record.services.push({
         service: `deploy:${target}`,
@@ -286,7 +286,7 @@ module.exports = async (argv = {}) => {
   // Verify sweep — the last mile: the deploy legs pushed, these prove the
   // launch surface answers. Rows join the record as verify:<name> so a
   // failed check fails the pipeline exactly like a failed deploy leg.
-  const verifyTargets = resolveVerifyTargets(argv, deployTargets).filter((target) => VERIFY_LEGS[target]);
+  const verifyTargets = resolveVerifyTargets(argv, deployTargets).filter((target) => targetType(target)?.verify.length > 0);
   if (verifyTargets.length > 0) {
     const dryRun = Boolean(argv.dryRun || argv['dry-run']);
     console.log(chalk.bold(`\n🧪 Verify sweep: ${verifyTargets.join(', ')}${dryRun ? chalk.dim(' (dry run — plan only)') : ''}`));
@@ -324,5 +324,4 @@ module.exports.findRunRecord = findRunRecord;
 module.exports.resolveVerifyTargets = resolveVerifyTargets;
 module.exports.buildChildArgs = buildChildArgs;
 module.exports.CORE_SERVICES = CORE_SERVICES;
-module.exports.PUBLISH_LEGS = PUBLISH_LEGS;
-module.exports.DEPLOY_LEGS = DEPLOY_LEGS;
+module.exports.deployLeg = deployLeg;

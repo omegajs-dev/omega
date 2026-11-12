@@ -356,7 +356,7 @@ async function ensureTarget(options) {
     root: projectDir,
     srcDir: 'hooks',
     frameworkRoot: build.getRootPath('main'),
-    door: (name) => `require('@omega.js/desktop').require('${name}')`,
+    door: (name) => `desktop.require('${name}') after import desktop from '@omega.js/desktop'`,
     warn,
   });
 

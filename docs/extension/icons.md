@@ -5,10 +5,17 @@
 ## Layout
 
 ```
-<consumer>/config/icon.png        ← your ONE source icon (png or svg)
+<consumer>/config/icon.svg        ← your ONE source icon (svg or png)
 ```
 
-That's it. The `icons` gulp task picks up `config/icon.{png,svg}` and generates:
+That's it. The `icons` gulp task takes ONE source through the order every target type shares (`resolveBrandImage` in `@omega.js/devkit/brand-image`):
+
+1. `config/icon.svg`, then `config/icon.png`: the target's own icon always wins. A target with both ships `config/icon.svg`, and `config/icon.png` is not read.
+2. `<brandRoot>/assets/logo/brandmark.svg`, when the target sits in a brand (`@omega.js/config`'s `findBrandRoot`). A framework used alone skips this step.
+
+- With neither, the task makes no icons.
+- The target's own icon is resized by width, as it is. The brandmark is first set in a square canvas that contains it on a clear ground, so every icon made from it is square, whatever the brandmark's shape.
+- Whichever source wins, it generates the same names, into the build output only (nothing is written into `config/`):
 
 ```
 dist/assets/images/icons/icon.png          (original, converted to png)
@@ -34,7 +41,7 @@ Supply the source at the largest size you have (1024×1024 recommended) — gene
 
 ## Watch behavior
 
-In dev (`npm start`) the task watches `config/icon.*` and regenerates on change. In build mode the watcher is skipped — generation runs once in the pipeline.
+In dev (`npm start`) the task watches `config/icon.svg` and `config/icon.png` always, plus the brand's brandmark when the target sits in a brand, and regenerates on any change: an own icon dropped in while the brandmark is the source takes over at once. In build mode the watcher is skipped: generation runs once in the pipeline.
 
 ## Source files
 

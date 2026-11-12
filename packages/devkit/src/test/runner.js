@@ -1,14 +1,13 @@
 /**
- * The one OMEGA test runner. Every suite is a `defineCases` file; the runner
- * discovers them under its roots, runs the `_init.js` hooks once, then runs
- * every case on node:test in THIS process (`run()` with `isolation: 'none'`),
- * layer row by layer row (src/test/layers.js). A `host` row runs its suites
- * here through run-case.js; an `app` row's driver runs them itself, wherever
- * the bodies execute, and reports each case back by id.
- * `config.isolation: 'process'` runs each file instead as the main module of
- * its own node:test child, where `defineCases` registers its cases; node's
- * events map back to the same results. `createRunner(config).run(options)`
- * resolves `{ passed, failed, skipped, noMatch, durationMs, tests }`.
+ * The one OMEGA test runner: discovers `defineCases` files under its roots, runs
+ * the `_init.js` hooks once, then every case on node:test in THIS process, layer
+ * row by layer row (src/test/layers.js): a `host` row through run-case.js, an
+ * `app` row's driver wherever its bodies run. `config.isolation: 'process'`
+ * runs each file as its own node:test child instead, up to `config.concurrency`
+ * at once (default `poolSize()`), then each `config.serial` file alone; a child
+ * that outlives `config.fileTimeout` (default ten minutes) ends with every
+ * process under it as a `file deadline` failure (src/test/file-deadline.js).
+ * `createRunner(config).run(options)` resolves `{ passed, failed, skipped, noMatch, durationMs, tests }`.
  */
 
 const fs = require('fs');
@@ -28,7 +27,8 @@ const { createCaseSession, hostSession, registerSuite, registerLazySuites } = re
 const { guardStdout } = require('./guard-stdout.js');
 const { TIMEOUT_ARG } = require('./define-cases.js');
 const attachLogFile = require('../attach-log-file.js');
-const { mapLimited } = require('../map-limited.js');
+const { mapLimited, poolSize } = require('../map-limited.js');
+const { fileDeadline } = require('./file-deadline.js');
 
 const ISOLATIONS = ['none', 'process'];
 const EVAL_FLAGS = ['-e', '--eval', '-p', '--print'];
@@ -37,6 +37,8 @@ const EXTENDED_MODE_LINES = ['Suites call REAL external services instead of skip
 // The preload each `process` child takes, the one every package script names.
 // Resolved, never loaded here, and named so a host's vendor copy carries it.
 const STDOUT_GUARD = require.resolve('./stdout-guard.js');
+// The most one file's process may live under isolation: 'process'.
+const DEFAULT_FILE_TIMEOUT = 600000;
 
 // Registrations waiting for their bootstrap file to load inside node:test's run().
 const plans = new Map();
@@ -126,16 +128,21 @@ function createRunner(config) {
   if (!ISOLATIONS.includes(isolation)) {
     throw new Error(`Unknown isolation "${isolation}" (known: ${ISOLATIONS.join(', ')})`);
   }
-  const processOnly = ['concurrency', 'serial'].filter((key) => config[key] !== undefined);
+  const processOnly = ['concurrency', 'serial', 'fileTimeout'].filter((key) => config[key] !== undefined);
   if (isolation !== 'process' && processOnly.length > 0) {
     throw new Error(`${processOnly[0]} needs isolation: 'process' (this runner's isolation is '${isolation}')`);
   }
-  const concurrency = config.concurrency === undefined ? 1 : config.concurrency;
+  const fallback = isolation === 'process' ? poolSize() : 1;
+  const concurrency = config.concurrency === undefined ? fallback : config.concurrency;
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new Error(`concurrency is the most files in flight, a whole number of 1 or more (got ${JSON.stringify(config.concurrency)})`);
   }
   const serial = config.serial === undefined ? [] : config.serial;
   if (!Array.isArray(serial)) throw new Error(`serial is a list of directory names (got ${JSON.stringify(serial)})`);
+  const fileTimeout = config.fileTimeout === undefined ? DEFAULT_FILE_TIMEOUT : config.fileTimeout;
+  if (!Number.isInteger(fileTimeout) || fileTimeout < 1) {
+    throw new Error(`fileTimeout is the most milliseconds one file's process may live, a whole number of 1 or more (got ${JSON.stringify(config.fileTimeout)})`);
+  }
   // node hands each child its parent's own options, an eval script included, so
   // every child of a `node -e` host would rerun that script instead of its file.
   if (isolation === 'process' && process.execArgv.some((arg) => EVAL_FLAGS.includes(arg.split('=')[0]))) {
@@ -214,9 +221,10 @@ function createRunner(config) {
     };
   }
 
-  // A host suite's session: its cases under the stray watch, its ctx extras from the row's driver.
+  // A host suite's session: its cases under the stray watch, its ctx extras from the
+  // row's driver, and a cleanup past its limit recorded as its own failure.
   function hostEntrySession(entry, control, context) {
-    return hostSession({ ...entry.suite, cases: entry.suite.cases.map(context.stray.watch) }, {
+    const session = hostSession({ ...entry.suite, cases: entry.suite.cases.map(context.stray.watch) }, {
       expect,
       defaultTimeout: config.defaultTimeout,
       extrasFrom: control ? async () => {
@@ -224,6 +232,8 @@ function createRunner(config) {
         return (info) => handle.extras(info);
       } : undefined,
     });
+    const fields = { id: `${entry.file}#cleanup`, source: entry.source, file: entry.file, name: entry.label, layer: entry.suite.layer };
+    return { ...session, end: () => session.end().catch((error) => context.recordFailure({ ...fields, error })) };
   }
 
   function rowStop(row, control, context) {
@@ -315,8 +325,11 @@ function createRunner(config) {
   // defineCases. One run() per file: node stamps a case event with where its `it`
   // was called (register-suite.js), never with the file whose child sent it.
   // Everything the file reports goes through `hold`, to be released in file order.
-  async function runInProcess(entry, { options, reporter, results, layer, cwd, hold }) {
+  async function runInProcess(entry, { options, reporter, results, layer, cwd, hold: holdOp }) {
     const { run } = require('node:test');
+    const deadline = fileDeadline({ file: entry.file, rel: entry.rel, limit: fileTimeout });
+    // Past the file's deadline its one failure is all it reports.
+    const hold = (op) => { if (!deadline.expired()) holdOp(op); };
     const fail = (error) => hold(() => recordFailure(results, reporter, { id: entry.file, source: entry.source, file: entry.file, name: entry.rel, layer, error }));
     const ancestors = [];
     const headed = new Set();
@@ -340,7 +353,9 @@ function createRunner(config) {
       const suite = ancestors.slice(0, data.nesting).join(' > ') || null;
       if (details.type === 'suite') {
         if (status === 'fail' && details.error.failureType !== 'subtestsFailed') {
-          const error = failureOf(details.error);
+          // recordFailure takes an Error: a plain failureOf object would read as "[object Object]".
+          const { name, message, stack } = failureOf(details.error);
+          const error = Object.assign(new Error(message), { name, stack });
           hold(() => recordFailure(results, reporter, { id: `${entry.file}#${data.name}`, source: entry.source, file: entry.file, name: data.name, layer, error }));
         }
         return;
@@ -380,6 +395,7 @@ function createRunner(config) {
         ...(config.defaultTimeout !== undefined ? { argv: [`${TIMEOUT_ARG}${config.defaultTimeout}`] } : {}),
         ...(cwd ? { cwd } : {}),
         ...(options.filter ? { testNamePatterns: [new RegExp(options.filter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))] } : {}),
+        signal: deadline.signal,
       });
     } finally {
       if (inherited !== undefined) process.env.NODE_TEST_CONTEXT = inherited;
@@ -400,11 +416,8 @@ function createRunner(config) {
       diagnostics.push(data.message);
       hold(() => process.stderr.write(`${data.message}\n`));
     });
-    await new Promise((resolve, reject) => {
-      stream.on('end', resolve);
-      stream.on('error', reject);
-      stream.resume();
-    });
+    const error = await deadline.watch(stream);
+    if (error) holdOp(() => recordFailure(results, reporter, { id: `${entry.file}#deadline`, source: entry.source, file: entry.file, name: 'file deadline', layer, error }));
   }
 
   function rootOf(entry) {

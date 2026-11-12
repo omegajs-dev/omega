@@ -18,6 +18,11 @@ let caseIndex = 0;
 
 const quiet = { log: () => {}, warn: () => {}, error: () => {} };
 
+// The web template's two cache steps, each restoring its one cache from the workspace
+// root: optimized images keyed on the images' hash, brand images keyed per commit.
+const IMAGEMIN_CACHE = /^ {10}path: \$\{\{ github\.workspace \}\}\/\.omega\/cache\/imagemin\n {10}key: omega-imagemin-\$\{\{ hashFiles\(/m;
+const BRAND_IMAGE_CACHE = /^ {10}path: \$\{\{ github\.workspace \}\}\/\.omega\/cache\/brand-image\n {10}key: omega-brand-image-\$\{\{ github\.sha \}\}\n {10}restore-keys: \|\n {12}omega-brand-image-$/m;
+
 // A workflow template shaped like the ones the frameworks ship — including the
 // `run:` step that executes BEFORE actions/checkout. A fixture that checked out
 // first hid the composition bug that killed every composed run on step 1.
@@ -246,16 +251,14 @@ module.exports = defineCases({
 
         const composed = composeWorkflow(template.contents, { targetPath: 'targets/web', targetName: 'web' });
 
-        // The build writes its image cache under the BRAND root, which is the runner's
-        // workspace, so the whole path line stays the standalone one, with no target prefix
-        ctx.expect(composed).toMatch(/^ {10}path: \$\{\{ github\.workspace \}\}\/\.omega\/cache\/imagemin$/m);
+        // The build writes its image caches under the BRAND root, which is the runner's
+        // workspace, so the path lines stay the standalone ones, with no target prefix
+        ctx.expect(composed).toMatch(IMAGEMIN_CACHE);
+        ctx.expect(composed).toMatch(BRAND_IMAGE_CACHE);
 
         // `working-directory:` is a `run:` key: an action's inputs ignore it, so the
         // key's hash still has to name the target's images itself
         ctx.expect(composed).toMatch(/hashFiles\('targets\/web\/src\/assets\/images\/\*\*'\)/);
-
-        // Untouched: the key's literal prefix
-        ctx.expect(composed).toMatch(/^ {10}key: omega-imagemin-\$\{\{ hashFiles\(/m);
 
         // The publish is the framework's own verb since #883, a plain `run:` step
         // that `working-directory:` scopes like any other: no third-party action, so
@@ -264,7 +267,8 @@ module.exports = defineCases({
 
         // A standalone project IS the repo root: the scaffolded template is unchanged,
         // scoping belongs to composition alone
-        ctx.expect(template.contents).toMatch(/^ {10}path: \$\{\{ github\.workspace \}\}\/\.omega\/cache\/imagemin$/m);
+        ctx.expect(template.contents).toMatch(IMAGEMIN_CACHE);
+        ctx.expect(template.contents).toMatch(BRAND_IMAGE_CACHE);
         ctx.expect(template.contents).not.toMatch(/targets\//);
       },
     },

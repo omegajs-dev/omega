@@ -13,7 +13,7 @@
  * additionally needs OMEGA_WEBHOOK_KEY, which the setup MINTS through the
  * shared contract (it is OMEGA's own key, #635). No API key → clean skip.
  */
-const { chosenProvider } = require('@omega.js/config');
+const { chosenProvider, emailProviderForRole } = require('@omega.js/config');
 
 const { serviceInputSpec } = require('../../config.js');
 const { createServiceRunner } = require('../../lib/service-runner.js');
@@ -35,7 +35,7 @@ module.exports.run = createServiceRunner({
     if (!provider) {
       return { skip: true, reason: 'no marketing.newsletter.providers entry' };
     }
-    if (provider !== 'beehiiv') {
+    if (provider !== emailProviderForRole('newsletter').id) {
       return { skip: true, reason: `marketing.newsletter.providers.${provider} is not a known newsletter provider` };
     }
 
@@ -45,7 +45,7 @@ module.exports.run = createServiceRunner({
     }
 
     if (!context.beehiivApi) {
-      const gate = await requestServiceInput(context, serviceInputSpec('newsletter', { names: ['BEEHIIV_API_KEY'] }));
+      const gate = await requestServiceInput(context, serviceInputSpec('newsletter', { names: [emailProviderForRole('newsletter').envKey] }));
       if (gate) return gate;
     }
 

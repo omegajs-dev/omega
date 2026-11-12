@@ -13,12 +13,12 @@
  * owes is @omega.js/config's missingEnvKeys.
  */
 
-const { FORMATS } = require('@omega.js/config');
+const { FORMATS, TARGET_TYPE_ROWS } = require('@omega.js/config');
 const { shipPlan } = require('@omega.js/devkit/ship-plan');
 
-// The target types that ship: web and backend deploy, they do not publish an
-// artifact anybody installs, so neither carries a `platforms` declaration.
-const SHIP_TARGETS = ['desktop', 'extension'];
+// The target types that ship: the rows that publish an artifact somebody
+// installs. The others deploy, and carry no `platforms` declaration.
+const SHIP_TYPES = TARGET_TYPE_ROWS.filter((row) => row.publishes).map((row) => row.id);
 
 /**
  * Every credential ANY format can require, in table order: the static list of
@@ -29,7 +29,7 @@ const SHIP_TARGETS = ['desktop', 'extension'];
 function shipCredentials() {
   const names = [];
 
-  for (const target of SHIP_TARGETS) {
+  for (const target of SHIP_TYPES) {
     for (const formats of Object.values(FORMATS[target])) {
       for (const spec of Object.values(formats)) {
         for (const key of spec.requires) {
@@ -60,7 +60,7 @@ function shipTargets(brandConfig) {
   const shipping = [];
 
   for (const [name, entry] of Object.entries(targets)) {
-    if (!entry || !SHIP_TARGETS.includes(entry.type)) continue;
+    if (!entry || !SHIP_TYPES.includes(entry.type)) continue;
 
     shipping.push({ name, type: entry.type, formats: shipPlan(entry, entry.type) });
   }
@@ -68,4 +68,4 @@ function shipTargets(brandConfig) {
   return shipping;
 }
 
-module.exports = { SHIP_TARGETS, shipCredentials, shipTargets };
+module.exports = { shipCredentials, shipTargets };

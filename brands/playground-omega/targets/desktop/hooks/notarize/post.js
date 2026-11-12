@@ -11,6 +11,6 @@
 // as a final step. You can never accidentally break notarization by editing this — at worst,
 // a thrown error here fails the build loudly.
 
-module.exports = async (context) => {
+export default async (context) => {
   // No-op by default. Add your post-notarize logic here.
 };

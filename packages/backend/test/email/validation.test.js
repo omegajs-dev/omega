@@ -3,13 +3,61 @@
  * Unit tests for format, local part, disposable domain, corporate domain, typo domain, DNS, and mailbox checks
  *
  * Format, local part, disposable, corporate, and typo tests always run (free, sync, offline-safe).
- * DNS negative tests require TEST_EXTENDED_MODE (live DNS resolution).
+ * DNS negative tests against live DNS require TEST_EXTENDED_MODE; the two against a loopback DNS server always run.
  * Mailbox verification tests require TEST_EXTENDED_MODE + NEVERBOUNCE_API_KEY or ZEROBOUNCE_API_KEY.
  */
+const dgram = require('node:dgram');
+const dns = require('node:dns');
 const { validate, isDisposable, isCorporate, DEFAULT_CHECKS, ALL_CHECKS } = require('../../dist/omega/libraries/email/validation.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 const HAS_MAILBOX_API_KEY = !!(process.env.NEVERBOUNCE_API_KEY || process.env.ZEROBOUNCE_API_KEY);
+
+// DNS response codes the loopback server answers with.
+const RCODE_SERVFAIL = 2;
+const RCODE_NXDOMAIN = 3;
+
+/**
+ * A DNS reply to `query`: its own id and question, no records, and `rcode`.
+ * @param {Buffer} query - The raw query packet.
+ * @param {number} rcode - The response code to answer with.
+ * @returns {Buffer} The reply packet.
+ */
+function dnsReply(query, rcode) {
+  let end = 12;
+  while (query[end] !== 0) end += query[end] + 1;
+  // The root label's zero byte, then QTYPE and QCLASS.
+  end += 5;
+
+  const reply = Buffer.from(query.subarray(0, end));
+  // QR and RA set; opcode and RD echoed from the query.
+  reply.writeUInt16BE(0x8000 | (query.readUInt16BE(2) & 0x7900) | 0x0080 | rcode, 2);
+  reply.writeUInt16BE(1, 4);
+  reply.writeUInt16BE(0, 6);
+  reply.writeUInt16BE(0, 8);
+  reply.writeUInt16BE(0, 10);
+  return reply;
+}
+
+/**
+ * Start a real DNS server on loopback that answers every query with `rcode`, and
+ * point node's resolver at it until the case ends.
+ * @param {number} rcode - The response code every query gets.
+ * @param {Function} after - The case's `after`, which restores the resolver and closes the server.
+ * @returns {Promise<void>} Resolves once the server listens and the resolver points at it.
+ */
+async function pointDnsAtServerAnswering(rcode, after) {
+  const socket = dgram.createSocket('udp4');
+  socket.on('message', (query, from) => socket.send(dnsReply(query, rcode), from.port, from.address));
+  await new Promise((resolve) => socket.bind(0, '127.0.0.1', resolve));
+
+  const servers = dns.getServers();
+  after(async () => {
+    dns.setServers(servers);
+    await new Promise((resolve) => socket.close(resolve));
+  });
+  dns.setServers([`127.0.0.1:${socket.address().port}`]);
+}
 
 module.exports = defineCases({
   description: 'Email validation',
@@ -623,6 +671,31 @@ module.exports = defineCases({
         const result = await validate('rachel.greene@thisdomaindoesnotexist99887766.com', { checks: ['format', 'dns'] });
 
         expect(result.valid, 'Nonexistent domain should fail the DNS check').toBe(false);
+        expect(result, 'DNS check should fail').toHaveProperty('checks.dns.valid', false);
+      },
+    },
+
+    {
+      name: 'dns-server-failure-skips-the-check',
+
+      async run({ expect, after }) {
+        await pointDnsAtServerAnswering(RCODE_SERVFAIL, after);
+        const result = await validate('rachel.greene@gmail.com', { checks: ['format', 'dns'] });
+
+        expect(result.valid, 'A DNS server failure (SERVFAIL) should not block the address').toBe(true);
+        expect(result.checks.dns, 'SERVFAIL should skip the DNS check').toEqual({ valid: true, skipped: true, reason: 'DNS error: ESERVFAIL' });
+      },
+    },
+
+    {
+      name: 'dns-nxdomain-answer-fails',
+
+      async run({ expect, after }) {
+        await pointDnsAtServerAnswering(RCODE_NXDOMAIN, after);
+        const result = await validate('rachel.greene@gmail.com', { checks: ['format', 'dns'] });
+
+        expect(result.valid, 'An NXDOMAIN answer should fail the DNS check').toBe(false);
+        expect(result, 'NXDOMAIN should block with its reason').toHaveProperty('checks.dns.reason', 'DNS lookup failed: ENOTFOUND');
         expect(result, 'DNS check should fail').toHaveProperty('checks.dns.valid', false);
       },
     },

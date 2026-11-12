@@ -1,6 +1,6 @@
-const { projectUserForLog } = require('../../../helpers/log-redaction.js');
+import { projectUserForLog } from '../../../helpers/log-redaction.js';
 
-module.exports = async ({ ctx, user }) => {
+export default async ({ ctx, user }) => {
 
   // Log user info — the allow-listed projection, never the document: it carries
   // api.privateKey ([#632](https://github.com/Omega-JS-Stack/omega/issues/632))

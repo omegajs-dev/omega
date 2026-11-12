@@ -2,7 +2,7 @@
  * POST /admin/database - Write Realtime Database
  * Admin-only endpoint to write any path
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

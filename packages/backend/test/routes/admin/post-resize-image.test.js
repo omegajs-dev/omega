@@ -1,8 +1,6 @@
 /**
- * Test: routes/admin/post/post.resizeImage
- * Unit tests for the in-place image resize used by the admin/post route.
- *
- * Run: npx omega test routes/admin/post-resize-image
+ * Test: routes/admin/post/images.resizeImage, the in-place image resize of
+ * the admin/post route. Run: npx omega test routes/admin/post-resize-image
  *
  * Contract:
  *   - Images with both dimensions <= IMAGE_MAX_DIMENSION pass through untouched.
@@ -16,10 +14,10 @@ const path = require('path');
 const jetpack = require('fs-jetpack');
 const sharp = require('sharp');
 
-const post = require('../../../dist/omega/routes/admin/post/post');
+const images = require('../../../dist/omega/routes/admin/post/images.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
-const { resizeImage, IMAGE_MAX_DIMENSION, IMAGE_JPEG_QUALITY } = post;
+const { resizeImage, IMAGE_MAX_DIMENSION, IMAGE_JPEG_QUALITY } = images;
 
 // Generate a synthetic JPEG of the given dimensions and write it to a tmp path.
 // Returns the absolute path on disk.
@@ -51,7 +49,7 @@ function makeAssistant() {
 }
 
 module.exports = defineCases({
-  description: 'routes/admin/post/post.resizeImage',
+  description: 'routes/admin/post/images.resizeImage',
   type: 'group',
 
   tests: [

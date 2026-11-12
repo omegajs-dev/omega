@@ -4,6 +4,6 @@
 // Use this for: posting to Slack/Discord, kicking off downstream workflows, updating a
 // changelog page on your marketing site, sending notification emails.
 
-module.exports = async (ctx) => {
+export default async (ctx) => {
   // ctx = { build, projectRoot, artifacts }   // artifacts: array of release/ paths
 };

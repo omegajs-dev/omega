@@ -1,65 +1,13 @@
 /**
  * deploy-snapshot: push a brand folder to its repo as a MIRROR, then wait for
- * GitHub to see the workflow there
- * ([#872](https://github.com/Omega-JS-Stack/omega/issues/872)).
- *
- * A workflow only ever runs from code GitHub already has. A brand that is not
- * its own repo's toplevel (a brand inside this monorepo) and a brand carrying
- * `file:` links (whose packed tarballs must never enter its real history) both
- * hit the same wall: there is nothing to dispatch against. So the deploy pushes
- * what it has, as it is (Ian, 2026-09-10: "we just push the contents of the
- * repository whenever we need to use it"), and dispatches that.
- *
- * The commit is built OUT OF THE WAY: a temporary index, no branch, no stash,
- * no checkout, nothing a `git status` or a `git branch` can see, and the working
- * tree the developer is looking at is never touched. Its ROOT is the BRAND
- * FOLDER, never the enclosing repo's, so the mirror is a brand checkout and not
- * a copy of whatever tree the brand happens to live in. Its PARENT is the
- * previous snapshot made parentless: a deploy ref tip that has a parent is
- * first re-rooted on the server, through the git data API, as a parentless
- * copy of its own tree (the ref moved there by a forced ref update and read
- * back until it answers the root), and that root is fetched by ref name into
- * FETCH_HEAD alone. So the ref holds the previous root and the new snapshot,
- * plus any admin publish committed on top between local deploys (the
- * backend's deploy-branch lane), whose tree the next re-root keeps and whose
- * commits it drops. The push carries just what the mirror lacks, and GitHub's
- * gc drops the old chain. The first snapshot on a mirror is parentless, and a
- * failed re-root stops the deploy before anything is pushed. The brand's own
- * history never rides, which is what keeps a public brand repo from receiving
- * the private tree it was cut from, and nothing here commits anything a
- * developer did not. The push is a fast-forward, never forced, so a ref
- * another deploy moved meanwhile fails the push loudly.
- *
- * ONE write ever reaches a repo's DEFAULT branch, and it is `pushWorkflowFiles`
- * below: GitHub registers a workflow from the default branch (the listing and
- * the dispatch both read the file from there, and the `ref` only picks the
- * checkout the run uses), so the composed `.github/workflows/*.yml` have to BE
- * there for the deploy branch to be buildable at all. It compares bytes first
- * and pushes only what is missing or changed, through the git data API, so no
- * working tree, index or local branch is involved in that either.
- *
- * What rides is what the brand's own ignore rules allow: tracked files plus
- * untracked-not-ignored ones. What MUST ride is force-added past any ignore rule
- * (the brand's own or one inherited from an enclosing repo) when it exists: the
- * minted set the web build bridges (@omega.js/config's MINT_BRIDGE, the only
- * part of `.omega/` that travels), the staged `omega_modules/` tarballs and
- * lockfile the caller names, and the company layer's resolved file.
- *
- * The COMPANY layer rides the same way, resolved here and generated as one file
- * ([#677](https://github.com/Omega-JS-Stack/omega/issues/677)): the machine that
- * dispatches has the machine registry and the company tree, and the runner has
- * neither, so what the runner gets is the ANSWER. No runner ever reads
- * `company/`. The env half needs nothing: the deploy precheck publishes the COMPOSED
- * target env (company then brand then target), so the company's `.env` values
- * are already repo secrets by the time a workflow runs.
- *
- * The token travels in the environment (`http.extraheader` through
- * GIT_CONFIG_*), never in argv, where every `ps` on the machine would read it.
- * That delivery, and the scrub a failure is rethrown through, are
- * `@omega.js/devkit/git-auth`'s: the web deploy's gh-pages push is the other
- * lane pushing to a repo its checkout is not authenticated for, and one
- * spelling of the rule is what keeps a token out of BOTH
- * ([#883](https://github.com/Omega-JS-Stack/omega/issues/883)).
+ * GitHub to see the workflow there. The commit is built out of a temporary
+ * index on the deploy ref's re-rooted previous snapshot, its root the brand
+ * folder, and pushed as a fast-forward; the one write to a DEFAULT branch is
+ * `pushWorkflowFiles`. What rides is what the brand's ignore rules allow, plus
+ * the paths force-added past them (the staged install, the company layer's
+ * resolved file). The token travels in the environment through
+ * `@omega.js/devkit/git-auth`, never in argv.
+ * The full contract: docs/shared/deploys.md § The snapshot push.
  */
 
 // Libraries
@@ -68,7 +16,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 const jetpack = require('fs-jetpack');
-const { resolveCompany, COMPANY_RESOLVED_FILE, mintBridgeSources } = require('@omega.js/config');
+const { resolveCompany, COMPANY_RESOLVED_FILE } = require('@omega.js/config');
 const { gitAuthEnv, scrubToken, scrubbedFailure } = require('./git-auth.js');
 const { composedWorkflowOwner } = require('./ci-workflows.js');
 const { formatJson } = require('./write-json.js');
@@ -161,10 +109,10 @@ async function pushSnapshot(options) {
     }
     git('add', '-A', '--', '.');
 
-    // What the runner cannot make rides by force past any ignore rule: the minted
-    // set (no image tooling there), the staged install and the company answer.
+    // What the runner cannot make rides by force past any ignore rule: the
+    // staged install and the company answer.
     const required = (options.require || []).filter((entry) => jetpack.exists(path.join(brandRoot, entry)));
-    const forced = [...mintBridgeSources(brandRoot), ...required, ...(companyLayer ? [COMPANY_RESOLVED_FILE] : [])];
+    const forced = [...required, ...(companyLayer ? [COMPANY_RESOLVED_FILE] : [])];
     if (forced.length) {
       git('add', '-f', '--', ...forced);
     }

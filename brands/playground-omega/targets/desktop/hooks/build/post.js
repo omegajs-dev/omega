@@ -4,6 +4,6 @@
 // Use this for: post-build asset processing, additional file copies into dist/, generating
 // auxiliary files (changelog, license bundling, etc.).
 
-module.exports = async (ctx) => {
+export default async (ctx) => {
   // ctx = { build, mode, projectRoot, distDir }
 };

@@ -34,17 +34,19 @@ const { ENV_SCHEMA, ENV_GROUPS, DELIVERY_MODES, envFileGroups, envSchemaEntry, e
 const { WORKFLOW_OWNED_KEYS, deliveredKeys, workflowSecretKeys, envFileKeys, artifactEnvValues, bakeKeys, publishSecretKeys, renderSecretsBlock, renderEnvFileKeys } = require('./env-delivery.js');
 const { ENV_VERBS, SHIP_SERVICE, missingEnvKeys, baseMissingKeys, missingConfigKeys, serviceAskedKeys } = require('./env-needs.js');
 const { resolveCompany, recordBrand, readRegistry, registryFile, COMPANY_DIR, COMPANY_RESOLVED_FILE, COMPANY_SELF } = require('./company.js');
-const { MINT_ROOT, LOGO_SOURCES_DIR, BRANDMARK_SOURCE, MINT_BRIDGE, FAVICON_DEST, BRANDMARK_SVG_DEST, BRANDMARK_PNG_DEST, mintBridgeSources, hasLogoSources } = require('./mint-bridge.js');
+const { MINT_ROOT, LOGO_SOURCES_DIR, BRANDMARK_SOURCE, FAVICON_DEST, BRANDMARK_SVG_DEST, BRANDMARK_PNG_DEST, SOCIAL_PNG_DEST, hasLogoSources } = require('./mint-bridge.js');
 const { applyConfigEdits, writeConfigValues, writeConfigFileValues, applyConfigRemovals, removeConfigValues, removeConfigFileValues, getAtPath } = require('./edit.js');
 const { schemaDefaults, missingDefaults, defaultComments, planMerge, setAtPath } = require('./defaults.js');
 const { applyCanonicalOrder, CANONICAL_TOP_LEVEL_ORDER } = require('./order.js');
 const { resolveSeedMode } = require('./seed.js');
 const { resolveHook, loadHook } = require('./hooks.js');
 const { toSiteGlobal } = require('./site-global.js');
-const { PLATFORMS, FORMATS, enabledFormats, formatKeys, windowsCloudProviderKeys, desktopProductName, sanitizeProductName, desktopArtifactName, desktopArtifactNames } = require('./platforms.js');
+const { PLATFORMS, FORMATS, enabledFormats, formatKeys, windowsCloudProviderKeys, snapName, snapNameError, formatKeysSet, desktopProductName, sanitizeProductName, desktopArtifactName, desktopArtifactNames } = require('./platforms.js');
 const { WINDOWS_SIGNING_STRATEGIES, DEFAULT_WINDOWS_SIGNING_STRATEGY, WINDOWS_CLOUD_PROVIDERS, windowsSigningStrategy } = require('./windows-signing.js');
 const { resolveWinbackOffer, WINBACK_OFFER_DEFAULTS, WINBACK_DURATIONS } = require('./winback.js');
 const { PAYMENT_PROVIDERS, paymentProvider } = require('./payment-providers.js');
+const { EMAIL_PROVIDERS, emailProvider, emailProviderForRole } = require('./email-providers.js');
+const { ANALYTICS_PROVIDERS, analyticsProvider } = require('./analytics-providers.js');
 const { SUBSCRIPTION_CADENCES } = require('./payment-cadences.js');
 const { REPO_PROVIDERS, HOSTING_PROVIDERS, repoBlock, sourceRepo, repoDrift, repoMissing, releasesRepo, websiteRepo, hostingProvider, pagesHost, pagesAddress, defaultAddressReason, brandVisibility } = require('./repo.js');
 const { FUNCTIONS_REGION, isDefaultPagesHost, apiAddress } = require('./api-address.js');
@@ -53,6 +55,7 @@ const { deriveBundleIdPrefix, composeBundleId } = require('./bundle-id.js');
 const { DEV_FACT_CHANNEL, devFactMissing } = require('./dev-facts.js');
 const { CLASSIC_PORTS, CLASSIC_DEV_ORIGIN, FAMILY_UNAVAILABLE, isPortFree, resolvePorts, writePortsFile, readPortsFile, clearPortsFile, readSiblingPorts, readSiblingOrigin, envName, portsToEnv, envPort, envPorts } = require('./ports.js');
 const { TARGET_NAME_PATTERN, TARGET_TYPES, targetEntries, targetsOfType, hasTargetOfType, targetPath, targetNameFromDir, targetUrl, targetPortOffset, brandHost } = require('./targets.js');
+const { TARGET_TYPE_ROWS, targetType } = require('./target-types.js');
 
 module.exports = {
   // Loading
@@ -163,17 +166,15 @@ module.exports = {
   // company tree to resolve from
   COMPANY_RESOLVED_FILE,
 
-  // The ONE list of minted identity files a site ships: the web build copies
-  // it and the deploy snapshot carries it, so the runner builds what the
-  // laptop built
+  // The brand's logo names: the committed sources, the manager's mint root,
+  // and the site paths a web build ships the brand image at
   MINT_ROOT,
   LOGO_SOURCES_DIR,
   BRANDMARK_SOURCE,
-  MINT_BRIDGE,
   FAVICON_DEST,
   BRANDMARK_SVG_DEST,
   BRANDMARK_PNG_DEST,
-  mintBridgeSources,
+  SOCIAL_PNG_DEST,
   hasLogoSources,
 
   // Writeback (comment-preserving edits + canonical top-level key order)
@@ -222,6 +223,9 @@ module.exports = {
   WINDOWS_CLOUD_PROVIDERS,
   windowsSigningStrategy,
   windowsCloudProviderKeys,
+  snapName,
+  snapNameError,
+  formatKeysSet,
   desktopProductName,
   sanitizeProductName,
   desktopArtifactName,
@@ -238,6 +242,17 @@ module.exports = {
   PAYMENT_PROVIDERS,
   paymentProvider,
   SUBSCRIPTION_CADENCES,
+
+  // One row per email-marketing provider: callers reach a provider through
+  // the role it serves (campaigns, newsletter)
+  EMAIL_PROVIDERS,
+  emailProvider,
+  emailProviderForRole,
+
+  // One row per analytics provider: every analytics reader derives from it and
+  // the browser bake carries it as analytics.capabilities
+  ANALYTICS_PROVIDERS,
+  analyticsProvider,
 
   // demo-* project ids are emulator-only (Firebase's convention) — cloud
   // surfaces short-circuit on this instead of 403ing at Google
@@ -351,6 +366,10 @@ module.exports = {
   targetUrl,
   targetPortOffset,
   brandHost,
+
+  // One row per target type: every per-type rule, every reader derives from it
+  TARGET_TYPE_ROWS,
+  targetType,
 
   // Schema (pure data)
   TARGETS,

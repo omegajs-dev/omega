@@ -1,8 +1,8 @@
-const { FieldValue } = require('firebase-admin/firestore');
-const { buildContext, connectionRecords, resolveConnection, returnUrlError } = require('./_context.js');
-const { disabledProviderError } = require('./_providers.js');
-const { generateCsrfToken, generatePkcePair, encryptState } = require('./_state.js');
-const { buildGrantContext, runStep } = require('./_grant.js');
+import { FieldValue } from 'firebase-admin/firestore';
+import { buildContext, connectionRecords, resolveConnection, returnUrlError } from './_context.js';
+import { disabledProviderError } from './_providers.js';
+import { generateCsrfToken, generatePkcePair, encryptState } from './_state.js';
+import { buildGrantContext, runStep } from './_grant.js';
 
 /**
  * GET /user/connections - Read operations
@@ -11,7 +11,7 @@ const { buildGrantContext, runStep } = require('./_grant.js');
  *   - authorize (default): Get authorization URL
  *   - status: Check connection status (one account, or every one of the provider)
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   // `status` takes an admin's `uid` — it checks the connection AT THE PROVIDER
   // (and may delete a dead one), which a trusted server may do on a user's
   // behalf. `authorize` does not: the URL it answers is opened by the

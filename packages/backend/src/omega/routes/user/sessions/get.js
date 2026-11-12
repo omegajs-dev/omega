@@ -2,7 +2,7 @@
  * GET /user/sessions - Get active sessions
  * Returns all active sessions for a user
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

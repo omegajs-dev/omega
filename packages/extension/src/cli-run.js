@@ -5,7 +5,7 @@
 // The value-LESS flags, the only list a CLI owes the parse: every other flag
 // takes the next token as its value (`--filter auth` keeps `auth`). Mirrors the
 // same fix in @omega.js/backend's CLI.
-const BOOLEAN_FLAGS = ['extended', 'direct', 'dry-run', 'secrets', 'major', 'force-fresh'];
+const BOOLEAN_FLAGS = ['extended', 'direct', 'dry-run', 'secrets', 'major', 'force-fresh', 'cached-only'];
 
 async function run() {
   // Local-dist freshness guard: a stale locally-linked dist rebuilds and the

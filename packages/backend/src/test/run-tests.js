@@ -9,7 +9,7 @@
 
 const path = require('path');
 const { createRunner } = require('@omega.js/devkit/test/runner');
-const { noMatchExitCode, FRAMEWORK_IDS } = require('@omega.js/devkit/test/scope');
+const { noMatchExitCode, frameworkIds } = require('@omega.js/devkit/test/scope');
 const { exitFlushed, guardEarlyExit } = require('@omega.js/devkit/test/exit');
 const { declaredLanes } = require('../utils/test-lanes.js');
 const { createEmulatorDriver } = require('./emulator-driver.js');
@@ -80,7 +80,7 @@ async function main() {
     projectRoot,
     roots: testRoots(testConfig.projectDir).map(({ dir, label }) => ({ source: label, dir })),
     packageName: '@omega.js/backend',
-    frameworkAliases: FRAMEWORK_IDS['@omega.js/backend'],
+    frameworkAliases: frameworkIds('@omega.js/backend'),
     lanes: declaredLanes(),
     extendedModeLines: EXTENDED_MODE_LINES,
     drivers: { emulator: driver },

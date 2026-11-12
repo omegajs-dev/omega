@@ -1,4 +1,4 @@
-const powertools = require('node-powertools');
+import powertools from 'node-powertools';
 
 /**
  * Expire PayPal pending cancellations
@@ -22,9 +22,9 @@ const powertools = require('node-powertools');
  * Anything stamped after this run's read time is the newer truth, and the cron stands
  * down rather than overwriting it ([#221]).
  */
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   const admin = omega.firebase.admin;
-  const transitions = require('../../firestore/payments-webhooks/transitions/index.js');
+  const { default: transitions } = await import('../../firestore/payments-webhooks/transitions/index.js');
 
   const now = new Date();
   const nowStr = powertools.timestamp(now, { output: 'string' });

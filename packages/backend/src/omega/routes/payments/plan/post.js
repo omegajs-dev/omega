@@ -1,5 +1,5 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
 
 /**
  * POST /payments/plan
@@ -21,7 +21,7 @@ const loadProvider = require('../../../libraries/load-provider.js');
  * carries the trial over — same original end date, new plan. The route writes no
  * state, so each provider's switchPlan() is what preserves it through the swap.
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   // Require authentication
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -114,7 +114,7 @@ module.exports = async ({ ctx, omega, user, data }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });
   }

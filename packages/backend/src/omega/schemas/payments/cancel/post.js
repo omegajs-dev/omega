@@ -2,7 +2,7 @@
  * Schema: POST /payments/cancel
  * Validates subscription cancellation parameters
  */
-module.exports = () => ({
+export default() => ({
   reason: { type: 'string', default: null },
   feedback: { type: 'string', default: null },
   confirmed: { type: 'boolean', required: true },

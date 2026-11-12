@@ -78,8 +78,21 @@ function dispatch(omega, req, res) {
   if (mcpRoutePath) {
     return pipeline.cors(req, res, async () => {
       const { handleMcpRoute } = require('../mcp/handler.js');
+      const { sendJson } = require('../mcp/utils.js');
 
-      await handleMcpRoute(req, res, { omega, routePath: mcpRoutePath });
+      // cors() drops what this callback returns, so a throw left here is never answered
+      try {
+        await handleMcpRoute(req, res, { omega, routePath: mcpRoutePath });
+      } catch (error) {
+        console.error('[@omega.js/backend MCP] Request failed:', error);
+
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+
+        sendJson(res, 500, { jsonrpc: '2.0', error: { code: -32603, message: error.message } });
+      }
     });
   }
 

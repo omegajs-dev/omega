@@ -5,5 +5,12 @@
       ".",
       "packages/backend"
     ]
+  },
+  "hooks": {
+    "ciSetup": [
+      { "command": "echo \"FUNCTIONS_DISCOVERY_TIMEOUT=120\" >> \"$GITHUB_ENV\"" },
+      { "command": "npm install -g firebase-tools@15.22.4" },
+      { "command": "if [ -z \"${JAVA_HOME_21_X64:-}\" ]; then echo 'JAVA_HOME_21_X64 is empty: this runner image ships no Java 21' >&2; exit 1; fi && echo \"JAVA_HOME=$JAVA_HOME_21_X64\" >> \"$GITHUB_ENV\" && echo \"$JAVA_HOME_21_X64/bin\" >> \"$GITHUB_PATH\"" }
+    ]
   }
 }

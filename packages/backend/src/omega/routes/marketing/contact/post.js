@@ -2,12 +2,14 @@
  * POST /marketing/contact - Add marketing contact
  * Public endpoint to subscribe to newsletter, with admin options
  */
-const recaptcha = require('../../../libraries/recaptcha.js');
-const { validate: validateEmail, ALL_CHECKS } = require('../../../libraries/email/validation.js');
-const { inferContact } = require('../../../libraries/infer-contact.js');
-const { MARKETING_RATE_LIMIT } = require('../../../libraries/rate-limits.js');
+import recaptcha from '../../../libraries/recaptcha.js';
+import { validate as validateEmail, ALL_CHECKS } from '../../../libraries/email/validation.js';
+import { inferContact } from '../../../libraries/infer-contact.js';
+import rateLimits from '../../../libraries/rate-limits.js';
 
-module.exports = async ({ ctx, data, analytics }) => {
+const { MARKETING_RATE_LIMIT } = rateLimits;
+
+export default async ({ ctx, data, analytics }) => {
 
   const isAdmin = ctx.user.roles?.admin;
 

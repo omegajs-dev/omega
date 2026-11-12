@@ -91,7 +91,7 @@ const NOT_A_SETUP_GATE = {
   // One of THREE optional Mr. Logo tiers, and only for a brand with no
   // committed brandmark — the ordinary case is committed art, so an ask would
   // nag every fresh brand, and the only opt-out coarse enough to land
-  // (`assets.enabled: false`) would kill icons and favicons with it.
+  // (`assets.enabled: false`) would kill the app and social icons with it.
   MRLOGO_SERVICE_ACCOUNT: 'an optional generation tier, not a gate on the assets service',
 };
 

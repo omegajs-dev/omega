@@ -9,11 +9,11 @@
  *
  * Content is markdown — converted to HTML at send time per provider.
  */
-const pushid = require('pushid');
-const { buildCampaignDoc } = require('./utils');
-const prepare = require('../../../libraries/email/prepare.js');
+import pushid from 'pushid';
+import { buildCampaignDoc } from './utils.js';
+import prepare from '../../../libraries/email/prepare.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -74,7 +74,7 @@ module.exports = async ({ ctx, omega, user, data, analytics }) => {
       const mailer = ctx.email;
       results = await mailer.sendCampaign({ ...campaignSettings, sendAt: 'now' });
     } else if (docFields.type === 'push') {
-      const notification = require('../../../libraries/notification.js');
+      const { default: notification } = await import('../../../libraries/notification.js');
       const pushFilters = campaignSettings.test
         ? { owner: campaignSettings._testUid || null, ...campaignSettings.filters }
         : (campaignSettings.filters || {});

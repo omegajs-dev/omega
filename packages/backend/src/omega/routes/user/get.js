@@ -2,7 +2,7 @@
  * GET /user - Resolve user account info
  * Returns the full resolved user object for authenticated users
  */
-module.exports = async ({ ctx, user }) => {
+export default async ({ ctx, user }) => {
 
   // Require authentication
   if (!user.authenticated) {

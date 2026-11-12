@@ -18,9 +18,9 @@ const jetpack = require('fs-jetpack');
 const { input, checkbox, confirm } = require('@omega.js/devkit/prompt');
 const { readOrigin } = require('@omega.js/devkit/git-remote');
 const { missingMachineTools, machineToolLine } = require('@omega.js/devkit/machine-tools');
-const { TARGETS, targetEntries, resolveCompany, deriveBundleIdPrefix, sourceRepo, repoDrift, getAtPath, defaultAddressReason } = require('@omega.js/config');
+const { TARGETS, TARGET_TYPE_ROWS, targetEntries, resolveCompany, deriveBundleIdPrefix, sourceRepo, repoDrift, getAtPath, defaultAddressReason } = require('@omega.js/config');
 
-const { TARGET_FRAMEWORKS, DEFAULTS } = require('./config.js');
+const { DEFAULTS } = require('./config.js');
 const { resolveBrandRoot, loadBrand } = require('./lib/brand.js');
 const { askCompanyId, validateCompanyId } = require('./lib/company-question.js');
 const { buildScaffoldPlan, applyScaffoldPlan, printPlanResults, targetSeeds } = require('./lib/scaffold.js');
@@ -28,7 +28,7 @@ const { isTemplateCopy } = require('./lib/template-marker.js');
 const { askOwner } = require('./lib/github-owners.js');
 const { writeBrandConfig } = require('./lib/config-write.js');
 const { npmInstall } = require('./lib/npm-install.js');
-const { DEFAULT_TARGETS, NO_TARGETS, NO_TARGETS_LINE } = require('./lib/default-targets.js');
+const { ONBOARD_TARGETS, NO_TARGETS, NO_TARGETS_LINE } = require('./lib/default-targets.js');
 const { canPrompt } = require('./lib/run-gates.js');
 const { convertLegacyOAuthSecret } = require('./lib/legacy-oauth.js');
 const { machinePluginState, ensureMachinePlugin } = require('./lib/claude-machine.js');
@@ -147,10 +147,10 @@ function parseTargetsFlag(value) {
 function pickTargets(checked) {
   return checkbox({
     message: 'Targets (key presence in omega.json5 = enabled):',
-    choices: TARGETS.map((target) => ({
-      name: `${target}: targets/${target}${TARGET_FRAMEWORKS[target] ? ` (${TARGET_FRAMEWORKS[target]})` : ' (reserved: MAM overhaul pending)'}`,
-      value: target,
-      checked: checked.includes(target),
+    choices: TARGET_TYPE_ROWS.map((row) => ({
+      name: `${row.id}: targets/${row.id} (${row.reserved ? 'reserved: MAM overhaul pending' : row.framework})`,
+      value: row.id,
+      checked: checked.includes(row.id),
     })),
   });
 }
@@ -344,7 +344,7 @@ async function collectAnswers(options, interactive, brandRoot, origin) {
   // targets: the flag, else the checkbox in a TTY, else the default
   let targetTypes = options.targets != null ? parseTargetsFlag(options.targets) : null;
   if (!targetTypes) {
-    targetTypes = interactive ? await pickTargets(DEFAULT_TARGETS) : DEFAULT_TARGETS;
+    targetTypes = interactive ? await pickTargets(ONBOARD_TARGETS) : ONBOARD_TARGETS;
   }
   warnMissingTools(targetEntriesFromTypes(targetTypes), options.execFn);
 

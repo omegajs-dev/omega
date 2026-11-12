@@ -2,7 +2,7 @@
  * Schema for PUT /verts
  * Only provided fields update — everything except id defaults to undefined.
  */
-module.exports = () => ({
+export default() => ({
   id: { type: 'string', required: true },
   enabled: { type: 'boolean' },
   title: { type: 'string' },

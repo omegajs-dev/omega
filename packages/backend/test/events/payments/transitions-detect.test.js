@@ -21,6 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const transitions = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/index.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
 const stripeProvider = require('../../../dist/omega/routes/payments/webhook/providers/stripe.js');
 const paypalProvider = require('../../../dist/omega/routes/payments/webhook/providers/paypal.js');
 const chargebeeProvider = require('../../../dist/omega/routes/payments/webhook/providers/chargebee.js');
@@ -417,7 +418,7 @@ module.exports = defineCases({
           const handlerPath = path.join(root, category, `${name}.js`);
 
           expect(fs.existsSync(handlerPath), `Transition ${category}/${name} should have a handler file`).toBeTruthy();
-          expect(typeof require(handlerPath), `Transition ${category}/${name} handler should export a function`).toBe('function');
+          expect(typeof loadHandler(handlerPath), `Transition ${category}/${name} handler should export a function`).toBe('function');
         }
       },
     },

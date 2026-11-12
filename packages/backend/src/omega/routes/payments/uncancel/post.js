@@ -1,5 +1,5 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
 
 /**
  * POST /payments/uncancel
@@ -16,7 +16,7 @@ const loadProvider = require('../../../libraries/load-provider.js');
  * refuses before dispatch rather than letting the caller discover it as a provider
  * error ([#212](https://github.com/Omega-JS-Stack/omega/issues/212)).
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   // Require authentication
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -56,7 +56,7 @@ module.exports = async ({ ctx, user, data }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });
   }

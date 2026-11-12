@@ -18,6 +18,7 @@ const { OPERATIONS, DEFAULTS } = require('../src/config.js');
 const { fieldsFor, segmentsFor } = require('../src/lib/backend-marketing.js');
 const { openTtyPrompt } = require('./lib/interactive.js');
 const service = require('../src/services/newsletter/index.js');
+const { emailProviderForRole } = require('@omega.js/config');
 
 // Tests must never see real credentials from the shell environment
 delete process.env.BEEHIIV_API_KEY;
@@ -176,15 +177,6 @@ module.exports = defineCases({
     // ─── Setup / skip semantics ──────────────────────────────────────────────────
 
     {
-      name: 'newsletter: skips without BEEHIIV_API_KEY in .env',
-      run: async (ctx) => {
-        const result = await runService(brandConfig()); // no injected api → the creds check applies
-        ctx.expect(result.status).toBe('skipped');
-        ctx.expect(result.reason).toMatch(/BEEHIIV_API_KEY/);
-      },
-    },
-
-    {
       name: 'newsletter: marketing.newsletter.enabled = false skips the service',
       run: async (ctx) => {
         const result = await runService(brandConfig({ newsletter: { enabled: false } }), { beehiiv: fakeBeehiiv() });
@@ -208,6 +200,23 @@ module.exports = defineCases({
         const result = await runService(brandConfig({ newsletter: { providers: {} } }), { beehiiv: fakeBeehiiv() });
         ctx.expect(result.status).toBe('skipped');
         ctx.expect(result.reason).toMatch(/no marketing\.newsletter\.providers entry/);
+      },
+    },
+
+    {
+      name: 'newsletter: the service answers to the provider row of the newsletter role',
+      run: async (ctx) => {
+        const row = emailProviderForRole('newsletter');
+        const otherRole = emailProviderForRole('campaigns');
+
+        const unkeyed = await runService(brandConfig()); // no injected api, so the credential check applies
+        ctx.expect(unkeyed.status).toBe('skipped');
+        ctx.expect(unkeyed.reason, 'the missing credential is the row\'s env key').toContain(row.envKey);
+
+        // The campaigns role's provider chosen under newsletter is not this service's
+        const misrouted = await runService(brandConfig({ newsletter: { providers: { [otherRole.id]: {} } } }), { beehiiv: fakeBeehiiv() });
+        ctx.expect(misrouted.status).toBe('skipped');
+        ctx.expect(misrouted.reason).toContain(`marketing.newsletter.providers.${otherRole.id}`);
       },
     },
 

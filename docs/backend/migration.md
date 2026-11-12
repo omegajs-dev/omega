@@ -73,18 +73,18 @@ The consumer entry, the handler arguments and every other runtime shape a ported
 **Route:** constructor pattern → one-object export ([routes.md](routes.md)):
 
 - `routes/example/index.js` → `routes/example/post.js` (or the appropriate method file)
-- Remove the constructor; export `module.exports = async ({ ctx, omega, user, data, usage, analytics }) => {}`
+- Remove the constructor; the file becomes an ES module: `export default async ({ ctx, omega, user, data, usage, analytics }) => {}`, its requires become `import`s ([routes.md](routes.md#new-route-consumer-project))
 
 **Schema:** wrapped tiers → a function returning a flat declaration ([schemas.md](schemas.md)):
 
 - `schemas/example/index.js` → `schemas/example/post.js`
 - Remove the `['defaults']:` wrapper and flatten the structure: plan adjustments move INSIDE the function, splitting on `user.plan`
-- Export a function of the request, `({ user, body, query, path, method, headers, geolocation })`, returning the declaration
+- `export default` a function of the request, `({ user, body, query, path, method, headers, geolocation })`, returning the declaration
 - Rename every field's `types: ['string']` to `type: 'string'`, and remove `value: undefined` noise
 
 | Aspect | Old Format | New Format |
 |--------|-----------|------------|
-| Route export | `module.exports = Route` (constructor) | `module.exports = async ({ ctx, omega, user, data }) => {}` |
+| Route export | `module.exports = Route` (constructor) | `export default async ({ ctx, omega, user, data }) => {}` |
 | Self reference | `const self = this;` | Not needed |
 | File naming | `index.js` | `get.js`, `post.js`, `put.js`, `delete.js` |
 | Schema wrapper | `['defaults']: { ... }` | A function returning the flat declaration |

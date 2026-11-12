@@ -2,9 +2,9 @@
  * POST /user/data-request - Create a new GDPR data request
  * Creates a pending data request record for the authenticated user.
  */
-const uuidv4 = require('uuid').v4;
+import { v4 as uuidv4 } from 'uuid';
 
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

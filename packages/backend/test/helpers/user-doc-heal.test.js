@@ -19,8 +19,9 @@
  * Run: npx omega test framework:helpers/user-doc-heal
  */
 
-const onCreate = require('../../dist/omega/events/auth/on-create.js');
-const beforeSignIn = require('../../dist/omega/events/auth/before-signin.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const onCreate = loadHandler(require.resolve('../../dist/omega/events/auth/on-create.js'));
+const beforeSignIn = loadHandler(require.resolve('../../dist/omega/events/auth/before-signin.js'));
 const { buildUserDoc, healUserDoc, HEAL_TAG } = require('../../dist/omega/libraries/user-doc.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const Context = require('../../dist/omega/context.js');

@@ -39,6 +39,9 @@ const { getTests } = require('../../dist/cli/commands/setup-tests/index.js');
 const { CUSTOM_OWNED_SCRIPTS: CUSTOM_OWNED } = require('../../dist/cli/utils/project-type.js');
 const PROJECT_SCRIPTS = projectScripts(frameworkPackage);
 
+// The backend's door: a handler-body call, since a top-level import cannot use it
+const DOOR = "omega.require('fs-jetpack') inside the handler body";
+
 /** The target manifest, parsed. */
 function manifestOf(dir) {
   return JSON.parse(jetpack.read(path.join(dir, 'package.json')));
@@ -477,7 +480,7 @@ module.exports = defineCases({
 
         try {
           const lines = await runVerb(dir);
-          const nudges = lines.filter((line) => line.includes("omega.require('fs-jetpack')"));
+          const nudges = lines.filter((line) => line.includes(DOOR));
 
           expect(nudges.length, `one warning line for the one package: ${lines.join(' | ')}`).toBe(1);
           expect(nudges[0], 'and it names the other fix too').toMatch(/npm install fs-jetpack/);
@@ -547,7 +550,7 @@ module.exports = defineCases({
             await command.runEnsureTarget();
             await command.ensureStaged({ environment: 'testing' });
           });
-          const nudges = [...lines, ...`${stdout}${stderr}`.split('\n')].filter((line) => line.includes("omega.require('fs-jetpack')"));
+          const nudges = [...lines, ...`${stdout}${stderr}`.split('\n')].filter((line) => line.includes(DOOR));
 
           expect(nudges.length, `the nudge prints once per verb: ${nudges.join(' | ')}`).toBe(1);
         } finally {

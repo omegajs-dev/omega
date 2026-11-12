@@ -1,24 +1,14 @@
 /**
- * Responsive image matrix. After the static
- * phase ships images verbatim, this build-only pass rewrites every
- * jpg/jpeg/png under dist/assets/images into the matrix: widths
- * 320/640/1024 + the original size, each in the source format AND webp,
- * quality 80 (progressive mozjpeg for jpeg, palette quantization for png),
- * metadata stripped, upscaling allowed — so every variant name ALWAYS
- * exists and `@srcset` markup never 404s. Other formats (svg/gif/webp/ico)
- * stay verbatim; the minted favicon dir is exempt (exact-name mint
- * contract, fixed-purpose sizes). A file sharp can't decode warns and stays
- * verbatim — one bad image never fails the build.
- *
- * Cache: content-addressed entries under <brand>/.omega/cache/imagemin —
- * machine-owned and never committed (the outputs are reproducible
- * binaries); the scaffolded build workflow restores it via actions/cache
- * (the `cache-uj-imagemin` branch successor). A source-byte or settings
- * change re-processes exactly that image; stale entries prune every run.
- *
- * Dev never processes: devImageFallback() middleware rewrites any missing
- * -NNNpx/.webp variant URL to the original file, so variant references
- * resolve in dev too (the legacy serve.js fallback contract).
+ * Responsive image matrix: a build-only pass that rewrites every jpg/jpeg/png
+ * under dist/assets/images into widths 320/640/1024 + the original, each in
+ * the source format AND webp at quality 80, so every variant name exists and
+ * `@srcset` markup never 404s. Other formats stay verbatim, the favicon and
+ * core dirs are exempt, and a file sharp can't decode warns and stays verbatim.
+ * Cache: content-addressed entries under <brand>/.omega/cache/imagemin, never
+ * committed (the build workflow restores it via actions/cache); a source-byte
+ * or settings change re-processes that image, and stale entries prune.
+ * Dev never processes: devImageFallback() rewrites a missing -NNNpx/.webp
+ * variant URL to the original file.
  */
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -31,11 +21,10 @@ const QUALITY = 80;
 const RESPONSIVE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
 // Bump to invalidate every cache entry when encoder settings change
 const FORMAT_VERSION = 1;
-// Top-level dist/assets/images subtrees that stay verbatim: the minted
-// favicon set is an exact-name contract (head.html links each file) with
-// fixed-purpose sizes — variants would be pure dead weight, and the
-// framework's own core images are the same deal (fixed URLs, already
-// avatar-sized)
+// Top-level dist/assets/images subtrees that stay verbatim: the favicon
+// set is an exact-name set the head links, at fixed-purpose sizes, and the
+// framework's core images have fixed URLs and are already avatar-sized;
+// variants of either would be dead weight.
 const EXEMPT_DIRS = new Set(['favicon', 'core']);
 
 /**

@@ -540,6 +540,49 @@ module.exports = defineCases({
     },
 
     {
+      name: 'Analytics rides the shared catalog (#328 stage E) > the Measurement Protocol answers false for a provider whose row has none',
+      run: async (ctx) => {
+        await beforeEachHook();
+        const Analytics = (await import(SOURCE_PATH)).default;
+        const facade = require('@omega.js/analytics');
+        const { clientConfig } = require('@omega.js/config');
+
+        global.window = global.window || { location: { pathname: '/t', href: 'http://t/t' } };
+        global.document = global.document || { title: 't' };
+
+        const bodies = [];
+        const realFetch = global.fetch;
+        global.fetch = (url, options) => {
+          bodies.push(JSON.parse(options.body));
+          return Promise.resolve({ ok: true });
+        };
+
+        try {
+          // The host carries the build's bake as a real one does; the module reads the
+          // rows themselves from its own import of @omega.js/config/analytics-providers
+          const config = clientConfig({ analytics: { providers: { google: { id: 'G-TESTONLY' } } } });
+          const extension = new Analytics({
+            config: config,
+            utilities: { getRuntime: () => 'browser-extension' },
+            isDevelopment: () => false,
+          });
+          extension.init({ id: 'G-TESTONLY', secret: 'test-secret', projectId: 'proj-x' });
+          await new Promise((resolve) => setImmediate(resolve));
+          bodies.length = 0;
+
+          // sign_up maps every provider, so each descriptor reaches the client's transport
+          const { results } = facade.event('sign_up', { method: 'email' });
+          const outcomes = Object.fromEntries(results.map((result) => [result.descriptor.provider, result.outcome]));
+
+          ctx.expect(outcomes, 'only the provider whose row has a Measurement Protocol is delivered').toEqual({ google: 'sent', meta: 'blocked (no global)', tiktok: 'blocked (no global)' });
+          ctx.expect(bodies.map((body) => body.events[0].name), 'one post, under the GA4 name').toEqual(['sign_up']);
+        } finally {
+          global.fetch = realFetch;
+        }
+      },
+    },
+
+    {
       name: 'Analytics rides the shared catalog (#328 stage E) > login/logout fire off auth change on the runtimes that own them',
       run: async (ctx) => {
         await beforeEachHook();
@@ -671,11 +714,14 @@ module.exports = defineCases({
           ctx.expect(launch.events[0].name, 'the reopen fires its launch page_view').toBe('page_view');
           ctx.expect(launch.events[0].params.session_id, 'and it rides the SAME session id').toBe(firstId);
 
-          // 31 minutes idle: GA4's window has closed, so the next open is a new visit
-          store._ga_session_id = { ...store._ga_session_id, lastActive: Date.now() - (31 * 60 * 1000) };
+          // 31 minutes idle: GA4's window has closed, so the next open is a new visit.
+          // The idle session is as old as its silence: an id made this same
+          // millisecond would equal the rotated one and hide the rotation.
+          const idleSince = Date.now() - (31 * 60 * 1000);
+          store._ga_session_id = { id: `${idleSince}`, lastActive: idleSince };
 
           const third = await openPopup();
-          ctx.expect(third._getSessionId(), 'a session idle past 30 minutes rotates').not.toBe(firstId);
+          ctx.expect(third._getSessionId(), 'a session idle past 30 minutes rotates').not.toBe(`${idleSince}`);
         } finally {
           global.fetch = realFetch;
           global.sessionStorage.clear();

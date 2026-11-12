@@ -18,7 +18,8 @@
  */
 const { buildUser, callHandler } = require('../../routes/payments/_route-harness.js');
 
-const handler = require('../../../dist/omega/routes/payments/plan/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/plan/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 // The suite's own seeded persona ([#406](https://github.com/Omega-JS-Stack/omega/issues/406)):

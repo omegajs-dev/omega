@@ -28,8 +28,9 @@
 const { callHandler } = require('./_route-harness.js');
 const { TEST_ACCOUNTS } = require('../../../dist/test/test-accounts.js');
 
-const webhookHandler = require('../../../dist/omega/routes/payments/webhook/post.js');
-const disputeHandler = require('../../../dist/omega/routes/payments/dispute-alert/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const webhookHandler = loadHandler(require.resolve('../../../dist/omega/routes/payments/webhook/post.js'));
+const disputeHandler = loadHandler(require.resolve('../../../dist/omega/routes/payments/dispute-alert/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 const VALID_KEY = () => process.env.OMEGA_WEBHOOK_KEY;

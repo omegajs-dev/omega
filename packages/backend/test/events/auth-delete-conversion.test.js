@@ -21,7 +21,8 @@
  *
  * Run: npx omega test framework:events/auth-delete-conversion
  */
-const onDelete = require('../../dist/omega/events/auth/on-delete.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const onDelete = loadHandler(require.resolve('../../dist/omega/events/auth/on-delete.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const Context = require('../../dist/omega/context.js');
 
@@ -104,7 +105,7 @@ module.exports = defineCases({
           }
 
           // An account with no snapshot at all is still counted.
-          expect(delivery[0].includes('ga4 skipped (consent'), `an absent snapshot grants: ${delivery[0]}`).toBe(false);
+          expect(delivery[0].includes('google skipped (consent'), `an absent snapshot grants: ${delivery[0]}`).toBe(false);
           expect(await firestore.exists(`users/${uid}`), 'the handler still deletes the doc').toBe(false);
         } finally {
           await firestore.delete(`users/${uid}`);
@@ -128,7 +129,7 @@ module.exports = defineCases({
           });
 
           expect(delivery.length, delivery.join(' | ')).toBe(1);
-          expect(delivery[0].includes('ga4 skipped (consent: analytics)'), `the snapshot the doc carried still gates the fire after the doc is gone: ${delivery[0]}`).toBe(true);
+          expect(delivery[0].includes('google skipped (consent: analytics)'), `the snapshot the doc carried still gates the fire after the doc is gone: ${delivery[0]}`).toBe(true);
         } finally {
           await firestore.delete(`users/${uid}`);
         }

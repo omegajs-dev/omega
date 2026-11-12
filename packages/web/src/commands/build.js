@@ -5,8 +5,9 @@
  * When translation.languages is set, the built site is then translated into
  * /{lang}/ copies — cache-first (committed per-string cache), and cold
  * strings translate LIVE by default so a build always ships the complete
- * translated site (Ian's #24 final call). `omega build --cached-only` ships
- * cold pages untranslated instead (with a warning list) for LLM-free builds.
+ * translated site. `omega build --cached-only`, and
+ * every build on a CI runner, ships cold pages untranslated instead (with a
+ * warning list) for LLM-free builds.
  */
 const path = require('node:path');
 const jetpack = require('fs-jetpack');
@@ -18,9 +19,10 @@ const { setEnvironment, ENVIRONMENT_VAR } = require('@omega.js/config/environmen
 const { ensureTarget } = require('./lib/ensure-target.js');
 const { buildSite } = require('../build.js');
 const { consumerPaths, loadSiteData } = require('../consumer.js');
-const { resolveStaticDirs, assertMintedAssets } = require('../static-assets.js');
+const { resolveStaticDirs } = require('../static-assets.js');
 const { resolveClientEntry } = require('../paths.js');
-const { translateSite } = require('../translate/index.js');
+const { isCachedOnly } = require('@omega.js/devkit/translate');
+const { translateSite, warnSkippedCold } = require('../translate/index.js');
 const { fetchFirebaseAuthHelpers } = require('../firebase-auth-helpers.js');
 const { visibleProducts } = require('../pricing.js');
 
@@ -110,10 +112,6 @@ async function build(options) {
   const siteData = loadSiteData(paths.root, { environment: 'production' });
   const brandRoot = findBrandRoot(paths.root);
 
-  // A runner gets the minted set only through the deploy snapshot, so a CI
-  // build without it would ship a site with no logo: stop before building.
-  assertMintedAssets({ brandRoot, env: process.env });
-
   const emptyCatalog = catalogWarning(siteData.payment);
   if (emptyCatalog) {
     logger.warn(emptyCatalog);
@@ -143,9 +141,11 @@ async function build(options) {
     version: projectPackage?.version,
     packageName: projectPackage?.name,
     manifestPath: paths.manifest,
-    staticDirs: resolveStaticDirs({
+    staticDirs: await resolveStaticDirs({
       brandRoot,
       assetsDir: paths.assets,
+      name: siteData.brand.name,
+      log: (message) => logger.log(message),
     }),
     // Responsive image matrix — on unless the
     // brand opts out via `web.imagemin.enabled: false`. The cache is
@@ -193,14 +193,13 @@ async function build(options) {
     cacheDir: path.join(brandRoot || paths.root, '.omega', 'cache', 'firebase-auth'),
   });
 
-  // Post-build translation (site.* IS the resolved config shape).
-  // Default: translate EVERYTHING — warm strings from the committed cache
-  // (instant), cold strings live through the provider, so a build always
-  // ships the complete translated site. --cached-only ships cold pages
-  // untranslated and unadvertised instead (warning lists them) for
-  // provider-free builds, so no language link ever dangles (#953).
-  if (options.cachedOnly) {
-    logger.log('--cached-only: cold pages will ship untranslated, not be translated');
+  // Post-build translation: warm strings from the committed cache, cold ones
+  // live through the provider. --cached-only, or a CI runner, ships cold pages
+  // untranslated and unadvertised instead (the warning lists them), at their
+  // language path so no language link ever dangles.
+  const cachedOnly = isCachedOnly(options.cachedOnly, process.env);
+  if (cachedOnly) {
+    logger.log(`${options.cachedOnly ? '--cached-only' : 'CI runner'}: cold pages will ship untranslated, not be translated`);
   }
 
   const translation = await translateSite({
@@ -209,19 +208,13 @@ async function build(options) {
     config: siteData,
     logger,
     only: process.env.OMEGA_TRANSLATE_ONLY,
-    cachedOnly: Boolean(options.cachedOnly),
+    cachedOnly,
   });
 
   if (!translation.skipped) {
     logger.log(`Translated ${translation.pages} pages → ${translation.languages.join(', ')} (${translation.newStrings} new, ${translation.cachedStrings} cached strings)`);
     translation.failures.forEach((failure) => logger.warn(`translation: ${failure}; the copy shipped untranslated`));
-
-    if (translation.skippedCold.length) {
-      const preview = translation.skippedCold.slice(0, 10).join(', ');
-      const more = translation.skippedCold.length > 10 ? ` (+${translation.skippedCold.length - 10} more)` : '';
-      logger.warn(`translation: ${translation.skippedCold.length} page-language pair(s) shipped untranslated (cold cache): ${preview}${more}`);
-      logger.warn('translation: run `omega translate` (or build without --cached-only) to fill them');
-    }
+    warnSkippedCold(translation, logger);
   }
 
   return result;

@@ -159,6 +159,9 @@ The workflow's `env:` carries `GOOGLE_ANALYTICS_SECRET` beside the seven store c
 
 `npm run build` invokes the `translate` gulp task: reads `config/messages.json`, sends only the strings missing from the committed `translations/<lang>/` cache to the provider, and composes `dist/_locales/<lang>/messages.json` per language in `translation.languages` (omega.json5; unset = off). Existing translations are preserved. See [docs/extension/translations.md](translations.md).
 
+- **Cache-only builds**: on a CI runner, or with `omega build --cached-only`, the task reads the committed cache only and never calls a provider, so no AI key is needed. The build verb hands the flag to gulp, and a non-interactive manage run passes it to every extension build.
+- **Cold strings**: a message with no saved translation ships in English, a cold store description ships no translated listing, and the build prints one warning per language naming the namespace (`messages` or `description`) and the keys, then exits 0. Translate them with a plain `omega build` on your own machine and commit `translations/`.
+
 The English source is seeded from the brand: the scaffold renders `appName` / `appNameShort` / `btnTooltip` from `brand.name`, and `appDescription` from `brand.description` when it fits the 200-character store cap — otherwise "The official &lt;brand&gt; browser extension." ([#573](https://github.com/Omega-JS-Stack/omega/issues/573)). All four render through ONE escape — each lands inside a single-quoted JSON5 value, and the brand-name paths used to render raw, so a name carrying an apostrophe seeded an unparseable file ([#592](https://github.com/Omega-JS-Stack/omega/issues/592)). `config/messages.json` is copy-once, so the seed is a starting point, never a rewrite.
 
 ### Build hooks
@@ -168,7 +171,10 @@ Three lifecycle hooks let consumers run custom logic while the extension is pack
 - `hooks/build/post.js` — after packaging (and after store publishing if `OMEGA_IS_PUBLISH=true`)
 - `hooks/deploy/pre.js`: inside `omega deploy`, after the local scaffold and before the network precheck, on both lanes (the dispatch and `--direct`); a dry run skips it, because a hook may act on the world and a dry run promises to send nothing ([#900](https://github.com/Omega-JS-Stack/omega/issues/900): the playground's bumps its patch version and prunes its release family, since a store refuses a version it already holds). Its `mode` is always `'production'`: the verb runs outside a build, and what it is about to publish is a release
 
-The NESTED path is the one the defaults scaffold writes and the extension leg of the brand root's `npx omega migrate --execute` moves flat files to (`@omega.js/extension/migrate`, [#885](https://github.com/Omega-JS-Stack/omega/issues/885); a bare run lists the moves); the package task resolves it first and falls back to the flat pre-migration `hooks/build:pre.js` during the transition. It used to resolve ONLY the flat path, so every migrated consumer's hooks were dead and the miss printed an untagged `console.warn` ([#571](https://github.com/Omega-JS-Stack/omega/issues/571)).
+The NESTED path is the one the defaults scaffold writes and the extension leg of the brand root's `npx omega migrate --execute` moves flat files to (`@omega.js/extension/migrate`, [#885](https://github.com/Omega-JS-Stack/omega/issues/885); a bare run lists the moves), and the one path devkit's hook runner (`runConsumerHook`, shared with @omega.js/desktop) reads.
+
+- Each hook file is an ES module with one default export (`export default async (ctx) => {}`), its body using `import`, `await import()` and `import.meta.dirname`.
+- A `module.exports` hook is refused: `<file> must be an ES module with one default export (export default async (...) => {})`.
 
 All three receive the ONE hook-argument shape every OMEGA framework passes: `{ build, projectRoot, mode }`, the same `ctx` @omega.js/desktop hands its lifecycle hooks ([docs/desktop/index.md](../desktop/index.md)), and everything else comes off `build`, the plain build module (`getManifest()`, `getConfig()`, `getPackage('project')`). Async. See [docs/extension/hooks.md](hooks.md).
 
@@ -235,7 +241,7 @@ See [docs/extension/cli.md](cli.md).
 - **Consumer code can `require()` any @omega.js/extension dependency** — the bundler's framework-deps resolve hook re-resolves every name the framework DECLARES from the framework's own installation. Consumer projects do NOT need to `npm install firebase`, `@omega.js/client`, or any other @omega.js/extension dep. If a dep doesn't resolve, the fix is in @omega.js/extension's `package.json` — not the consumer's.
 - **The framework's copy wins ([#87](https://github.com/Omega-JS-Stack/omega/issues/87)).** A consumer that declares its own version of a framework dependency still bundles ONE copy — the framework's — the same guarantee @omega.js/web and @omega.js/desktop give, through the same @omega.js/devkit hook since [#738](https://github.com/Omega-JS-Stack/omega/issues/738). The DECLARED set is the list, so — unlike webpack's `resolve.modules` order, which this replaced — a package the framework merely carries TRANSITIVELY no longer wins: it resolves the way node resolves it. Same shape in [docs/desktop/index.md](../desktop/index.md); pinned by `src/test/suites/build/framework-deps.test.js` in both.
 - **@omega.js/client owns Firebase.** Consumer code NEVER imports Firebase directly (`require('firebase')` / `import('firebase/app')`). Use the context's instance: `omega.auth`, `omega.firestore`. Same rule on every OMEGA browser surface.
-- **Hooks run outside the bundle, so they get the dependency nudge.** A consumer `hooks/**/*.js` file loads under plain node, where a framework dependency the target never declared resolves only by hoisting. Every verb's scaffold scans `hooks/` and prints one warning per such require, at file:line: declare it, or load the framework's copy with `require('@omega.js/extension').require('<module>')`, the same door @omega.js/desktop's build-time entry carries. Never an error, and a version the target declares itself wins. The one rule: [docs/shared/local-dev.md](../shared/local-dev.md#using-what-the-framework-depends-on).
+- **Hooks run outside the bundle, so they get the dependency nudge.** A consumer `hooks/**/*.js` file loads under plain node, where a framework dependency the target never declared resolves only by hoisting. Every verb's scaffold scans `hooks/` and prints one warning per such `import` or `require`, at file:line: declare it, or load the framework's copy with `extension.require('<module>')` after `import extension from '@omega.js/extension'`, the same door @omega.js/desktop's build-time entry carries. Never an error, and a version the target declares itself wins. The one rule: [docs/shared/local-dev.md](../shared/local-dev.md#using-what-the-framework-depends-on).
 
 ## Development Workflow
 
@@ -253,6 +259,7 @@ All `npm install` calls in CLI commands (the peer-dependency step of every verb'
 
 - **CommonJS** (`require()`) for build-time + Node code (gulp, CLI, tests). **ES modules** (`import`/`export default omega`) for the browser-context modules (`background.js`, `popup.js`, etc.): they go through esbuild.
 - One `module.exports = ...` per file (CommonJS).
+- **Consumer hooks are ES modules** (`export default`, `import`, `import.meta.dirname`), run through devkit's `runConsumerHook`; the framework's own Node code stays CommonJS.
 - Logical operators at the **start** of continuation lines.
 - Short-circuit early returns rather than nested ifs.
 - Prefer **`fs-jetpack`** over `fs-extra`.
@@ -296,7 +303,7 @@ API references for each subsystem live in `docs/extension/`, beside this guide:
 - [docs/extension/templating.md](templating.md) — `{{ }}` token replacement, available vars, page template
 - [docs/extension/css.md](css.md) — SCSS load paths, framework + theme + project resolution
 - [docs/extension/themes.md](themes.md) — bootstrap / classy / `_template`, variable overrides, dark mode
-- [docs/shared/icons.md](icons.md) — one source icon → all generated sizes, manifest wiring
+- [docs/shared/icons.md](icons.md): one source icon (`config/icon.*`, else the brand's brandmark) → all generated sizes, manifest wiring
 - [docs/extension/defaults.md](defaults.md) — `src/defaults/` system, `FILE_MAP` rules
 - [docs/extension/hooks.md](hooks.md) — `build:pre` / `build:post` lifecycle hooks
 - [docs/extension/translations.md](translations.md) — auto-translate to the configured `translation.languages`

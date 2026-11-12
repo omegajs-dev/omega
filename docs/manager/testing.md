@@ -8,7 +8,7 @@ touches the network — every live check prints a "would" line instead.
 
 | Target | Checks |
 |---|---|
-| `web` | `package.json`, `dist/index.html`, the installed framework version vs npm latest, and a homepage fetch. Once the homepage is live, a brand with the brandmark source the mint needs (`assets/logo/brandmark.svg`) also gets `/favicon.ico` and `/assets/images/brand/brandmark.png` fetched; a miss fails naming the URL. |
+| `web` | `package.json`, `dist/index.html`, the installed framework version vs npm latest, and a homepage fetch. Once the homepage is live, a brand with a brandmark (`assets/logo/brandmark.svg`, which the web build derives these from) also gets `/favicon.ico` and `/assets/images/brand/brandmark.png` fetched; a miss fails naming the URL. |
 | `backend` | `package.json`, `firebase.json`, the staged `dist/` build output, the installed framework version vs npm latest, and API health + the deployed version (skipped for a shared Firebase project). |
 | every target | `package.json`, and the framework version when declared. |
 | repo-level (once) | A clean working tree, and the latest GitHub Actions run (only with a `repo` block naming `repo.owner`). |

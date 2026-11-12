@@ -16,9 +16,9 @@
  * (inline CSS/JS, postMessage reporting, no self-refresh — the host owns the
  * lifecycle), or 204 on no fill.
  */
-const { getInventory, selectVert, normalizeHost, normalizeOrigin, normalizeBrandId, parseTags, renderVertUnit } = require('../utils.js');
+import { getInventory, selectVert, normalizeHost, normalizeOrigin, normalizeBrandId, parseTags, renderVertUnit } from '../utils.js';
 
-module.exports = async ({ ctx, omega, data, analytics }) => {
+export default async ({ ctx, omega, data, analytics }) => {
 
   const parentHost = normalizeHost(data.parent);
   const brandId = normalizeBrandId(data.brand);

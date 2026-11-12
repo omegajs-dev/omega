@@ -45,7 +45,8 @@
  */
 const { buildUser, callHandler, withEnvironment, PRODUCTION_ENVIRONMENT } = require('./_route-harness.js');
 
-const handler = require('../../../dist/omega/routes/payments/cancel/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/cancel/post.js'));
 const isTrialing = require('../../../dist/omega/routes/payments/cancel/_is-trialing.js');
 
 const StripeLib = require('../../../dist/omega/libraries/payment/providers/stripe.js');

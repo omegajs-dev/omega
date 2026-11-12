@@ -26,7 +26,7 @@ const { targetNameFromDir } = require('@omega.js/config');
 const { ensureTarget } = require('./lib/ensure-target.js');
 const { deployPrecheck } = require('./lib/deploy-precheck.js');
 const { desktopPlatform } = require('../utils/platform.js');
-const runConsumerHook = require('../utils/run-consumer-hook.js');
+const { runConsumerHook } = require('@omega.js/devkit/run-consumer-hook');
 
 module.exports = async function (options) {
   options = options || {};

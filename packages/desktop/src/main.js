@@ -33,6 +33,10 @@ const remoteConfig   = require('./lib/remote-config.js');
 const remoteScripts  = require('./lib/remote-scripts.js');
 const analytics      = require('./lib/analytics.js');
 const restartManager = require('./lib/restart-manager/index.js');
+const { createBootGuard } = require('./lib/_boot-guard.js');
+
+// At load, so the framework hears second-instance ahead of every brand listener
+deepLink.listenFirst();
 
 /**
  * The main-process runtime. This module exports ONE instance of it; a consumer
@@ -97,6 +101,10 @@ class Omega {
     // rejection; a consumer awaiting `ready` still sees the error, because this
     // catch hangs off a separate branch of the same promise.
     this.ready.catch(() => {});
+
+    // The one boot guard: a boot that has not reached the auth step within the
+    // fixed limit writes its last step to runtime.log and exits non-zero
+    this._bootGuard = createBootGuard();
   }
 
   // Open the sign-in round trip in the user's default browser (lib/auth-flow.js).
@@ -133,6 +141,9 @@ class Omega {
   }
 
   async _boot(consumerConfig, options) {
+    this._bootGuard.start();
+    this._bootGuard.step('config');
+
     // Accept either an already-RESOLVED config object, a string path to a consumer
     // project dir, or nothing. Default resolution order (when called with no arg):
     //   1. OMEGA_BUILD_JSON.config: injected at build time by the bundle task's esbuild `define`. This is
@@ -245,6 +256,7 @@ class Omega {
     //    anything else so macOS spends as little time animating the dock entry as possible.
     //    In packaged builds the Info.plist's LSUIElement (injected by gulp/build-config when
     //    startup.mode === 'hidden') prevents the bounce entirely.
+    this._bootGuard.step('startup-early');
     this.startup._omega = this;
     this.startup._electron = electron || null;
     this.startup.applyEarly();
@@ -300,6 +312,7 @@ class Omega {
     //                                             from a clean slate; post-run state stays
     //                                             on disk for inspection until the next run.
     //                                             Set OMEGA_TEST_KEEP_USERDATA=1 to skip the wipe.)
+    this._bootGuard.step('user-data');
     if (this.isTesting()) {
       const before = app.getPath('userData');
       const after  = `${before} (Testing)`;
@@ -323,24 +336,30 @@ class Omega {
     require('./utils/user-agent.js')(this);
 
     // 2. IPC bus online first: storage and other libs register handlers on it
+    this._bootGuard.step('ipc');
     this.ipc.initialize(this);
 
     // 3. Storage (precedes sentry + auth so opt-out + persisted session are honored)
+    this._bootGuard.step('storage');
     await this.storage.initialize(this);
 
     // 3b. Theme: sets nativeTheme.themeSource from the persisted override / config
     //     default, so every renderer (and native UI) resolves the right appearance
     //     from its very first paint. Needs storage (override) + ipc (handlers) only.
+    this._bootGuard.step('theme');
     this.theme.initialize(this);
 
     // 3c. FontAwesome: serves the bundled icon SVGs to renderers over IPC
     //     (desktop:fontawesome:get). Needs ipc only.
+    this._bootGuard.step('fontawesome');
     this.fontawesome.initialize(this);
 
     // 4. Sentry (earliest catchable global handler)
+    this._bootGuard.step('sentry');
     this.sentry.initialize(this);
 
     // 5. Protocol (single-instance lock + custom URL scheme)
+    this._bootGuard.step('protocol');
     this.protocol.initialize(this);
 
     // Only the lock's holder clears runtime.log, so a duplicate never erases the running copy's lines
@@ -352,43 +371,59 @@ class Omega {
       // shared files, IPC) against a dying Electron. The duplicate must go quietly.
       // The returned promise intentionally never settles; the process exits first.
       this.logger.warn('Single-instance lock lost. Quitting this duplicate instance.');
+      this._bootGuard.stop();
       app.quit();
       return new Promise(() => {});
     }
 
-    // 6. Deep links (parse cold-start argv, install second-instance handler)
+    // 6. Deep links (parse cold-start argv, wire open-url, register the built-in
+    //    routes; the second-instance listener was prepended at module load)
+    this._bootGuard.step('deep-link');
     this.deepLink.initialize(this);
 
     // 6b. Auth flow (the getAuthUrl sign-in round trip: external browser always;
     //     dev/test return via a loopback listener since the scheme isn't OS-registered)
+    this._bootGuard.step('auth-flow');
     this.authFlow.initialize(this);
 
     // 7. App state (first-launch / crash / startup-context flags)
+    this._bootGuard.step('app-state');
     await this.appState.initialize(this);
 
     // 7b. Runtime context: session id, deviceId, OS info, async geolocation fetch.
     // Must run AFTER storage (writes deviceId + cached geolocation to storage) and
     // BEFORE analytics (which reads context.session.deviceId). Async but the geolocation
     // fetch is fire-and-forget so this returns quickly.
+    this._bootGuard.step('context');
     await this.context.initialize(this);
 
     // 7c. Usage tracking: opens / hours-total / hours-this-session. Reads/writes
     // storage.usage and registers a before-quit handler to record session duration.
+    this._bootGuard.step('usage');
     this.usage.initialize(this);
 
     // 8. Wait for app readiness before any UI
+    this._bootGuard.step('when-ready');
     await app.whenReady();
 
     // 9. Auto-updater (queues check, never blocks UI)
+    this._bootGuard.step('auto-updater');
     this.autoUpdater.initialize(this);
 
     // 10. Tray + menu + context menu
+    this._bootGuard.step('tray');
     this.tray.initialize(this);
+    this._bootGuard.step('menu');
     this.menu.initialize(this);
+    this._bootGuard.step('context-menu');
     this.contextMenu.initialize(this);
 
     // 11. Open-at-login + hide-on-startup state sync
+    this._bootGuard.step('startup');
     this.startup.initialize(this);
+
+    // The guard ends here: the auth step may wait on a macOS keychain prompt
+    this._bootGuard.stop();
 
     // 12. Auth (main-side Firebase Auth source of truth, IPC handlers for renderers)
     await this.auth.initialize(this);

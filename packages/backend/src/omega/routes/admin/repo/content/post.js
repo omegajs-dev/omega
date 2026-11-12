@@ -2,12 +2,12 @@
  * POST /admin/repo/content - Write content to GitHub repo
  * Admin/blogger endpoint to write files to GitHub
  */
-const { Octokit } = require('@octokit/rest');
-const { writeFileBothBranches } = require('../../lib/deploy-branch.js');
-const { cmsContext } = require('../../../../helpers/web-target.js');
-const env = require('../../../../libraries/env.js');
+import { Octokit } from '@octokit/rest';
+import { cmsContext } from '../../../../helpers/web-target.js';
+import env from '../../../../libraries/env.js';
+import { uploadContent } from './upload-content.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   // Require authentication
   if (!user.authenticated) {
@@ -77,50 +77,3 @@ module.exports = async ({ ctx, omega, user, data, analytics }) => {
 
   return ctx.respond(data);
 };
-
-// Helper: Upload content to GitHub
-async function uploadContent(ctx, octokit, data) {
-  const owner = data.githubUser;
-  const repo = data.githubRepo;
-  const filename = data.repoPath;
-  const content = data.content;
-
-  ctx.log('uploadContent(): filename', filename);
-
-  // Get existing file
-  const existing = await octokit.rest.repos.getContent({
-    owner: owner,
-    repo: repo,
-    path: filename,
-  }).catch(e => e);
-
-  ctx.log('uploadContent(): Existing', existing);
-
-  // Quit if error and it's DIFFERENT than 404
-  if (existing instanceof Error && existing?.status !== 404) {
-    throw existing;
-  }
-
-  // Upload content to BOTH branches (#919): the default branch is the record,
-  // and the deploy branch is what CI builds, so content that skipped it would
-  // never reach the live site on a brand running local framework packages.
-  const { result, deployBranch } = await writeFileBothBranches({
-    ctx,
-    octokit,
-    owner: owner,
-    repo: repo,
-    path: filename,
-    sha: existing?.data?.sha || undefined,
-    message: `📦 admin/repo/content ${filename}`,
-    content: content,
-  });
-
-  data.deployBranch = deployBranch;
-
-  ctx.log('uploadContent(): Result', result);
-
-  return result;
-}
-
-// Expose the write for tests
-module.exports.uploadContent = uploadContent;

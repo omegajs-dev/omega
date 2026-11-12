@@ -1,51 +1,10 @@
-// Deep Link — unified cross-platform deep-link handler.
-//
-// Cross-platform plumbing handled internally:
-//   - macOS: the OS routes `<scheme>://...` URLs via `app.on('open-url')`. Cold-start opens may queue
-//            them before whenReady; we drain them after.
-//   - Windows/Linux: deep links arrive as the LAST entry in `process.argv` on cold-start, and on
-//            warm-start via `app.on('second-instance')` (read from the `additionalData` argument,
-//            which carries the duplicate's real argv; the event's own `argv` is Chromium-processed).
-//
-// Public API on omega.deepLink:
-//
-//   omega.deepLink.on(routeOrPattern, fn)    // register a handler. Returns unsubscribe fn.
-//   omega.deepLink.off(routeOrPattern, fn)
-//   omega.deepLink.dispatch(url)             // manually fire (for testing or custom triggers)
-//   omega.deepLink.getColdStartUrl()         // the deep-link URL the app was launched with, or null
-//
-// Handler signature:
-//
-//   omega.deepLink.on('user/profile/:id', (ctx) => {
-//     ctx.url      // 'myapp://user/profile/42?ref=abc'
-//     ctx.scheme   // 'myapp'
-//     ctx.route    // 'user/profile/42'
-//     ctx.pattern  // 'user/profile/:id' — the matching pattern
-//     ctx.params   // { id: '42' }
-//     ctx.query    // { ref: 'abc' }
-//     ctx.source   // 'cold-start' | 'warm-start' | 'manual'
-//     ctx.argv     // process.argv (cold) or the duplicate's real argv (warm, via additionalData)
-//     ctx.cwd      // process.cwd() or the duplicate's cwd (warm)
-//     ctx.handled  // mutate: set true to suppress fall-through to '*' catch-all
-//   });
-//
-// Patterns:
-//   - Exact: 'auth/token'
-//   - Param: 'user/profile/:id', 'org/:slug/repo/:repo'
-//   - Wildcard: '*' (catch-all, runs only if no concrete handler claimed the event)
-//
-// Multiple handlers per pattern run in registration order. Setting ctx.handled = true stops
-// the fall-through to wildcard handlers (concrete-pattern handlers always run).
-//
-// Built-in routes (registered by @omega.js/desktop, can be overridden by registering your own handler):
-//   auth/token   → omega.auth.handleToken(query.authToken)
-//   app/show     → omega.windows.show(query.window || 'main')
-//   app/quit     → app.quit()
-//
-// Built-in handlers run AFTER consumer handlers, so a consumer can shadow any built-in
-// by registering their own handler for the same route and setting ctx.handled = true.
+// Deep Link: one dispatch pipeline for every way a `<scheme>://` URL arrives (macOS
+// open-url, Windows/Linux argv on cold start, second-instance on warm start, manual
+// dispatch), with pattern routes, built-ins (auth/token, app/show, app/quit) and boot
+// queueing. The API, the handler ctx and the resolution order: docs/desktop/deep-link.md.
 
 const LoggerLite = require('./logger-lite.js');
+const protocol = require('./protocol.js');
 
 const logger = new LoggerLite('deep-link');
 
@@ -55,7 +14,8 @@ const deepLink = {
   _electron:       null,
   _handlers:       [],          // [{ pattern, fn, builtin: bool }]
   _coldStartUrl:   null,        // the URL the app was launched with (if any)
-  _wired:          false,       // open-url + second-instance + queueing wired?
+  _wired:          false,       // open-url + queueing wired?
+  _listening:      false,       // second-instance listener prepended (listenFirst)?
   _pendingUrls:    [],          // urls received before whenReady — drained on init
   _omegaReady:     false,       // omega.initialize() finished — safe to dispatch
   _bootQueue:      [],          // dispatches held until _omegaReady (auth et al. are up)
@@ -114,38 +74,56 @@ const deepLink = {
       // Post-whenReady: dispatch as warm-start (the app is already running).
       deepLink._handle(url, 'warm-start', { argv: process.argv, cwd: process.cwd() });
     });
+  },
 
-    // Windows/Linux warm-start: another instance launched (e.g. user double-clicked the
-    // app icon while it's already running, or a deep link arrived). The OS gave us the
-    // lock, killed the duplicate, and forwarded its argv here.
-    app.on('second-instance', (_event, argv, cwd, additionalData) => {
-      // The event's own argv is Chromium-processed (switches first, the values detached
-      // at the end), so the duplicate's REAL command line rides along in the object it
-      // passed to requestSingleInstanceLock (#921). The fallback covers a duplicate
-      // started by a build from before that object existed.
-      const realArgv = Array.isArray(additionalData?.argv) ? additionalData.argv : argv;
-      const realCwd  = additionalData?.cwd || cwd;
-      logger.log(`second-instance argv=${JSON.stringify(realArgv)} eventArgv=${JSON.stringify(argv)} cwd=${realCwd}`);
+  // main.js calls this at load, so the framework hears second-instance ahead of every
+  // brand listener, one registered before the require included. Outside the main
+  // process (plain Node, where `electron` is a path string) there is no app to hear.
+  listenFirst() {
+    const { app } = require('electron');
+    if (!app || deepLink._listening) return;
+    deepLink._listening = true;
+    app.prependListener('second-instance', deepLink._onSecondInstance);
+  },
 
-      // Surface the main window. With hidden-mode apps, the consumer typically created
-      // `main` with `show: false` at boot, so it's in the registry but invisible — we
-      // just need to show it now that the user explicitly asked.
-      const main = deepLink._omega.windows.get('main');
-      if (main) {
-        logger.log(`second-instance — surfacing main (visible=${main.isVisible()}, minimized=${main.isMinimized()})`);
-        if (main.isMinimized()) main.restore();
-        deepLink._omega.windows._ensureDockVisible();
-        main.show();
-        main.focus();
-      } else {
-        logger.log('second-instance — no main window in registry; ignoring');
-      }
+  // Windows/Linux warm-start: another instance launched (e.g. user double-clicked the
+  // app icon while it's already running, or a deep link arrived). The OS gave us the
+  // lock, killed the duplicate, and forwarded its argv here.
+  _onSecondInstance(_event, argv, cwd, additionalData) {
+    // First, so a quit any later listener asks for waits on this duplicate
+    protocol.markForwarding(additionalData?.pid);
 
-      const url = deepLink._extractUrlFromArgv(realArgv);
-      if (url) {
-        deepLink._handle(url, 'warm-start', { argv: realArgv, cwd: realCwd });
-      }
-    });
+    // The event's own argv is Chromium-processed (switches first, the values detached
+    // at the end), so the duplicate's REAL command line rides along in the object it
+    // passed to requestSingleInstanceLock. The fallback covers a duplicate
+    // started by a build from before that object existed.
+    const realArgv = Array.isArray(additionalData?.argv) ? additionalData.argv : argv;
+    const realCwd  = additionalData?.cwd || cwd;
+    logger.log(`second-instance argv=${JSON.stringify(realArgv)} eventArgv=${JSON.stringify(argv)} cwd=${realCwd}`);
+
+    if (!deepLink._initialized) {
+      logger.log('second-instance before deep-link initialize; nothing to surface or dispatch');
+      return;
+    }
+
+    // Surface the main window. With hidden-mode apps, the consumer typically created
+    // `main` with `show: false` at boot, so it's in the registry but invisible: we
+    // just need to show it now that the user explicitly asked.
+    const main = deepLink._omega.windows.get('main');
+    if (main) {
+      logger.log(`second-instance: surfacing main (visible=${main.isVisible()}, minimized=${main.isMinimized()})`);
+      if (main.isMinimized()) main.restore();
+      deepLink._omega.windows._ensureDockVisible();
+      main.show();
+      main.focus();
+    } else {
+      logger.log('second-instance: no main window in registry; ignoring');
+    }
+
+    const url = deepLink._extractUrlFromArgv(realArgv);
+    if (url) {
+      deepLink._handle(url, 'warm-start', { argv: realArgv, cwd: realCwd });
+    }
   },
 
   _registerBuiltins() {
@@ -176,12 +154,13 @@ const deepLink = {
       },
     });
 
-    // app/quit — graceful quit.
+    // app/quit: graceful quit, through omega.quit() so a warm-start link waits
+    // for its forwarding duplicate to exit.
     deepLink._handlers.push({
       pattern: 'app/quit',
       builtin: true,
       fn: () => {
-        deepLink._electron.app.quit();
+        deepLink._omega.quit();
       },
     });
   },

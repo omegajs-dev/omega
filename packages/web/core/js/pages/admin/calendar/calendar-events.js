@@ -379,10 +379,10 @@ export default class CalendarEvents {
     // Lists
     document.getElementById('campaign-lists').value = (settings.lists || []).join(', ');
 
-    // Providers (checkboxes)
+    // Providers (checkboxes, one per role word the send code matches)
     const providers = settings.providers || [];
-    document.getElementById('campaign-provider-sendgrid').checked = providers.includes('sendgrid');
-    document.getElementById('campaign-provider-beehiiv').checked = providers.includes('beehiiv');
+    document.getElementById('campaign-provider-campaigns').checked = providers.includes('campaigns');
+    document.getElementById('campaign-provider-newsletter').checked = providers.includes('newsletter');
 
     // Advanced
     document.getElementById('campaign-group').value = settings.group || '';

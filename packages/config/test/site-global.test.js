@@ -142,8 +142,8 @@ module.exports = defineCases({
           linux: {
             deb: 'https://github.com/Acme-Org/acme-releases/releases/latest/download/Acme-App-linux-deb.deb',
             appimage: 'https://github.com/Acme-Org/acme-releases/releases/latest/download/Acme-App-linux-appimage.AppImage',
-            // A store format links the store, because the store holds the file
-            snap: 'https://snapcraft.io/acme-app',
+            // A store format links the store, because the store holds the file, under brand.id
+            snap: 'https://snapcraft.io/acme',
           },
         });
         ctx.expect(site.targets.desktop.releasesUrl, 'the hub stays — the direct URLs sit BESIDE it').toBe('https://github.com/Acme-Org/acme-releases/releases/latest');

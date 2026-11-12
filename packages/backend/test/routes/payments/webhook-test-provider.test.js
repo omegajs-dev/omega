@@ -83,7 +83,8 @@ async function callWebhook({ omega, query, body }) {
     body: body,
   };
   const ctx = new Context(omega, { req, res }, { functionName: 'payments-webhook' });
-  const handler = require('../../../dist/omega/routes/payments/webhook/post.js');
+  const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+  const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/webhook/post.js'));
 
   await handler({ ctx, omega });
 

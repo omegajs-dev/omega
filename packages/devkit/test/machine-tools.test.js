@@ -6,7 +6,7 @@
 // way a failed child does, so no case here touches the real java or firebase.
 
 const defineCases = require('@omega.js/devkit/test/define-cases');
-const { MACHINE_TOOLS, machineToolsFor, missingMachineTools, machineToolLine } = require('../src/machine-tools.js');
+const { MACHINE_TOOLS, SNAPCRAFT, machineToolsFor, missingMachineTools, missingTool, machineToolLine } = require('../src/machine-tools.js');
 
 const PLATFORMS = ['darwin', 'win32', 'linux'];
 
@@ -75,6 +75,27 @@ module.exports = defineCases({
         ctx.expect(machineToolsFor({ type: 'backend', projectType: 'firebase' }).map((tool) => tool.name)).toEqual(['java', 'firebase']);
         ctx.expect(machineToolsFor({ type: 'backend', projectType: 'custom' })).toEqual([]);
         for (const type of ['web', 'desktop', 'extension']) ctx.expect(machineToolsFor({ type }), type).toEqual([]);
+      },
+    },
+
+    {
+      name: 'missingTool: the snapcraft row probes snapcraft, and a failed probe is a row with the platform\'s install command',
+      run: (ctx) => {
+        const target = { name: 'desktop', type: 'desktop' };
+        const absent = probeRunner(['*']);
+
+        ctx.expect(missingTool(SNAPCRAFT, target, { platform: 'darwin', execFn: absent.execFn })).toEqual({
+          target: 'desktop',
+          type: 'desktop',
+          name: 'snapcraft',
+          why: SNAPCRAFT.why,
+          install: SNAPCRAFT.install.darwin,
+        });
+        ctx.expect(absent.calls).toEqual([SNAPCRAFT.probe]);
+        ctx.expect(SNAPCRAFT.probe[0]).toBe('snapcraft');
+        ctx.expect(Object.keys(SNAPCRAFT.install).sort(), 'one command per platform').toEqual([...PLATFORMS].sort());
+
+        ctx.expect(missingTool(SNAPCRAFT, target, { platform: 'linux', execFn: probeRunner([]).execFn }), 'installed: no row').toBe(null);
       },
     },
 

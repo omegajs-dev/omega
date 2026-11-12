@@ -22,21 +22,23 @@
  * each package's own `npm test` keeps meaning "run my suite".
  */
 
+const { TARGET_TYPE_TWIN } = require('../verbs.js');
+
 const UNIVERSAL_FRAMEWORK_ALIASES = ['framework', 'omega', 'mgr'];
 const PROJECT_ALIASES = ['project', 'brand'];
 const FULL_ALIASES = ['full'];
 
-// Per-framework id prefixes, keyed by package name. The SSOT for "which
-// prefixes does each framework answer to": framework runners pass their own
-// entry as `frameworkAliases`, and the manager's brand-root `test` fan-out
-// routes `web:`/`desktop:`/… targets to the target owning that framework.
-// Legacy short ids (ujm/em/bxm) retired with cp262's legacy-name sweep.
-const FRAMEWORK_IDS = {
-  '@omega.js/web': ['web'],
-  '@omega.js/backend': ['backend'],
-  '@omega.js/desktop': ['desktop'],
-  '@omega.js/extension': ['extension'],
-};
+/**
+ * The id prefixes a framework answers to: the type ids its row names, from
+ * the verb table's twin of the target-type rows. A framework runner passes
+ * its own as `frameworkAliases`.
+ *
+ * @param {string} framework - The framework package (`@omega.js/web`, …)
+ * @returns {string[]} Its ids; [] for a package that runs no target type.
+ */
+function frameworkIds(framework) {
+  return TARGET_TYPE_TWIN.filter((row) => row.framework === framework).map((row) => row.id);
+}
 
 /**
  * Parse `omega test` positional targets into sources + per-source path filters.
@@ -159,4 +161,4 @@ function noMatchExitCode(env = process.env) {
   return env[FANOUT_ENV] ? NO_MATCH_EXIT_CODE : 1;
 }
 
-module.exports = { parseTestScope, isPathTargeted, noMatchMessage, noMatchExitCode, NO_MATCH_EXIT_CODE, FANOUT_ENV, UNIVERSAL_FRAMEWORK_ALIASES, PROJECT_ALIASES, FULL_ALIASES, FRAMEWORK_IDS };
+module.exports = { parseTestScope, isPathTargeted, noMatchMessage, noMatchExitCode, NO_MATCH_EXIT_CODE, FANOUT_ENV, UNIVERSAL_FRAMEWORK_ALIASES, PROJECT_ALIASES, FULL_ALIASES, frameworkIds };

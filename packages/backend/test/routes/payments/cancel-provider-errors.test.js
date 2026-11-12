@@ -22,7 +22,8 @@
 const Stripe = require('stripe');
 const { buildUser, callHandler, withEnvironment } = require('./_route-harness.js');
 
-const handler = require('../../../dist/omega/routes/payments/cancel/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/cancel/post.js'));
 const isAlreadyGone = require('../../../dist/omega/libraries/payment/provider-errors.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 

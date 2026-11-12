@@ -8,9 +8,9 @@
  * This is webhook-driven so it fires regardless of how the refund originated
  * (admin dashboard, user self-service, or direct provider action).
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc, refundDetails }) {
+export default async function ({ ctx, before, after, order, uid, userDoc, refundDetails }) {
   ctx.log(`Transition [subscription/payment-refunded]: uid=${uid}, product=${after?.product?.id}, amount=${refundDetails?.amount} ${refundDetails?.currency}, reason=${refundDetails?.reason || 'none'}`);
 
   sendOrderEmail({

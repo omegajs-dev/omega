@@ -6,6 +6,7 @@
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./analytics-providers": "./src/analytics-providers.js",
     "./schema": "./src/schema.js",
     "./merge": "./src/merge.js",
     "./secrets": "./src/secrets.js",
@@ -16,11 +17,13 @@
     "./brand-host": "./src/brand-host.js",
     "./api-address": "./src/api-address.js",
     "./dev-facts": "./src/dev-facts.js",
+    "./email-providers": "./src/email-providers.js",
     "./env-schema": "./src/env-schema.js",
     "./env-delivery": "./src/env-delivery.js",
     "./env-needs": "./src/env-needs.js",
     "./env-when": "./src/env-when.js",
     "./site-global": "./src/site-global.js",
+    "./target-types": "./src/target-types.js",
     "./winback": "./src/winback.js"
   },
   "scripts": {

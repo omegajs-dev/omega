@@ -16,10 +16,11 @@
  * Firestore — the call is allowed to reject at that seam and the assertions read the
  * captured ctx output.
  */
-const post = require('../../../dist/omega/routes/user/signup/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const post = loadHandler(require.resolve('../../../dist/omega/routes/user/signup/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
-const { keyNames } = post;
+const { keyNames } = require('../../../dist/omega/routes/user/signup/record-fields.js');
 
 const LEAKED_KEY = 'sk_test_fake_leak';
 const LEAKED_IP = '203.0.113.7';

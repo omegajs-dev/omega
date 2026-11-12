@@ -39,9 +39,9 @@ function resolveSectionImageFn(newsletterConfig) {
   return method === 'svg' ? generateSvgSection : generateImageSection;
 }
 const { renderMarkdown } = require('./lib/markdown-renderer.js');
-const { escapeHtml, safeUrl } = require('../constants.js');
+const { escapeHtml, safeUrl, senderFrom } = require('../constants.js');
 const { uploadAssets, USE_CDN_URLS, REPO_OWNER, REPO_NAME, RAW_BASE } = require('./lib/image-host.js');
-const { buildPublicConfig } = require('../../../routes/brand/get.js');
+const { buildPublicConfig } = require('../../../routes/brand/public-config.js');
 const { writeArticle, publishArticle } = require('../../../libraries/content/ghostii.js');
 const { trackContentSource, contentSourceHash, resolveSources } = require('../../../libraries/content/source-resolver.js');
 
@@ -71,9 +71,8 @@ const { trackContentSource, contentSourceHash, resolveSources } = require('../..
  */
 async function generate(omega, ctx, settings, opts = {}) {
   // Same convention as the marketing providers (email/marketing/index.js):
-  // default test runs never hit the real pipeline (AI calls + GitHub commit +
-  // Beehiiv post + report email). TEST_EXTENDED_MODE opts into
-  // production-equivalent side effects.
+  // default test runs never hit the real pipeline (AI calls + GitHub commit).
+  // TEST_EXTENDED_MODE opts into production-equivalent side effects.
   if (ctx.isTesting() && !process.env.TEST_EXTENDED_MODE) {
     ctx.log('Newsletter generator: skipped in test mode (set TEST_EXTENDED_MODE to run the real pipeline)');
     return null;
@@ -360,43 +359,9 @@ async function generate(omega, ctx, settings, opts = {}) {
     }
   }
 
-  // 3c. Upload to Beehiiv. Published in production, forced to draft in
-  //     testing so real subscribers never receive test newsletters. Failure
-  //     is logged, never thrown — the rest of the pipeline (GH archive,
-  //     Firestore doc) succeeds regardless.
-  let beehiivPostId = null;
-  let beehiivFailureReason = null;
-
-  if (host === 'github' && newsletterRoleConfig?.enabled) {
-    try {
-      const beehiivProvider = require('../providers/beehiiv.js');
-      const result = await beehiivProvider.createPost({
-        publicationId: newsletterRoleConfig.providers?.beehiiv?.publicationId,
-        title:         structure.subject,
-        subject:       structure.subject,
-        preheader:     structure.preheader,
-        content:       html,
-        contentTags:   Array.isArray(structure.tags) ? structure.tags : [],
-        status:        ctx.isTesting() ? 'draft' : 'confirmed',
-      });
-
-      if (result?.success && result.id) {
-        beehiivPostId = result.id;
-        ctx.log(`Newsletter generator: Beehiiv ${ctx.isTesting() ? 'draft' : 'post'} created — ${beehiivPostId}`);
-      } else {
-        beehiivFailureReason = result?.error || 'unknown error';
-        ctx.log(`Newsletter generator: Beehiiv upload failed — ${beehiivFailureReason}`);
-      }
-    } catch (e) {
-      beehiivFailureReason = e.message;
-      ctx.error(`Newsletter generator: Beehiiv draft upload threw — ${e.message}`);
-    }
-  }
-
-  // 3d. Newsletter report email — always sent to the brand's internal alerts
-  //     inbox after generation completes. Contains everything needed for
-  //     review and manual Beehiiv upload if needed.
-  await sendNewsletterReportEmail(omega, ctx, {
+  // 3c. The report email's facts. The campaign send publishes the post, so the
+  //     sender of the campaign mails the report once it holds the post's result.
+  const report = {
     brand,
     subject: structure.subject,
     preheader: structure.preheader,
@@ -406,15 +371,13 @@ async function generate(omega, ctx, settings, opts = {}) {
     markdownUrl,
     summaryUrl,
     folderUrl: assetsFolderUrl,
-    beehiivPostId,
-    beehiivFailureReason,
     articles: (articleResult?.published) ? [{ title: articleResult.article?.title || structure.sections?.[0]?.title, url: articleResult.url }] : [],
     sources: sources.map(s => ({
       title: s.title || '',
       url: (s.url && s.url.startsWith('http')) ? s.url : '',
       from: s.source?.from || '',
     })),
-  });
+  };
 
   // 4. Mark all sources used in the unified content-sources collection —
   //    only NOW that the newsletter actually generated successfully.
@@ -471,12 +434,9 @@ async function generate(omega, ctx, settings, opts = {}) {
       : null,
   };
 
-  // Public asset URLs — stamped onto the generated campaign doc by the cron
-  // so you can find the GitHub folder + downloadable HTML + image URLs without
-  // re-deriving them. Null entries mean GitHub upload was skipped (local mode)
-  // or failed (errors already logged above). beehiivPostId is the ID of the
-  // draft post created on Beehiiv (or null if creation failed — expected until
-  // we move off the free Beehiiv plan).
+  // Public asset URLs, stamped onto the generated campaign doc by the cron. Null
+  // entries mean the GitHub upload was skipped (local mode) or failed (logged
+  // above). The post's id rides the campaign's `results.newsletter`.
   const assets = host === 'github' ? {
     campaignId,
     folderUrl: assetsFolderUrl,
@@ -485,7 +445,6 @@ async function generate(omega, ctx, settings, opts = {}) {
     markdownUrl,
     summaryUrl,
     imageUrls: imagePaths,
-    beehiivPostId,
     articleUrl: articleResult?.url || null,  // linked blog post (config.article.enabled), null otherwise
     tags: Array.isArray(structure.tags) ? structure.tags : [],
   } : null;
@@ -498,7 +457,8 @@ async function generate(omega, ctx, settings, opts = {}) {
     contentHtml: html,    // pre-rendered email-safe HTML
     contentMarkdown: markdown,  // programmatic markdown view (per-section blocks for Beehiiv paste)
     summary: summaryText, // editorial recap (separate from preheader)
-    tags: Array.isArray(structure.tags) ? structure.tags : [],
+    contentTags: report.tags, // the post's topical tags, which the campaign send passes on
+    report,               // the report email's facts, mailed by sendReport() after the send
     structure,            // structured copy for debugging / migration
     mjml,                 // raw MJML for debugging
     images: opts._lastImages || [],  // image buffers for the iteration test to persist locally
@@ -600,34 +560,18 @@ async function buildLinkedArticle({ omega, ctx, brand, config, structure, source
 }
 
 /**
- * Send an internal alert email when Beehiiv draft creation fails so the
- * brand team knows there's a ready newsletter waiting for manual upload.
- *
- * Uses `sender: 'internal'` which auto-resolves to `alerts@{brandDomain}` via
- * the SENDERS table in email/constants.js. Recipient is the same alerts@
- * address — a self-addressed operational alert, no human inbox involved.
- *
- * Errors here are logged but never thrown — the alert is best-effort. If
- * brand.url is unset, the email is skipped entirely.
+ * Mail the newsletter report to the brand's own alerts@ inbox (`sender:
+ * 'internal'`), after the campaign send: whether the post went out, the asset
+ * links, the linked articles and the sources. Best-effort: errors are logged,
+ * never thrown, and no brand.contact.email skips it.
  *
  * @param {object} omega
  * @param {object} ctx
- * @param {object} args
- * @param {object} args.brand
- * @param {string} args.subject
- * @param {string} args.preheader
- * @param {string[]} args.tags
- * @param {string} [args.htmlUrl]
- * @param {string} [args.markdownUrl]
- * @param {string} [args.previewUrl]
- * @param {string} [args.summaryUrl]
- * @param {string} [args.folderUrl]
- * @param {string} [args.beehiivPostId] - Beehiiv post ID (if upload succeeded)
- * @param {string} [args.beehiivFailureReason] - Why Beehiiv upload failed (null if succeeded)
- * @param {object[]} [args.articles] - Published linked articles
- * @param {object[]} [args.sources] - Content sources used for generation
+ * @param {object} args - generate()'s `report`
+ * @param {object} [post] - The send's newsletter result ({ success, id, error })
  */
-async function sendNewsletterReportEmail(omega, ctx, args) {
+async function sendReport(omega, ctx, args, post) {
+  const postOk = !!(post?.success && post.id);
   const brandDomain = omega.config?.brand?.contact?.email?.split('@')[1];
 
   if (!brandDomain) {
@@ -635,8 +579,7 @@ async function sendNewsletterReportEmail(omega, ctx, args) {
     return;
   }
 
-  const alertsEmail = `alerts@${brandDomain}`;
-  const beehiivOk = !!args.beehiivPostId;
+  const alertsEmail = senderFrom('internal', { brandName: omega.config.brand.name || '', domain: brandDomain }).email;
 
   try {
     const email = ctx.email;
@@ -647,14 +590,14 @@ async function sendNewsletterReportEmail(omega, ctx, args) {
     const messageLines = [];
 
     // --- Status ---
-    if (beehiivOk) {
-      messageLines.push(`The newsletter has been generated and uploaded to Beehiiv.`);
+    if (postOk) {
+      messageLines.push(`The newsletter has been generated and published as post ${escapeHtml(post.id)}.`);
     } else {
-      messageLines.push(`The newsletter has been generated but Beehiiv upload failed. It needs to be manually uploaded.`);
+      messageLines.push(`The newsletter has been generated but its post was not published. It needs to be manually uploaded.`);
       messageLines.push('');
-      messageLines.push('<strong>Beehiiv failure reason</strong>');
+      messageLines.push('<strong>Post failure reason</strong>');
       messageLines.push('<ul>');
-      messageLines.push(`<li>${escapeHtml(args.beehiivFailureReason || 'unknown')}</li>`);
+      messageLines.push(`<li>${escapeHtml(post?.error || 'the newsletter role did not send')}</li>`);
       messageLines.push('</ul>');
     }
     messageLines.push('');
@@ -742,27 +685,21 @@ async function sendNewsletterReportEmail(omega, ctx, args) {
       messageLines.push('</ul>');
     }
 
-    const subjectLine = beehiivOk
-      ? `Newsletter generated: "${args.subject}"`
-      : `Newsletter ready for manual upload: "${args.subject}"`;
-
     await email.send({
       sender: 'internal',
       to: alertsEmail,
       copy: false,
-      subject: subjectLine,
+      subject: postOk ? `Newsletter generated: "${args.subject}"` : `Newsletter ready for manual upload: "${args.subject}"`,
       template: 'card',
       categories: ['marketing/newsletter-report'],
       // Body is first-party markup built above; its AI/scraped values are escaped.
       trustedContent: true,
       data: {
         email: {
-          preview: beehiivOk
-            ? `Newsletter generated and uploaded to Beehiiv`
-            : `Beehiiv upload failed — newsletter awaiting manual upload`,
+          preview: postOk ? 'Newsletter generated and published' : 'Post not published: newsletter awaiting manual upload',
         },
         content: {
-          title: beehiivOk ? 'Newsletter Generated' : 'Newsletter Ready for Manual Upload',
+          title: postOk ? 'Newsletter Generated' : 'Newsletter Ready for Manual Upload',
           message: messageLines.join('\n'),
         },
       },
@@ -894,4 +831,4 @@ function generatePushId() {
   return id;
 }
 
-module.exports = { generate, generatePushId };
+module.exports = { generate, generatePushId, sendReport };

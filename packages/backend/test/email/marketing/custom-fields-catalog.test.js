@@ -1,28 +1,13 @@
 /**
- * Marketing custom-field catalog test — what a provider PROVISIONS and what its
- * contact sync WRITES are one list
- * ([#695](https://github.com/Omega-JS-Stack/omega/issues/695)).
+ * What a provider PROVISIONS and what its contact sync WRITES are one list:
+ * `fieldsForProvider()`, the catalog (FIELDS) less the fields the provider's
+ * row stores natively. SendGrid keeps first/last name in its reserved contact
+ * columns, so a native field is never provisioned AND never written.
  *
- * The bug this pins: `user_personal_name_first` / `user_personal_name_last` are
- * `skip: ['sendgrid']` (SendGrid stores first/last name in its RESERVED contact
- * columns, which `addContact()` writes natively), but the sync's `buildFields()`
- * looped over EVERY resolved field, so every live signup logged 'SendGrid
- * buildFields: 2 field(s) have no SendGrid ID (skipped)'. The names always
- * reached the contact; the warn was noise pointing at a field nobody meant to
- * provision.
- *
- * The catalog (FIELDS in constants.js) is the ONE home of the field list, and
- * `fieldsForProvider()` is the ONE derivation of a provider's view of it — the
- * manager's custom-fields ensure provisions exactly that set, and each
- * provider's `buildFields()` writes exactly that set. A field the catalog skips
- * is therefore never provisioned AND never written, so the two lists cannot
- * drift in either direction — that agreement is the invariant under test.
- *
- * Plain-node control-flow test (no emulator, no network): the real catalog and
- * the real `resolveFieldValues()` run over a user doc that populates EVERY
- * field in the dictionary, and the real `buildFields()` of both providers runs
- * with SendGrid's field_definitions call stubbed in the require cache (the same
- * idiom as helpers/webhook-forward.test.js).
+ * Plain-node: the real catalog and `resolveFieldValues()` over a user doc that
+ * fills EVERY field, and the real `buildFields()` of both providers, with
+ * SendGrid's field_definitions call stubbed in the require cache (the idiom of
+ * helpers/webhook-forward.test.js).
  */
 const expect = require('../../../dist/vendor/devkit/test/expect.js');
 const {
@@ -37,7 +22,7 @@ const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 const CONFIG = { brand: { id: 'acme' } };
 
 // SendGrid holds these two in its reserved contact columns (addContact writes
-// them natively), so the catalog skips them for SendGrid alone.
+// them natively), so they are native to SendGrid alone.
 const SENDGRID_RESERVED = ['user_personal_name_first', 'user_personal_name_last'];
 
 // A user doc that fills every 'user' and 'resolved' path in FIELDS — anything
@@ -74,7 +59,7 @@ const SENDGRID_PATH = require.resolve('../../../dist/omega/libraries/email/provi
 /**
  * A SendGrid field_definitions response for the catalog's SendGrid view — every
  * field OMEGA provisions has an ID, so anything buildFields() reports unmapped
- * can only be a field the catalog skipped.
+ * can only be a native field.
  */
 function fieldDefinitions() {
   return {
@@ -163,7 +148,7 @@ module.exports = defineCases({
     },
 
     {
-      name: 'the name fields skip SendGrid\'s custom-field lane and still resolve for the providers that need them',
+      name: 'the name fields stay out of SendGrid\'s custom-field lane and still resolve for the providers that need them',
 
       run() {
         const provisioned = fieldsForProvider('sendgrid');
@@ -180,19 +165,19 @@ module.exports = defineCases({
     },
 
     {
-      name: 'a provider skip is honored — Beehiiv keeps its own view of the same catalog',
+      name: 'Beehiiv keeps its own view of the same catalog, less the fields it tracks natively',
 
       run() {
         const beehiiv = fieldsForProvider('beehiiv');
 
-        expect(!beehiiv.includes('user_personal_country'), 'Beehiiv skips country').toBeTruthy();
-        expect(!beehiiv.includes('user_attribution_utm_source'), 'Beehiiv skips utm_source').toBeTruthy();
+        expect(!beehiiv.includes('user_personal_country'), 'Beehiiv tracks country natively').toBeTruthy();
+        expect(!beehiiv.includes('user_attribution_utm_source'), 'Beehiiv tracks utm_source natively').toBeTruthy();
         expect(beehiiv.includes('user_personal_name_first'), 'Beehiiv still needs the name fields').toBeTruthy();
       },
     },
 
     {
-      name: 'SendGrid buildFields writes only the catalog\'s SendGrid view — a skipped field is never written and never warns',
+      name: 'SendGrid buildFields writes only the catalog\'s SendGrid view: a native field is never written and never warns',
 
       async run() {
         await withSendgrid(async (sendgrid, warns) => {
@@ -206,7 +191,7 @@ module.exports = defineCases({
 
           const writtenNames = Object.keys(fields).map((id) => definitions.find((field) => field.id === id).name);
 
-          expect(writtenNames.filter((name) => SENDGRID_RESERVED.includes(name)), `A catalog-skipped field must never be written, got ${writtenNames.join(', ')}`).toEqual([]);
+          expect(writtenNames.filter((name) => SENDGRID_RESERVED.includes(name)), `A native field must never be written, got ${writtenNames.join(', ')}`).toEqual([]);
           expect(writtenNames.sort(), 'Every field the catalog provisions for SendGrid is written').toEqual(Object.keys(resolveFieldValues(USER_DOC, CONFIG)).filter((name) => name in idByName).sort());
           expect(warns, `No unmapped-field warn may fire, got: ${warns.join(' | ')}`).toEqual([]);
         });
@@ -222,7 +207,7 @@ module.exports = defineCases({
           const displays = fields.map((field) => field.name);
 
           for (const name of ['user_personal_country', 'user_attribution_utm_source']) {
-            expect(!displays.includes(FIELDS[name].display), `${name} is skipped for Beehiiv and must never be written, got ${displays.join(', ')}`).toBeTruthy();
+            expect(!displays.includes(FIELDS[name].display), `${name} is native to Beehiiv and must never be written, got ${displays.join(', ')}`).toBeTruthy();
           }
 
           expect(displays.sort(), 'Every field the catalog provisions for Beehiiv is written').toEqual(fieldsForProvider('beehiiv')

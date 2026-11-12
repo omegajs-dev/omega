@@ -1,6 +1,6 @@
-const powertools = require('node-powertools');
+import powertools from 'node-powertools';
 
-module.exports = async ({ ctx, data }) => {
+export default async ({ ctx, data }) => {
 
   // Optional delay
   if (data.delay > 0) {

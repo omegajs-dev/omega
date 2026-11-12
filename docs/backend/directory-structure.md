@@ -52,6 +52,7 @@ src/
         daily/{job}.js                  # Individual daily cron jobs (incl. trial-lapse-sweep.js, expire-paypal-cancellations.js)
         frequent.js                     # Frequent cron entry point
         frequent/{job}.js               # Individual frequent cron jobs (incl. retry-failed-webhooks.js)
+        helpers/                        # The jobs' helpers: every file in a schedule's folder runs as a job
       firestore/                        # Firestore triggers
         payments-webhooks/              # Webhook processing pipeline
           on-write.js                   # Orchestrator: fetch→transform→transition→write

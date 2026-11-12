@@ -1,6 +1,6 @@
 /**
  * Schema for POST /admin/cron
  */
-module.exports = () => ({
+export default() => ({
   id: { type: 'string', required: true },
 });

@@ -9,15 +9,19 @@ Two lifecycle hooks let consumers run custom logic during the build pipeline.
 | `build:pre` | `hooks/build/pre.js` (in consumer project) | Before packaging — after `dist/` is built but before `packaged/` is assembled |
 | `build:post` | `hooks/build/post.js` | After packaging — `packaged/<browser>/raw/` and `.zip` exist |
 
-Hooks are optional — `gulp/tasks/package.js` checks for the file's presence and runs it if present.
+Hooks are optional: `gulp/tasks/package.js` runs each through devkit's one hook runner (`runConsumerHook`, shared with @omega.js/desktop), which checks for the file's presence and runs it if present.
 
-The NESTED path above is authoritative: it is what `src/defaults/hooks/build/` scaffolds and what the brand root's `omega migrate --execute` moves a flat `hooks/build:pre.js` to. The task resolves it first and falls back to the flat pre-migration path during the transition, so an unmigrated project keeps building ([#571](https://github.com/Omega-JS-Stack/omega/issues/571)).
+The NESTED path above is the one path the runner reads: it is what `src/defaults/hooks/build/` scaffolds and what the brand root's `omega migrate --execute` moves a flat `hooks/build:pre.js` to.
 
 ## Hook shape
 
+- A hook file is an ES module with one default export. A `module.exports` hook is refused, and the build throws `<file> must be an ES module with one default export (export default async (...) => {})`.
+- The body uses `import`: a top-level `import`, `await import()` for a lazy load, and `import.meta.dirname` for the file's folder.
+- No top-level `await`: the file is loaded by `require()`, which refuses an async module. An `await` goes inside the default export.
+
 ```js
 // hooks/build/pre.js
-module.exports = async function ({ build, projectRoot, mode }) {
+export default async function ({ build, projectRoot, mode }) {
   console.log('Pre-build hook running for', build.getConfig().brand.name);
 
   // Mutate files, generate assets, validate, anything you want.
@@ -49,10 +53,10 @@ Everything else a build hook needs comes off `ctx.build`:
 
 ```js
 // hooks/build/pre.js
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-module.exports = async function ({ build, projectRoot }) {
+export default async function ({ build, projectRoot }) {
   const manifest = build.getManifest();
   const changelog = fs.readFileSync(path.join(projectRoot, 'CHANGELOG.md'), 'utf8');
   const latestVersion = changelog.match(/## \[([\d.]+)\]/)?.[1];
@@ -66,13 +70,14 @@ module.exports = async function ({ build, projectRoot }) {
 
 ```js
 // hooks/build/pre.js
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
-module.exports = async function ({ projectRoot }) {
+export default async function ({ projectRoot }) {
   const buildInfo = {
     builtAt: new Date().toISOString(),
-    gitSha: require('child_process').execSync('git rev-parse HEAD').toString().trim(),
+    gitSha: execSync('git rev-parse HEAD').toString().trim(),
   };
   fs.writeFileSync(path.join(projectRoot, 'dist', 'build-info.json'), JSON.stringify(buildInfo, null, 2));
 };
@@ -82,7 +87,7 @@ module.exports = async function ({ projectRoot }) {
 
 ```js
 // hooks/build/post.js
-module.exports = async function ({ build }) {
+export default async function ({ build }) {
   if (process.env.OMEGA_IS_PUBLISH !== 'true') return;   // only after real publish
   await fetch('https://api.myservice.com/extension-released', {
     method: 'POST',
@@ -95,11 +100,11 @@ module.exports = async function ({ build }) {
 
 Hooks are awaited — the build waits for them to resolve before continuing. Throw or reject to fail the build (and abort packaging / publishing).
 
-A hook runs under plain node, outside the bundle, so a `require` of a framework dependency the target never declared resolves only by hoisting: every verb's scaffold warns on it (the dependency nudge, never an error), and the two fixes are declaring it or loading the framework's copy with `require('@omega.js/extension').require(name)` ([the shared rule](../shared/local-dev.md#using-what-the-framework-depends-on)).
+A hook runs under plain node, outside the bundle, so an `import` (or `import()`) of a framework dependency the target never declared resolves only by hoisting: every verb's scaffold warns on it (the dependency nudge, never an error), and the two fixes are declaring it or loading the framework's copy with `extension.require(name)` after `import extension from '@omega.js/extension'` ([the shared rule](../shared/local-dev.md#using-what-the-framework-depends-on)).
 
 ## Where hooks are invoked
 
-[src/gulp/tasks/package.js](../../packages/extension/src/gulp/tasks/package.js) loads and runs them. Search for `hook(` in that file to see the exact wiring.
+[src/gulp/tasks/package.js](../../packages/extension/src/gulp/tasks/package.js) runs the build hooks and [src/commands/deploy.js](../../packages/extension/src/commands/deploy.js) the deploy hook, each through `runConsumerHook` from `@omega.js/devkit/run-consumer-hook`. Search for `runConsumerHook(` in those files to see the exact wiring.
 
 ## Why not just edit gulp tasks?
 

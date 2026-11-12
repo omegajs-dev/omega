@@ -9,6 +9,8 @@
  * framework computes the discounted price and sends it.
  */
 
+const { deepFreeze } = require('./deep-freeze.js');
+
 const PAYMENT_PROVIDERS = deepFreeze({
   stripe: {
     id: 'stripe',
@@ -63,19 +65,6 @@ const PAYMENT_PROVIDERS = deepFreeze({
     trials: true,
   },
 });
-
-/**
- * Freeze an object and every object inside it.
- * @param {object} object
- * @returns {object} the same object, frozen
- */
-function deepFreeze(object) {
-  Object.values(object).forEach((value) => {
-    if (value && typeof value === 'object') deepFreeze(value);
-  });
-
-  return Object.freeze(object);
-}
 
 /**
  * The descriptor for a provider id, or null when no provider has that id.

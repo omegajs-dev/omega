@@ -86,13 +86,25 @@
     > * {
       flex: 1 1 100%;
     }
+
+    // One focus ring for every button in a card, split halves included
+    .btn {
+      --bs-btn-focus-box-shadow: 0 0 0 0.1875rem var(--omega-accent-ring);
+    }
   }
 
-  // Two artifacts (Linux: .deb + snap) sit SIDE BY SIDE, equal width — the
-  // outline button under a filled one read as a second primary download.
-  .omega-dl-card__actions--split > * {
-    flex: 1 1 0;
-    min-width: 0;
+  // Several formats: the main link grows, the arrow half keeps its width, and
+  // a hairline in the ground's color parts the two in both themes.
+  .omega-dl-card__split {
+    > .dropdown-toggle-split {
+      flex: 0 0 auto;
+      border-inline-start-color: color-mix(in srgb, var(--omega-ground) 35%, transparent);
+    }
+
+    // As wide as the whole split button
+    .dropdown-menu {
+      min-width: 100%;
+    }
   }
 }
 

@@ -36,8 +36,14 @@
  * manage walk's per-brand list of ship credentials.
  */
 
-const { ENV_SCHEMA } = require('./env-schema.js');
-const { formatShips } = require('./env-when.js');
+const { ENV_SCHEMA, envSchemaEntry } = require('./env-schema.js');
+const { hasValue } = require('./env-has-value.js');
+const { formatShips, ships } = require('./env-when.js');
+
+// The Snap Store's name rule: lowercase letters, digits and single hyphens,
+// at least one letter, at most 40 characters
+const SNAP_NAME_PATTERN = /^(?=.{1,40}$)(?=[a-z0-9-]*[a-z])[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SHIPS_SNAP = ships('linux', 'snap');
 
 // What each target can ship to, in the order it offers them. The FIRST platform
 // entry's first format is what a bare `/download/<platform>` leads with.
@@ -96,9 +102,9 @@ const FORMATS = {
       deb: { kind: 'asset', ext: 'deb', requires: [], listing: [] },
       appimage: { kind: 'asset', ext: 'AppImage', requires: [], listing: [] },
       // The Snap Store publishes the snap, so it is never a release asset and
-      // has no versionless filename to spell. Its listing is the snap NAME,
-      // registered with the same credentials that publish, so there is no id
-      // to collect before the first upload.
+      // has no versionless filename to spell. Its listing is the snap NAME
+      // (snapName), which the publishing walk registers with the login that
+      // publishes, so there is no id to collect before the first upload.
       snap: { kind: 'store', requires: ['SNAPCRAFT_STORE_CREDENTIALS'], listing: [], label: 'Snap Store', console: 'https://snapcraft.io/account' },
     },
   },
@@ -179,6 +185,52 @@ function enabledFormats(config, target) {
   }
 
   return enabled;
+}
+
+/**
+ * The snap's name: `brand.id`. The build pins it, the publishing walk
+ * registers it and the site's Snap Store link ends in it, so the three cannot
+ * disagree.
+ *
+ * @param {object} config - A brand config or a target's resolved view.
+ * @returns {string} The name (the validator requires `brand.id`).
+ */
+function snapName(config) {
+  return config.brand.id;
+}
+
+/**
+ * Why this brand's snap cannot carry its name, or null. A `brand.id` may hold
+ * `.` or `+`, which no snap name allows, so a brand that ships the snap with
+ * such an id fails validation here rather than at the store.
+ *
+ * @param {object} config - A brand config or a target's resolved view.
+ * @returns {string|null} The error, naming the id and the snap.
+ */
+function snapNameError(config) {
+  // A missing or mistyped brand.id is the brand.id rule's own error
+  if (typeof config?.brand?.id !== 'string' || !SHIPS_SNAP(config)) return null;
+
+  const name = snapName(config);
+  if (SNAP_NAME_PATTERN.test(name)) return null;
+
+  return `config.brand.id ${JSON.stringify(name)} cannot name the snap (platforms.linux.formats.snap, on by default): `
+    + 'a snap name is lowercase letters, digits and single hyphens, with a letter, at most 40 characters. '
+    + 'Change brand.id, or set platforms.linux.formats.snap to `false`.';
+}
+
+/**
+ * Whether every key one format requires holds a value, by env-has-value.js's
+ * one presence test.
+ *
+ * @param {string} target - Target type ('desktop' | 'extension').
+ * @param {string} platform - Platform key.
+ * @param {string} format - Format key.
+ * @param {object} env - Env var map (process.env, a composed target env).
+ * @returns {boolean}
+ */
+function formatKeysSet(target, platform, format, env) {
+  return formatKeys(target, platform, format).requires.every((key) => hasValue(env, envSchemaEntry(key)));
 }
 
 /**
@@ -272,6 +324,9 @@ module.exports = {
   enabledFormats,
   formatKeys,
   windowsCloudProviderKeys,
+  snapName,
+  snapNameError,
+  formatKeysSet,
   desktopProductName,
   sanitizeProductName,
   desktopArtifactName,

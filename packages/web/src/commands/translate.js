@@ -6,13 +6,14 @@
  * OWNS live-LLM translation on demand: a default build also translates cold
  * strings live, while `omega build --cached-only` (what deploy runs) applies
  * the committed cache only and ships cold pages untranslated with a warning.
+ * On a CI runner this command is cache-only too and prints the same warning.
  *
  * Env: OMEGA_TRANSLATE_ONLY=<route|file> limits the run to one page.
  */
 const Logger = require('@omega.js/devkit/logger');
 const { loadConfig, formatErrors } = require('@omega.js/config');
 const { consumerPaths } = require('../consumer.js');
-const { translateSite } = require('../translate/index.js');
+const { translateSite, warnSkippedCold } = require('../translate/index.js');
 const jetpack = require('fs-jetpack');
 
 const logger = new Logger('translate');
@@ -49,6 +50,9 @@ module.exports = async function (options) {
   if (stats.usage.input || stats.usage.output) {
     logger.log(`Provider tokens: ${stats.usage.input.toLocaleString()} in / ${stats.usage.output.toLocaleString()} out`);
   }
+
+  // On a CI runner the pass is cache-only, so cold pairs ship untranslated
+  warnSkippedCold(stats, logger);
 
   if (stats.failures.length) {
     logger.error(`${stats.failures.length} page-language pair(s) failed (each copy shipped untranslated):`);

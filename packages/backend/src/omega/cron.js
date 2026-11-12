@@ -9,6 +9,7 @@
  */
 const jetpack = require('fs-jetpack');
 const Context = require('./context.js');
+const { loadHandler } = require('./libraries/load-handler.js');
 
 /**
  * Run every job of one schedule.
@@ -53,7 +54,7 @@ async function loadAndExecuteJobs(name, jobsPath, omega, context) {
 
     try {
       // Load and execute job
-      const handler = require(`${jobsPath}/${job}`);
+      const handler = loadHandler(`${jobsPath}/${job}`);
       await handler({ ctx, omega, context });
 
       ctx.log('Completed!');

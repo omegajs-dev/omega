@@ -2,7 +2,7 @@
  * Schema: POST /payments/refund
  * Validates refund parameters for both subjects a refund can have
  */
-module.exports = () => ({
+export default() => ({
   reason: { type: 'string', required: true },
   feedback: { type: 'string', default: null },
   confirmed: { type: 'boolean', required: true },

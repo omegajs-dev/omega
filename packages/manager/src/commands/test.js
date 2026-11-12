@@ -19,7 +19,7 @@
  *
  * Universal targets (bare paths, `framework:`/`omega:`/`mgr:`, `full:`,
  * `project:`/`brand:`) forward to every target verbatim; per-framework ids
- * (FRAMEWORK_IDS: `web:`, `backend:`, `desktop:`, `extension:`) route to
+ * (the target-type rows: `web:`, `backend:`, `desktop:`, `extension:`) route to
  * the target owning that framework — the legacy short ids are retired. Unknown
  * prefixes warn and are dropped; if nothing valid remains, every target runs
  * bare (scope.js parity).
@@ -57,7 +57,8 @@ const attachLogFile = require('@omega.js/devkit/attach-log-file');
 
 const Logger = require('@omega.js/devkit/logger');
 const { createRunner } = require('@omega.js/devkit/test/runner');
-const { UNIVERSAL_FRAMEWORK_ALIASES, PROJECT_ALIASES, FULL_ALIASES, FRAMEWORK_IDS, FANOUT_ENV, NO_MATCH_EXIT_CODE, noMatchMessage, parseTestScope, isPathTargeted } = require('@omega.js/devkit/test/scope');
+const { TARGET_TYPE_ROWS } = require('@omega.js/config');
+const { UNIVERSAL_FRAMEWORK_ALIASES, PROJECT_ALIASES, FULL_ALIASES, FANOUT_ENV, NO_MATCH_EXIT_CODE, noMatchMessage, parseTestScope, isPathTargeted } = require('@omega.js/devkit/test/scope');
 const { resolveBrandRoot, discoverTargets } = require('../lib/brand.js');
 const { resolveTargetRun, resolveFrameworkPackage } = require('../lib/framework-bin.js');
 const { PICKER_FLAG, assertPickerFlags, assertKnownTargets, parseTargetTokens, targetMatches, buildForwardedFlags } = require('../lib/target-selection.js');
@@ -70,9 +71,10 @@ const UNIVERSAL_PREFIXES = new Set([
   ...FULL_ALIASES,
 ]);
 
-// id prefix → owning framework package ('desktop' → '@omega.js/desktop', …)
+// id prefix → owning framework package ('desktop' → '@omega.js/desktop', …),
+// one per target-type row that has a framework
 const ID_TO_FRAMEWORK = Object.fromEntries(
-  Object.entries(FRAMEWORK_IDS).flatMap(([pkg, ids]) => ids.map((id) => [id, pkg]))
+  TARGET_TYPE_ROWS.filter((row) => row.framework).map((row) => [row.id, row.framework])
 );
 
 // The brand's own e2e lane: every suite file in this folder, on devkit's runner.

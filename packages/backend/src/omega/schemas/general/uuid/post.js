@@ -1,6 +1,6 @@
-const env = require('../../../libraries/env.js');
+import env from '../../../libraries/env.js';
 
-module.exports = () => ({
+export default() => ({
   name: { type: 'string' },
   input: { type: 'string' },
   version: { type: ['string', 'number'], default: '5' },

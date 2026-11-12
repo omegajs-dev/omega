@@ -1,7 +1,7 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
-const powertools = require('node-powertools');
-const { OUTSIDE_WINDOW_MESSAGE, isWithinRefundWindow, oneTimeRefundRefusal } = require('../../../libraries/payment/refund-policy.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
+import powertools from 'node-powertools';
+import { OUTSIDE_WINDOW_MESSAGE, isWithinRefundWindow, oneTimeRefundRefusal } from '../../../libraries/payment/refund-policy.js';
 
 /**
  * POST /payments/refund
@@ -20,7 +20,7 @@ const { OUTSIDE_WINDOW_MESSAGE, isWithinRefundWindow, oneTimeRefundRefusal } = r
  * Stores the refund reason/feedback on payments-orders/{orderId}.requests.refund.
  * Requires authentication.
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   // Require authentication
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -76,7 +76,7 @@ module.exports = async ({ ctx, user, data }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });
   }
@@ -147,7 +147,7 @@ async function refundOneTimePurchase({ ctx, uid, data }) {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });
   }

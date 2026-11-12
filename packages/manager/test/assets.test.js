@@ -230,12 +230,12 @@ module.exports = defineCases({
     // ─── Registry / defaults pins ────────────────────────────────────────────────
 
     {
-      name: 'assets: registered after directory with the seven operations in dependency order',
+      name: 'assets: registered after directory with the six operations in dependency order',
       run: (ctx) => {
         ctx.expect(SERVICE_ORDER[SERVICE_ORDER.indexOf('directory') + 1]).toBe('assets');
         // templates before icons — icons prefers the composited icon.png it makes;
         // reconcile last, so everything this walk generated is already derived
-        ctx.expect(OPERATIONS.assets.map((o) => o.name)).toEqual(['logo-gen', 'process', 'templates', 'icons', 'social-icons', 'favicons', 'reconcile']);
+        ctx.expect(OPERATIONS.assets.map((o) => o.name)).toEqual(['logo-gen', 'process', 'templates', 'icons', 'social-icons', 'reconcile']);
       },
     },
 
@@ -291,14 +291,13 @@ module.exports = defineCases({
 
         const files = derivedFiles(root);
         // 20 logo files (2 SVGs + 9 color + 9 black PNGs), 2 app icons,
-        // 4 social icons, 7 favicon files
-        ctx.expect(files.length).toBe(33);
+        // 4 social icons; the favicon set is each web build's own now
+        ctx.expect(files.length).toBe(26);
         for (const expected of [
           'logo/brandmark/color-x.svg', 'logo/brandmark/black-x.svg',
           'logo/brandmark/color-16.png', 'logo/brandmark/color-2048.png', 'logo/brandmark/black-1024.png',
           'app/macos/icon.icns', 'app/windows/icon.ico',
           'social/brandmark/color-x.svg', 'social/brandmark/color-2048.png',
-          'favicon/favicon.ico', 'favicon/apple-touch-icon.png', 'favicon/site.webmanifest',
         ]) {
           ctx.expect(files.includes(expected), `missing ${expected}`).toBeTruthy();
         }
@@ -318,13 +317,6 @@ module.exports = defineCases({
         // Container formats carry their magic bytes
         const icns = fs.readFileSync(path.join(root, '.omega', 'assets', 'app', 'macos', 'icon.icns'));
         ctx.expect(icns.subarray(0, 4).toString('ascii')).toBe('icns');
-        const ico = fs.readFileSync(path.join(root, '.omega', 'assets', 'favicon', 'favicon.ico'));
-        ctx.expect([...ico.subarray(0, 4)]).toEqual([0, 0, 1, 0]);
-
-        // The webmanifest derives from config
-        const manifest = JSON.parse(fs.readFileSync(path.join(root, '.omega', 'assets', 'favicon', 'site.webmanifest'), 'utf8'));
-        ctx.expect(manifest.name).toBe('AB');
-        ctx.expect(manifest.icons.length).toBe(2);
       },
     },
 
@@ -346,7 +338,6 @@ module.exports = defineCases({
         ctx.expect(result.output.process.synced).toBe(true);
         ctx.expect(result.output.icons.synced).toBe(true);
         ctx.expect(result.output.socialIcons.synced).toBe(true);
-        ctx.expect(result.output.favicons.synced).toBe(true);
       },
     },
 
@@ -368,32 +359,8 @@ module.exports = defineCases({
         ctx.expect(result.status).toBe('success');
         const after = mtimes(root, files);
         const changed = files.filter((_, index) => after[index] !== before[index]);
-        // Everything except the config-derived webmanifest regenerates
-        ctx.expect(changed.length).toBe(files.length - 1);
-        ctx.expect(!changed.includes('favicon/site.webmanifest')).toBeTruthy();
-      },
-    },
-
-    {
-      name: 'assets: a changed brand name rewrites only the webmanifest',
-      run: async (ctx) => {
-        const root = stageBrand();
-        await runService(root, brandConfig());
-
-        const files = derivedFiles(root);
-        const before = mtimes(root, files);
-
-        const renamed = brandConfig();
-        renamed.brand.name = 'Renamed Brand';
-        const result = await runService(root, renamed);
-
-        ctx.expect(result.status).toBe('success');
-        const after = mtimes(root, files);
-        const changed = files.filter((_, index) => after[index] !== before[index]);
-        ctx.expect(changed).toEqual(['favicon/site.webmanifest']);
-        const manifest = JSON.parse(fs.readFileSync(path.join(root, '.omega', 'assets', 'favicon', 'site.webmanifest'), 'utf8'));
-        ctx.expect(manifest.name).toBe('Renamed Brand');
-        ctx.expect(result.output.favicons.generated).toBe(1);
+        // Every derived file comes from the brandmark, so every one regenerates
+        ctx.expect(changed).toEqual(files);
       },
     },
 
@@ -410,7 +377,6 @@ module.exports = defineCases({
         ctx.expect(result.output.process.planned).toBe(20);
         ctx.expect(result.output.icons.planned).toBe(2);
         ctx.expect(result.output.socialIcons.planned).toBe(4);
-        ctx.expect(result.output.favicons.planned).toBe(7);
       },
     },
 
@@ -791,7 +757,6 @@ module.exports = defineCases({
 
         ctx.expect(logos.removed.includes('logo/brandmark')).toBeTruthy();
         ctx.expect(logos.removed.includes('social/brandmark')).toBeTruthy();
-        ctx.expect(logos.removed.includes('favicon')).toBeTruthy();
         ctx.expect(logos.removed.includes(path.join('app', 'macos', 'icon.icns'))).toBeTruthy();
         // The templates kind's export survives; only it is left
         ctx.expect(derivedFiles(root)).toEqual(['app/macos/icon.png']);
@@ -829,7 +794,6 @@ module.exports = defineCases({
         ctx.expect(forced.output.process.generated).toBe(20);
         ctx.expect(forced.output.icons.generated).toBe(2);
         ctx.expect(forced.output.socialIcons.generated).toBe(4);
-        ctx.expect(forced.output.favicons.generated).toBe(7);
         const after = mtimes(root, files);
         ctx.expect(files.filter((_, index) => after[index] === before[index]).length).toBe(0);
       },
@@ -886,7 +850,7 @@ module.exports = defineCases({
 
         // Leftovers of an older shape, inside two operations' own output dirs
         fs.writeFileSync(path.join(root, '.omega', 'assets', 'logo', 'brandmark', 'color-64.webp'), 'stray');
-        fs.writeFileSync(path.join(root, '.omega', 'assets', 'favicon', 'favicon-64x64.png'), 'stray');
+        fs.writeFileSync(path.join(root, '.omega', 'assets', 'social', 'brandmark', 'color-64.png'), 'stray');
 
         const result = await runService(root, brandConfig());
 
@@ -985,7 +949,7 @@ module.exports = defineCases({
         const root = stageBrand();
         await runService(root, brandConfig());
 
-        const stray = path.join(root, '.omega', 'assets', 'favicon', 'legacy-touch-icon.png');
+        const stray = path.join(root, '.omega', 'assets', 'social', 'brandmark', 'legacy-touch-icon.png');
         fs.writeFileSync(stray, 'stray');
 
         const result = await runService(root, brandConfig(), { options: { dryRun: true } });

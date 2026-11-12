@@ -11,12 +11,13 @@ const { ensureTarget } = require('./lib/ensure-target.js');
 // gulp `build` series does no cleaning of its own, so the verb owns that step
 // too. Desktop runs the same model through utils/build-pipeline.js because
 // three verbs share it there; extension has two plans (this and dev) and both run through runPlan here.
-function plan() {
+function plan(options = {}) {
   return {
     env: { OMEGA_BUILD_MODE: 'true' },
     steps: [
       { type: 'clean' },
-      { type: 'gulp', task: 'build' },
+      // `--cached-only` rides to the gulp lane, whose translate task reads it
+      { type: 'gulp', task: 'build', args: options.cachedOnly ? ['--cached-only'] : [] },
     ],
   };
 }

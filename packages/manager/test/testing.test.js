@@ -16,7 +16,7 @@ const jetpack = require('fs-jetpack');
 // temp home, never the developer's ~/.omega (#677).
 require('@omega.js/devkit/test/temp-home');
 
-const { SERVICE_ORDER, OPERATIONS, TARGET_FRAMEWORKS } = require('../src/config.js');
+const { SERVICE_ORDER, OPERATIONS } = require('../src/config.js');
 const { compareVersions, installedVersion, parseWorkingTree } = require('../src/services/testing/lib/checks.js');
 const {
   HOMEPAGE, GIT_CMD, stageBrand, seedDeployRecord, brandConfig, stageWebTarget, stageBackendTarget, fakeFetch, fakeExec, runService,
@@ -39,18 +39,6 @@ module.exports = defineCases({
       run: (ctx) => {
         ctx.expect(SERVICE_ORDER[SERVICE_ORDER.length - 1]).toBe('testing');
         ctx.expect(OPERATIONS.testing).toEqual([{ name: 'target-checks', ensure: true }]);
-      },
-    },
-
-    {
-      name: 'testing: TARGET_FRAMEWORKS maps every checkable target, mobile reserved',
-      run: (ctx) => {
-        ctx.expect(TARGET_FRAMEWORKS).toEqual({
-          web: '@omega.js/web',
-          backend: '@omega.js/backend',
-          extension: '@omega.js/extension',
-          desktop: '@omega.js/desktop',
-        });
       },
     },
 

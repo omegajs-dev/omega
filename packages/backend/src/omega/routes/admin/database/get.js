@@ -2,7 +2,7 @@
  * GET /admin/database - Read Realtime Database
  * Admin-only endpoint to read any path
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication

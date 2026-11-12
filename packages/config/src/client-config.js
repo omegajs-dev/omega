@@ -28,6 +28,7 @@ const { CLIENT_SECTIONS } = require('./schema.js');
 const { findSecretKeys } = require('./secrets.js');
 const { resolveWinbackOffer } = require('./winback.js');
 const { PAYMENT_PROVIDERS } = require('./payment-providers.js');
+const { ANALYTICS_PROVIDERS } = require('./analytics-providers.js');
 
 // The per-build facts a surface composes ON TOP of the resolved config before
 // baking it. They are not config sections (nothing authors them in
@@ -128,6 +129,10 @@ function clientConfig(resolved) {
   if (client.payment) {
     client.payment = { ...client.payment, winback: resolveWinbackOffer(client.payment), capabilities: PAYMENT_PROVIDERS };
   }
+
+  // The analytics provider rows ride ALWAYS: they are provider facts, not brand
+  // settings, so a brand with no analytics section still reads them.
+  client.analytics = { ...client.analytics, capabilities: ANALYTICS_PROVIDERS };
 
   // Never an alias of the resolved config: what a bake stamps into an artifact
   // cannot be something a later build step can still mutate. A JSON round trip

@@ -32,7 +32,7 @@ const {
 const {
   PROCESSING_LEASE_SECONDS,
   GENERATOR_MAX_ATTEMPTS,
-} = require('../../dist/omega/events/cron/frequent/marketing-campaigns.js');
+} = require('../../dist/omega/events/cron/helpers/marketing-campaigns.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 const WEEK = 7 * 86400;

@@ -21,8 +21,25 @@ Caller (route/transition/cron)
 | Context | API | Delivers via |
 |---|---|---|
 | Transactional (individual) | `ctx.email.send(options)` (or `omega.email.send(options)` outside a request) | SendGrid Mail Send |
-| Marketing (campaign) | `ctx.email.sendCampaign(options)` | SendGrid Single Send + Beehiiv |
+| Marketing (campaign) | `ctx.email.sendCampaign(options)` | Each role's provider: `campaigns` (SendGrid Single Send) + `newsletter` (Beehiiv post) |
 | Newsletter (generated) | `generators/newsletter.js` → `renderNewsletter()` | Same as marketing |
+
+### Email providers and roles
+
+Each email-marketing provider's facts live in ONE row: `EMAIL_PROVIDERS` in `@omega.js/config` ([`packages/config/src/email-providers.js`](../../packages/config/src/email-providers.js)). Read the rows there; nothing else names a provider's role, key or fields. A row's fields mean:
+
+- `id`: the provider (`sendgrid`, `beehiiv`), the name of its file in `libraries/email/providers/`.
+- `role`: the role it serves (`campaigns` or `newsletter`), exactly one provider per role.
+- `envKey`: the key that turns the role on.
+- `nativeFields`: catalog fields the provider stores in its own columns, so it never takes them as custom fields (`fieldsForProvider()` leaves them out).
+- `operations`: the functions the role's callers use, each exported by the provider's file.
+
+How the rows are reached:
+
+- `emailProvider(id)` and `emailProviderForRole(role)` answer a row, or null for an unknown id or role.
+- The provider functions stay in the backend, one file per row at `libraries/email/providers/<id>.js`, gathered by the registry `libraries/email/providers/index.js` (static requires; `providerModule(id)` answers the module and throws for an id with none). `test/email/provider-registry.test.js` pins rows against files and every listed operation against the file's exports.
+- Callers reach a provider through its role, never its name: `Marketing.roleProvider(role)` (`marketing/index.js`) answers the module through the registry, and `Marketing.roleOn(config, role)` is the one role gate (`marketing.<role>.enabled` not false, and the row's `envKey` set). The marketing library and the daily prune read the provider this way; the manager's campaigns and newsletter services find theirs with `emailProviderForRole`, and the env schema's two marketing ask rules read the row ids.
+- The role words are the public shape: results, `settings.providers`, `data.providers.*` and config keep `campaigns` and `newsletter`.
 
 ### Shared Preparation (`prepare.js`)
 
@@ -31,7 +48,7 @@ Both transactional and marketing paths share the same preparation layer:
 | Function | Purpose |
 |---|---|
 | `resolveBrand(omega)` | Clones brand config, sanitizes images (SVG→PNG via CDN naming) |
-| `resolveSender({ sender, from, group }, brand, brandDomain, omega)` | Resolves sender from/display-name by category key, and the ASM group id from config (`marketing.campaigns.providers.sendgrid.groups.<key>`); see [Unsubscribe groups](#unsubscribe-groups) |
+| `resolveSender({ sender, from, group }, brand, brandDomain, omega)` | Resolves sender from/display-name by category key (through `senderFrom`), and the ASM group id from config (`marketing.campaigns.providers.sendgrid.groups.<key>`); see [Unsubscribe groups](#unsubscribe-groups) |
 | `renderContent({ content, html, trusted }, utmOptions)` | Markdown→HTML via markdown-it, applies UTM link tagging. Raw HTML in `content` is DISABLED unless `trusted` is set — see [Content trust](#content-trust) |
 | `resolveSignoff(signoff)` | The caller's signoff, passed through untouched; none is the team signoff (`{ type: 'team' }`). Nothing is filled from config |
 | `buildCategories(type, brandId, extra)` | Builds categories array: `['transactional', brandId, ...extra]` |
@@ -60,7 +77,7 @@ Email bodies arrive from two very different places, so `renderContent()` has two
 | Lane | Who uses it | markdown-it |
 |---|---|---|
 | **Untrusted** (default) | AI-authored campaign/newsletter bodies, user-submitted fields, anything arriving over a route or the MCP `send_email`/`create_campaign` tools | `html: false` — smuggled `<script>`/`<img onerror>` renders as inert text |
-| **Trusted** (`trustedContent: true` on the send settings) | First-party callers that hand-build markup: the dispute alert (`events/firestore/payments-disputes/on-write.js`) and the newsletter report email (`generators/newsletter.js`) | `html: true` |
+| **Trusted** (`trustedContent: true` on the send settings) | First-party callers that hand-build markup: the dispute alert (`events/firestore/payments-disputes/send-dispute-email.js`) and the newsletter report email (`generators/newsletter.js`) | `html: true` |
 
 Rules for the trusted lane:
 
@@ -120,7 +137,7 @@ After `build()`, `send()` delivers via SendGrid, handles scheduled sends (>71h �
 
 ### Marketing Pipeline (`marketing/index.js`)
 
-`_sendCampaignSendGrid()` follows the same prepare → render → deliver pattern. Content comes from `data.content.message` (markdown) — same location as transactional callers. Key difference: audience targeting uses brand-scoped dynamic segments (see [marketing-campaigns.md](marketing-campaigns.md)).
+`sendCampaign()` reads each role's two legs from one table (`ROLE_LEGS`): it builds every role's audience first (`campaignsAudience()`, `newsletterAudience()`), then dispatches each role's sender: `sendCampaignsEmail()` follows the same prepare → render → deliver pattern, and `sendNewsletterPost()` creates one post. Content comes from `data.content.message` (markdown), the same location as transactional callers. Key difference: audience targeting uses brand-scoped dynamic segments, and a segment key or an audience that resolves to nothing fails the campaign before anything is sent (see [marketing-campaigns.md](marketing-campaigns.md#segments-ssot)).
 
 ### Email Validation Pipeline (`validation.js`)
 
@@ -139,6 +156,7 @@ All marketing contact operations (`add`, `sync`) pass through `validate()` befor
 - **`DEFAULT_CHECKS`** = checks 1–5 (all free, run on every `mailer.add()`/`mailer.sync()` call)
 - **`ALL_CHECKS`** = checks 1–7 (used at signup to include paid mailbox verification)
 - The `dns` check is opt-in (not in DEFAULT_CHECKS) because it's async/slower — include it for bulk validation
+- The `dns` check blocks only on an answer (`ENOTFOUND`, `ENODATA`, null or loopback MX): a DNS server failure (`ESERVFAIL`) or a network error skips it and never blocks
 - The `typo` check uses prefix matching (`"gamil."` catches `gamil.com`, `gamil.con`, `gamil.co`) — see `data/typo-domains.js`
 - Custom disposable domains go in `data/custom-disposable-domains.json` (not the vendor list)
 - Run `npx omega test framework:email/validation-cases` to verify all checks against the address corpus
@@ -348,13 +366,16 @@ Defined in `constants.js` → `SENDERS`. Each category auto-resolves a from addr
 
 | Category | From | Display Name | Group key |
 |---|---|---|---|
-| `orders` | `orders@{domain}` | Orders at {Brand} | `orders` |
+| `orders` | `orders@{domain}` | {Brand} Orders | `orders` |
 | `hello` | `hello@{domain}` | {Brand} | `hello` |
 | `account` | `account@{domain}` | {Brand} Account | `account` |
-| `marketing` | `marketing@{domain}` | {Brand} | `marketing` |
+| `marketing` | `offers@{domain}` | {Brand} | `marketing` |
 | `security` | `security@{domain}` | {Brand} Security | `security` |
-| `newsletter` | `newsletter@{domain}` | {Brand} Newsletter | `newsletter` |
+| `newsletter` | `newsletter@{domain}` | {Brand} | `newsletter` |
 | `internal` | `alerts@{domain}` | {Brand} Alerts | `internal` |
+
+- `senderFrom(key, { brandName, domain })` in `constants.js` is the one place a row becomes a from address and name (`{ email, name }`, null for an unknown key); `prepare.resolveSender()` calls it.
+- The manager's campaigns service calls the same function to make one verified SendGrid sender per row, so a campaign can send from any category ([manager/campaigns.md](../manager/campaigns.md)).
 
 ## Unsubscribe groups
 
@@ -402,7 +423,7 @@ All email tests live under `test/email/`, mirroring the source at `src/omega/lib
 | `templates.js` | MJML rendering for all 4 email templates (11 tests) | No |
 | `testing-capture.js` | The [testing-mode capture](#the-testing-mode-capture-the-sendgrid-stand-in): the gate, the store, the summary, the mailer's seam (6 tests) | No |
 | `transactional.js` | Transactional email building (assertions on output shape) | No |
-| `validation.js` | Email format/disposable/corporate/local-part/typo/dns checks (52 tests) | No |
+| `validation.js` | Email format/disposable/corporate/local-part/typo/dns checks (55 tests) | No |
 | `transactional-send.js` | Single transactional email send via SendGrid | Yes |
 | `campaign-send.js` | Marketing campaign send with title + CTA + discount code | Yes |
 | `feedback-and-plain-send.js` | Feedback + plain template visual test sends | Yes |
@@ -441,6 +462,8 @@ All extended email tests send to `_test-<purpose>@{domain}` addresses (e.g. `_te
 | Feedback template | `src/omega/libraries/email/generators/lib/templates/feedback.js` |
 | UTM link tagging | `src/omega/libraries/email/utm.js` |
 | Constants (senders, groups, fields, segments) | `src/omega/libraries/email/constants.js` |
+| Provider rows (role, env key, native fields, operations) | `@omega.js/config` `src/email-providers.js` |
+| Provider row ↔ file test | `test/email/provider-registry.test.js` |
 | Email validation | `src/omega/libraries/email/validation.js` |
 | Typo domain prefixes | `src/omega/libraries/email/data/typo-domains.js` |
 | Custom disposable domains | `src/omega/libraries/email/data/custom-disposable-domains.json` |

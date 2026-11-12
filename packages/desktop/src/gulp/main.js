@@ -69,7 +69,7 @@ global.tasks = exports;
 // Lifecycle hook tasks — each invokes the consumer's <projectRoot>/hooks/<name>.js file if it
 // exists, or no-ops. Inserted around the build/release stages so consumers can extend the
 // pipeline without forking gulp tasks.
-const runConsumerHook = require('../utils/run-consumer-hook.js');
+const { runConsumerHook } = require('@omega.js/devkit/run-consumer-hook');
 function makeHookTask(name) {
   const fn = async () => {
     await runConsumerHook(name, { build, projectRoot: process.cwd(), mode: process.env.OMEGA_BUILD_MODE === 'true' ? 'production' : 'development' });

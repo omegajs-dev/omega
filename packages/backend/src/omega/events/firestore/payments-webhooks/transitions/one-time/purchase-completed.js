@@ -2,10 +2,10 @@
  * Transition: purchase-completed
  * Triggered when a one-time payment checkout completes (checkout.session.completed with mode=payment)
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
-const discountCodes = require('../../../../../libraries/payment/discount-codes.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
+import discountCodes from '../../../../../libraries/payment/discount-codes.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc }) {
+export default async function ({ ctx, before, after, order, uid, userDoc }) {
   const brandName = ctx.omega.config.brand?.name || '';
   const productName = after.product?.name || '';
 

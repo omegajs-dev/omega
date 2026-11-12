@@ -687,6 +687,11 @@ module.exports = defineCases({
           }
         };
         walk(path.join(root, 'dist'));
+
+        // The shipped copy loads on what was vendored beside it, one adapter per provider row
+        const { ANALYTICS_PROVIDERS } = require('@omega.js/config');
+        const vendored = require(path.join(root, 'dist', 'vendor', 'analytics', 'index.js'));
+        ctx.expect(Object.keys(vendored.adapters).sort()).toEqual(Object.values(ANALYTICS_PROVIDERS).map((row) => row.id).sort());
       },
     },
 

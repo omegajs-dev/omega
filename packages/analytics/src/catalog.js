@@ -205,7 +205,7 @@ function tiktokSearch(params) {
 
 // The recurring-revenue events ride GA4's standard `purchase` under their own
 // canonical name, so the flag that tells them apart in GA4 is set here.
-function ga4Recurring(params) {
+function googleRecurring(params) {
   return { ...params, is_recurring: true };
 }
 
@@ -235,7 +235,7 @@ const CATALOG = {
     params: ['method', 'user_id'],
     placement: 'both',
     providers: {
-      ga4: { name: 'sign_up', kind: 'standard' },
+      google: { name: 'sign_up', kind: 'standard' },
       meta: { name: 'CompleteRegistration', kind: 'standard' },
       tiktok: { name: 'CompleteRegistration', kind: 'standard' },
     },
@@ -245,7 +245,7 @@ const CATALOG = {
     params: ['method', 'user_id'],
     placement: 'client',
     providers: {
-      ga4: { name: 'login', kind: 'standard' },
+      google: { name: 'login', kind: 'standard' },
       // Neither ad platform defines a Login event — today's call sites already
       // fire it as a custom one, and the catalog says so out loud.
       meta: { name: 'Login', kind: 'custom' },
@@ -265,7 +265,7 @@ const CATALOG = {
     params: ['method', 'status'],
     placement: 'client',
     providers: {
-      ga4: { name: 'password_reset', kind: 'custom' },
+      google: { name: 'password_reset', kind: 'custom' },
       meta: { name: 'PasswordReset', kind: 'custom' },
       tiktok: { name: 'SubmitForm', kind: 'standard' },
     },
@@ -281,7 +281,7 @@ const CATALOG = {
     params: ['page_path', 'page_title', 'page_location'],
     placement: 'client',
     providers: {
-      ga4: { name: 'page_view', kind: 'standard' },
+      google: { name: 'page_view', kind: 'standard' },
       meta: { name: 'PageView', kind: 'standard' },
       // TikTok's page view is a pixel METHOD it manages itself (`ttq.page()`),
       // not a name in its trackable set — `ttq.track('Pageview')` appears
@@ -299,7 +299,7 @@ const CATALOG = {
     params: ['screen_name'],
     placement: 'client',
     providers: {
-      ga4: { name: 'screen_view', kind: 'standard' },
+      google: { name: 'screen_view', kind: 'standard' },
     },
   },
 
@@ -309,7 +309,7 @@ const CATALOG = {
     params: ['currency', 'value', 'items'],
     placement: 'client',
     providers: {
-      ga4: { name: 'view_item', kind: 'standard' },
+      google: { name: 'view_item', kind: 'standard' },
       meta: { name: 'ViewContent', kind: 'standard', map: metaCommerce },
       tiktok: { name: 'ViewContent', kind: 'standard', map: tiktokCommerce },
     },
@@ -324,7 +324,7 @@ const CATALOG = {
     params: ['billing_type'],
     placement: 'client',
     providers: {
-      ga4: { name: 'pricing_toggle', kind: 'custom' },
+      google: { name: 'pricing_toggle', kind: 'custom' },
       meta: { name: 'PricingToggle', kind: 'custom' },
       tiktok: { name: 'PricingToggle', kind: 'custom' },
     },
@@ -334,7 +334,7 @@ const CATALOG = {
     params: ['currency', 'value', 'items'],
     placement: 'client',
     providers: {
-      ga4: { name: 'add_to_cart', kind: 'standard' },
+      google: { name: 'add_to_cart', kind: 'standard' },
       meta: { name: 'AddToCart', kind: 'standard', map: metaCommerce },
       tiktok: { name: 'AddToCart', kind: 'standard', map: tiktokCommerce },
     },
@@ -344,7 +344,7 @@ const CATALOG = {
     params: ['currency', 'value', 'items'],
     placement: 'client',
     providers: {
-      ga4: { name: 'begin_checkout', kind: 'standard' },
+      google: { name: 'begin_checkout', kind: 'standard' },
       meta: { name: 'InitiateCheckout', kind: 'standard', map: metaCommerce },
       tiktok: { name: 'InitiateCheckout', kind: 'standard', map: tiktokCommerce },
     },
@@ -354,7 +354,7 @@ const CATALOG = {
     params: ['currency', 'value', 'payment_type', 'items'],
     placement: 'client',
     providers: {
-      ga4: { name: 'add_payment_info', kind: 'standard' },
+      google: { name: 'add_payment_info', kind: 'standard' },
       meta: { name: 'AddPaymentInfo', kind: 'standard', map: metaCommerce },
       tiktok: { name: 'AddPaymentInfo', kind: 'standard', map: tiktokCommerce },
     },
@@ -375,7 +375,7 @@ const CATALOG = {
     params: COMMERCE_PARAMS,
     placement: 'both',
     providers: {
-      ga4: { name: 'purchase', kind: 'standard' },
+      google: { name: 'purchase', kind: 'standard' },
       meta: { name: 'Purchase', kind: 'standard', map: metaCommerce },
       // TikTok RETIRED CompletePayment: `Purchase` — "when a visitor makes a
       // purchase" — is the standard event its live list names, and the only one
@@ -400,7 +400,7 @@ const CATALOG = {
     placement: 'both',
     providers: {
       // GA4 has no trial_start in its standard set — an explicit custom event.
-      ga4: { name: 'trial_start', kind: 'custom' },
+      google: { name: 'trial_start', kind: 'custom' },
       meta: { name: 'StartTrial', kind: 'standard', map: metaCommerce },
       // TikTok's own StartTrial — "when a customer begins a free trial for your
       // product or service" — replaces the Subscribe this claimed, which TikTok
@@ -424,7 +424,7 @@ const CATALOG = {
     params: COMMERCE_PARAMS,
     placement: 'server',
     providers: {
-      ga4: { name: 'purchase', kind: 'standard' },
+      google: { name: 'purchase', kind: 'standard' },
       meta: { name: 'Purchase', kind: 'standard', map: metaCommerce, actionSource: 'system_generated' },
       tiktok: { name: 'Purchase', kind: 'standard', map: tiktokCommerce },
     },
@@ -440,7 +440,7 @@ const CATALOG = {
     params: COMMERCE_PARAMS,
     placement: 'server',
     providers: {
-      ga4: { name: 'trial_lapse', kind: 'custom' },
+      google: { name: 'trial_lapse', kind: 'custom' },
     },
   },
 
@@ -451,7 +451,7 @@ const CATALOG = {
     params: ['transaction_id', 'value', 'currency', 'items'],
     placement: 'server',
     providers: {
-      ga4: { name: 'refund', kind: 'standard' },
+      google: { name: 'refund', kind: 'standard' },
       meta: { name: 'Refund', kind: 'custom', map: metaAudienceSignal },
       tiktok: { name: 'Refund', kind: 'custom', map: tiktokAudienceSignal },
     },
@@ -464,7 +464,7 @@ const CATALOG = {
     params: COMMERCE_PARAMS,
     placement: 'server',
     providers: {
-      ga4: { name: 'subscription_cancel', kind: 'custom' },
+      google: { name: 'subscription_cancel', kind: 'custom' },
       meta: { name: 'SubscriptionCancel', kind: 'custom', map: metaAudienceSignal },
       tiktok: { name: 'SubscriptionCancel', kind: 'custom', map: tiktokAudienceSignal },
     },
@@ -477,7 +477,7 @@ const CATALOG = {
     params: COMMERCE_PARAMS,
     placement: 'server',
     providers: {
-      ga4: { name: 'subscription_uncancel', kind: 'custom' },
+      google: { name: 'subscription_uncancel', kind: 'custom' },
     },
   },
 
@@ -488,7 +488,7 @@ const CATALOG = {
     params: PLAN_CHANGE_PARAMS,
     placement: 'server',
     providers: {
-      ga4: { name: 'subscription_plan_change', kind: 'custom' },
+      google: { name: 'subscription_plan_change', kind: 'custom' },
     },
   },
 
@@ -504,7 +504,7 @@ const CATALOG = {
     params: COMMERCE_PARAMS,
     placement: 'server',
     providers: {
-      ga4: { name: 'purchase', kind: 'standard', map: ga4Recurring },
+      google: { name: 'purchase', kind: 'standard', map: googleRecurring },
       meta: { name: 'Purchase', kind: 'standard', map: metaCommerce, actionSource: 'system_generated' },
       tiktok: { name: 'Purchase', kind: 'standard', map: tiktokCommerce },
     },
@@ -514,7 +514,7 @@ const CATALOG = {
     params: COMMERCE_PARAMS,
     placement: 'server',
     providers: {
-      ga4: { name: 'purchase', kind: 'standard', map: ga4Recurring },
+      google: { name: 'purchase', kind: 'standard', map: googleRecurring },
       meta: { name: 'Purchase', kind: 'standard', map: metaCommerce, actionSource: 'system_generated' },
       tiktok: { name: 'Purchase', kind: 'standard', map: tiktokCommerce },
     },
@@ -531,7 +531,7 @@ const CATALOG = {
     params: ['lead_source', 'subject'],
     placement: 'client',
     providers: {
-      ga4: { name: 'generate_lead', kind: 'standard' },
+      google: { name: 'generate_lead', kind: 'standard' },
       meta: { name: 'Lead', kind: 'standard' },
       tiktok: { name: 'SubmitForm', kind: 'standard' },
     },
@@ -542,7 +542,7 @@ const CATALOG = {
     params: ['from_page'],
     placement: 'client',
     providers: {
-      ga4: { name: 'contact_enterprise', kind: 'custom' },
+      google: { name: 'contact_enterprise', kind: 'custom' },
       meta: { name: 'Contact', kind: 'standard' },
       tiktok: { name: 'Contact', kind: 'standard' },
     },
@@ -554,7 +554,7 @@ const CATALOG = {
     params: ['content_type'],
     placement: 'client',
     providers: {
-      ga4: { name: 'contact_form_spam', kind: 'custom' },
+      google: { name: 'contact_form_spam', kind: 'custom' },
     },
   },
 
@@ -563,7 +563,7 @@ const CATALOG = {
     params: ['platform', 'download_name', 'download_url'],
     placement: 'client',
     providers: {
-      ga4: { name: 'file_download', kind: 'standard' },
+      google: { name: 'file_download', kind: 'standard' },
       meta: { name: 'Download', kind: 'custom' },
       tiktok: { name: 'Download', kind: 'standard' },
     },
@@ -578,7 +578,7 @@ const CATALOG = {
     params: ['feedback_rating'],
     placement: 'client',
     providers: {
-      ga4: { name: 'feedback_submit', kind: 'custom' },
+      google: { name: 'feedback_submit', kind: 'custom' },
       meta: { name: 'FeedbackSubmit', kind: 'custom' },
       tiktok: { name: 'SubmitForm', kind: 'standard' },
     },
@@ -592,7 +592,7 @@ const CATALOG = {
     params: ['review_url'],
     placement: 'client',
     providers: {
-      ga4: { name: 'review_click', kind: 'custom' },
+      google: { name: 'review_click', kind: 'custom' },
       meta: { name: 'ReviewClick', kind: 'custom' },
       tiktok: { name: 'ReviewClick', kind: 'custom' },
     },
@@ -603,7 +603,7 @@ const CATALOG = {
     params: ['review_url'],
     placement: 'client',
     providers: {
-      ga4: { name: 'review_prompt_show', kind: 'custom' },
+      google: { name: 'review_prompt_show', kind: 'custom' },
     },
   },
 
@@ -611,7 +611,7 @@ const CATALOG = {
     params: ['search_term', 'content_category'],
     placement: 'client',
     providers: {
-      ga4: { name: 'search', kind: 'standard' },
+      google: { name: 'search', kind: 'standard' },
       meta: { name: 'Search', kind: 'standard', map: metaSearch },
       tiktok: { name: 'Search', kind: 'standard', map: tiktokSearch },
     },
@@ -621,7 +621,7 @@ const CATALOG = {
     params: ['method', 'content_type', 'item_id'],
     placement: 'client',
     providers: {
-      ga4: { name: 'share', kind: 'standard' },
+      google: { name: 'share', kind: 'standard' },
       // Neither platform defines Share — today's sites claim it as standard.
       meta: { name: 'Share', kind: 'custom' },
       tiktok: { name: 'Share', kind: 'custom' },
@@ -636,7 +636,7 @@ const CATALOG = {
     params: ['content_type', 'item_id'],
     placement: 'client',
     providers: {
-      ga4: { name: 'copy_link', kind: 'custom' },
+      google: { name: 'copy_link', kind: 'custom' },
       meta: { name: 'CopyLink', kind: 'custom' },
       tiktok: { name: 'CopyLink', kind: 'custom' },
     },
@@ -646,7 +646,7 @@ const CATALOG = {
     params: ['method'],
     placement: 'client',
     providers: {
-      ga4: { name: 'marketing_newsletter_subscribe', kind: 'custom' },
+      google: { name: 'marketing_newsletter_subscribe', kind: 'custom' },
       meta: { name: 'Lead', kind: 'standard' },
       tiktok: { name: 'Subscribe', kind: 'standard' },
     },
@@ -658,7 +658,7 @@ const CATALOG = {
     params: ['method'],
     placement: 'client',
     providers: {
-      ga4: { name: 'status_subscribe', kind: 'custom' },
+      google: { name: 'status_subscribe', kind: 'custom' },
       meta: { name: 'Lead', kind: 'standard' },
       tiktok: { name: 'SubmitForm', kind: 'standard' },
     },
@@ -675,7 +675,7 @@ const CATALOG = {
     params: ['event_category', 'event_label', 'page_path'],
     placement: 'client',
     providers: {
-      ga4: { name: 'exit_popup_show', kind: 'custom' },
+      google: { name: 'exit_popup_show', kind: 'custom' },
       meta: { name: 'ExitPopupShow', kind: 'custom' },
       tiktok: { name: 'ExitPopupShow', kind: 'custom' },
     },
@@ -685,7 +685,7 @@ const CATALOG = {
     params: ['event_category', 'event_label', 'destination_url'],
     placement: 'client',
     providers: {
-      ga4: { name: 'exit_popup_click', kind: 'custom' },
+      google: { name: 'exit_popup_click', kind: 'custom' },
       meta: { name: 'ExitPopupClick', kind: 'custom' },
       tiktok: { name: 'ExitPopupClick', kind: 'custom' },
     },
@@ -695,7 +695,7 @@ const CATALOG = {
     params: ['event_category', 'event_label'],
     placement: 'client',
     providers: {
-      ga4: { name: 'exit_popup_dismiss', kind: 'custom' },
+      google: { name: 'exit_popup_dismiss', kind: 'custom' },
       meta: { name: 'ExitPopupDismiss', kind: 'custom' },
       tiktok: { name: 'ExitPopupDismiss', kind: 'custom' },
     },
@@ -710,7 +710,7 @@ const CATALOG = {
     params: ['event_category'],
     placement: 'client',
     providers: {
-      ga4: { name: 'cookie_banner_show', kind: 'custom' },
+      google: { name: 'cookie_banner_show', kind: 'custom' },
       meta: { name: 'CookieBannerShow', kind: 'custom' },
     },
   },
@@ -719,7 +719,7 @@ const CATALOG = {
     params: ['event_category', 'consent_type'],
     placement: 'client',
     providers: {
-      ga4: { name: 'cookie_consent_accept', kind: 'custom' },
+      google: { name: 'cookie_consent_accept', kind: 'custom' },
       meta: { name: 'CookieConsentAccept', kind: 'custom' },
     },
   },
@@ -728,7 +728,7 @@ const CATALOG = {
     params: ['event_category', 'consent_type'],
     placement: 'client',
     providers: {
-      ga4: { name: 'cookie_consent_deny', kind: 'custom' },
+      google: { name: 'cookie_consent_deny', kind: 'custom' },
       meta: { name: 'CookieConsentDeny', kind: 'custom' },
     },
   },
@@ -737,7 +737,7 @@ const CATALOG = {
     params: ['event_category'],
     placement: 'client',
     providers: {
-      ga4: { name: 'cookie_policy_reopen', kind: 'custom' },
+      google: { name: 'cookie_policy_reopen', kind: 'custom' },
       meta: { name: 'CookiePolicyReopen', kind: 'custom' },
     },
   },
@@ -750,7 +750,7 @@ const CATALOG = {
     params: ['section_name'],
     placement: 'client',
     providers: {
-      ga4: { name: 'user_section_view', kind: 'custom' },
+      google: { name: 'user_section_view', kind: 'custom' },
     },
   },
 
@@ -758,7 +758,7 @@ const CATALOG = {
     params: ['action'],
     placement: 'client',
     providers: {
-      ga4: { name: 'user_billing_action', kind: 'custom' },
+      google: { name: 'user_billing_action', kind: 'custom' },
     },
   },
 
@@ -766,7 +766,7 @@ const CATALOG = {
     params: ['action'],
     placement: 'client',
     providers: {
-      ga4: { name: 'user_refund_request', kind: 'custom' },
+      google: { name: 'user_refund_request', kind: 'custom' },
     },
   },
 
@@ -774,7 +774,7 @@ const CATALOG = {
     params: ['action'],
     placement: 'client',
     providers: {
-      ga4: { name: 'user_data_request', kind: 'custom' },
+      google: { name: 'user_data_request', kind: 'custom' },
     },
   },
 
@@ -782,7 +782,7 @@ const CATALOG = {
     params: ['content_type'],
     placement: 'client',
     providers: {
-      ga4: { name: 'marketing_email_subscribe', kind: 'custom' },
+      google: { name: 'marketing_email_subscribe', kind: 'custom' },
       meta: { name: 'EmailSubscribe', kind: 'custom' },
     },
   },
@@ -791,7 +791,7 @@ const CATALOG = {
     params: ['content_type'],
     placement: 'client',
     providers: {
-      ga4: { name: 'marketing_email_unsubscribe', kind: 'custom' },
+      google: { name: 'marketing_email_unsubscribe', kind: 'custom' },
       meta: { name: 'EmailUnsubscribe', kind: 'custom' },
     },
   },
@@ -802,7 +802,7 @@ const CATALOG = {
     params: [],
     placement: 'client',
     providers: {
-      ga4: { name: 'notification_permission_request', kind: 'custom' },
+      google: { name: 'notification_permission_request', kind: 'custom' },
     },
   },
 
@@ -810,7 +810,7 @@ const CATALOG = {
     params: [],
     placement: 'client',
     providers: {
-      ga4: { name: 'notification_permission_grant', kind: 'custom' },
+      google: { name: 'notification_permission_grant', kind: 'custom' },
     },
   },
 
@@ -818,7 +818,7 @@ const CATALOG = {
     params: [],
     placement: 'client',
     providers: {
-      ga4: { name: 'notification_permission_deny', kind: 'custom' },
+      google: { name: 'notification_permission_deny', kind: 'custom' },
     },
   },
 
@@ -826,7 +826,7 @@ const CATALOG = {
     params: [],
     placement: 'server',
     providers: {
-      ga4: { name: 'notification_subscribe', kind: 'custom' },
+      google: { name: 'notification_subscribe', kind: 'custom' },
     },
   },
 
@@ -834,7 +834,7 @@ const CATALOG = {
     params: [],
     placement: 'server',
     providers: {
-      ga4: { name: 'notification_unsubscribe', kind: 'custom' },
+      google: { name: 'notification_unsubscribe', kind: 'custom' },
     },
   },
 
@@ -844,7 +844,7 @@ const CATALOG = {
     params: ['vert_id', 'vert_lane', 'vert_campaign', 'vert_slot', 'vert_source'],
     placement: 'client',
     providers: {
-      ga4: { name: 'vert_click', kind: 'custom' },
+      google: { name: 'vert_click', kind: 'custom' },
     },
   },
 
@@ -852,7 +852,7 @@ const CATALOG = {
     params: ['browser', 'install_url'],
     placement: 'client',
     providers: {
-      ga4: { name: 'extension_install', kind: 'custom' },
+      google: { name: 'extension_install', kind: 'custom' },
       meta: { name: 'ExtensionInstall', kind: 'custom' },
       tiktok: { name: 'Download', kind: 'standard' },
     },
@@ -862,7 +862,7 @@ const CATALOG = {
     params: [],
     placement: 'client',
     providers: {
-      ga4: { name: 'app_launch', kind: 'custom' },
+      google: { name: 'app_launch', kind: 'custom' },
     },
   },
 
@@ -872,7 +872,7 @@ const CATALOG = {
     params: ['path'],
     placement: 'client',
     providers: {
-      ga4: { name: 'page_not_found', kind: 'custom' },
+      google: { name: 'page_not_found', kind: 'custom' },
     },
   },
 
@@ -880,7 +880,7 @@ const CATALOG = {
     params: [],
     placement: 'server',
     providers: {
-      ga4: { name: 'user_delete', kind: 'custom' },
+      google: { name: 'user_delete', kind: 'custom' },
     },
   },
 };

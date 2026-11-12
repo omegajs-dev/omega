@@ -14,7 +14,7 @@
 4c. **`fontawesome`**: serves the bundled icon SVGs to renderers over IPC (`desktop:fontawesome:get`). Needs ipc only.
 5. **`sentry`** — earliest catchable global handler.
 6. **`protocol`** — single-instance lock + custom scheme register.
-7. **`deepLink`** — argv parse for cold-start, second-instance handler.
+7. **`deepLink`**: argv parse for cold-start, open-url wiring, built-in routes. Its `second-instance` listener is not a boot step: it is prepended when the main module loads, ahead of every brand listener ([deep-link.md](deep-link.md#single-instance-behavior)).
 7b. **`authFlow`**: the sign-in round trip in the user's default browser (`omega.openAuthFlow()`); dev/test return through a loopback listener, since the scheme isn't OS-registered there.
 8. **`appState`** — first-launch / launch-count / crash-sentinel / version-change.
 8b. **`context`**: session id, deviceId, OS info, the async geolocation fetch. After storage (it writes deviceId), before analytics (which reads it).
@@ -30,6 +30,14 @@
 13e. **`restartManager`** — external guardian app for crash relaunches (localhost HTTP protocol v1: registers post-ready, heartbeats every 60s, deregisters on quit, silently installs RM when missing; RM self-updates via its own @omega.js/desktop autoUpdater). See [restart-manager.md](restart-manager.md).
 14. **`windows.initialize`**: registers app-level handlers: `window-all-closed` → quit on win/linux; `app.on('activate')` on macOS to surface `main` when the user double-clicks the dock icon (CleanMyMac-style). **Does NOT auto-create any window.** The consumer's main.js calls `omega.windows.create('main', { show: !startup.isLaunchHidden() })` from inside `omega.initialize().then(() => { ... })`. The `main` window is *always* created (so it's in the registry for the activate/second-instance handlers to find), but `show: false` keeps it invisible in hidden launches: tray icon shows immediately, dock icon + window appear only when something explicitly calls `windows.show('main')` (or the user double-clicks the running app).
 15. **`deepLink.markOmegaReady()`**: releases the deep-link dispatch queue. Cold-start URLs (and any early `open-url`) wait here, so a route like `auth/token` never fires before `omega.auth` has Firebase up.
+
+## Boot guard
+
+Every desktop app's boot runs under one timer, `lib/_boot-guard.js`, with the single-instance lock on or off. It starts on the first line of the boot and stops just before step 13 (`auth`), where the macOS keychain may ask the user, so a slow keychain prompt ends nothing. Each step above records its name as the boot reaches it. When the timer runs out first, the app writes one line to `runtime.log`, `boot did not finish within 60 s; last step: <name>`, and exits with code 1: a boot that stalls (a `whenReady` that never resolves, say) ends by name instead of holding the single-instance lock in silence.
+
+- The limit is `BOOT_LIMIT_MS`, a fixed 60000. No config key and no env key sets it.
+- A real duplicate stops the timer before it quits, so it still exits 0 as a duplicate.
+- The seam is `createBootGuard({ limitMs, write, exit })`, answering `{ start, step, stop }`; the app makes its one guard with the defaults (the limit, one line appended to `runtime.log`, the process's real exit).
 
 ## Why this order
 

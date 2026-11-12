@@ -5,7 +5,7 @@
  * that runs its code directly as the caller the MCP request resolved
  * Doc: node_modules/@omega.js/manager/docs/backend/mcp.md (Consumer MCP Tools)
  */
-module.exports = [
+export default [
   {
     name: 'list_notes',
     description: 'List the signed-in user\'s notes, newest first',

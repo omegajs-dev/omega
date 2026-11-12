@@ -15,6 +15,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const { withoutCI } = require('@omega.js/devkit/test/without-ci');
 
 const { routeIncluded, includePatterns, readTranslateStamp } = require('../src/translate/route-include.js');
 const { TRANSLATION_INCLUDE_DEFAULT } = require('@omega.js/config/schema');
@@ -167,7 +168,7 @@ module.exports = defineCases({
       name: '#858: the default list keeps the blog off the provider and translates everything else',
       run: async (ctx) => {
         const { scratch, dist } = stage();
-        const stats = await translateSite({ root: scratch, outDir: dist, config: CONFIG(), send, packagedRoot: NO_PACKAGED });
+        const stats = await withoutCI(() => translateSite({ root: scratch, outDir: dist, config: CONFIG(), send, packagedRoot: NO_PACKAGED }));
 
         // The language HOME lands as es.html, a FILE (translate/index.js), never
         // an es/index.html.
@@ -187,7 +188,7 @@ module.exports = defineCases({
       name: '#858: a page\'s own `translation.include` wins over the list, both directions',
       run: async (ctx) => {
         const { scratch, dist } = stage();
-        await translateSite({ root: scratch, outDir: dist, config: CONFIG(), send, packagedRoot: NO_PACKAGED });
+        await withoutCI(() => translateSite({ root: scratch, outDir: dist, config: CONFIG(), send, packagedRoot: NO_PACKAGED }));
 
         ctx.expect(fs.existsSync(path.join(dist, 'es', 'blog', 'post-2', 'index.html')), 'an opted-IN blog post is translated').toBeTruthy();
         ctx.expect(!fs.existsSync(path.join(dist, 'es', 'docs', 'secret')), 'an opted-OUT docs page is not').toBeTruthy();
@@ -198,7 +199,7 @@ module.exports = defineCases({
       name: '#858: a brand list REPLACES the default, so only what it names is translated',
       run: async (ctx) => {
         const { scratch, dist } = stage();
-        await translateSite({ root: scratch, outDir: dist, config: CONFIG({ include: ['blog/**'] }), send, packagedRoot: NO_PACKAGED });
+        await withoutCI(() => translateSite({ root: scratch, outDir: dist, config: CONFIG({ include: ['blog/**'] }), send, packagedRoot: NO_PACKAGED }));
 
         ctx.expect(fs.existsSync(path.join(dist, 'es', 'blog', 'post-1', 'index.html')), 'the named subtree is in').toBeTruthy();
         ctx.expect(!fs.existsSync(path.join(dist, 'es.html')), 'the home page is out: the list replaced the default').toBeTruthy();

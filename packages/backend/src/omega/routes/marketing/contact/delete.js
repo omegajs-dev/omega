@@ -7,7 +7,7 @@
  * would re-add the contact the admin just removed.
  */
 
-module.exports = async ({ ctx, omega, data, analytics }) => {
+export default async ({ ctx, omega, data, analytics }) => {
 
   // The caller the middleware authenticated — the usage counter is lazy now
   // and was never the right place to read a role from (#647)

@@ -18,13 +18,8 @@
  */
 const dns = require('node:dns').promises;
 
-const { isDemoProject, defaultAddressReason } = require('@omega.js/config');
+const { isDemoProject, defaultAddressReason, targetType } = require('@omega.js/config');
 const { getApexDomain } = require('./domain-utils.js');
-
-// deploy target → the checks that prove THAT target's surface is live. Only
-// the web target has an outside-observable launch surface; backend/desktop/
-// extension prove themselves through their own deploy legs.
-const VERIFY_LEGS = { web: ['site', 'domain', 'cloudflare'] };
 
 // A live page is bigger than this; a 200 carrying less is an empty shell
 // (a hosting placeholder, a stub 404 page served with the wrong status).
@@ -161,7 +156,9 @@ const CHECKS = { site: checkSite, domain: checkDomain, cloudflare: checkCloudfla
 async function runVerifyLegs(targets, brandConfig, transports = {}, options = {}) {
   const names = [];
   for (const target of targets) {
-    for (const name of VERIFY_LEGS[target] || []) {
+    // A type row's `verify` names the checks that prove its surface is live
+    const row = targetType(target);
+    for (const name of row ? row.verify : []) {
       if (!names.includes(name)) names.push(name);
     }
   }
@@ -188,4 +185,4 @@ async function runVerifyLegs(targets, brandConfig, transports = {}, options = {}
   return rows;
 }
 
-module.exports = { VERIFY_LEGS, resolveVerifySurface, checkSite, checkDomain, checkCloudflare, runVerifyLegs };
+module.exports = { resolveVerifySurface, checkSite, checkDomain, checkCloudflare, runVerifyLegs };

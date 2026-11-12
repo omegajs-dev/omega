@@ -1,6 +1,6 @@
 /**
  * Schema for PUT /marketing/contact (sync)
  */
-module.exports = () => ({
+export default() => ({
   uid: { type: 'string', required: true },
 });

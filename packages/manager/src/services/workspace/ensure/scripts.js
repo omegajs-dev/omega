@@ -27,7 +27,7 @@ const chalk = require('chalk').default;
 const { projectScripts } = require('@omega.js/devkit/verb-scripts');
 const { healPackageScripts, syncTargetScripts } = require('../../../lib/package-scripts.js');
 const { resolveFrameworkPackage, resolveTargetCustomOwned } = require('../../../lib/framework-bin.js');
-const { TARGET_FRAMEWORKS } = require('../../../config.js');
+const { targetType } = require('@omega.js/config');
 const { dryRunPlan } = require('../../../lib/run-gates.js');
 const { writeJson } = require('@omega.js/devkit/write-json');
 
@@ -57,7 +57,7 @@ module.exports = async ({ brandRoot, targets = [], options = {} }) => {
     // framework declares them, so there is nothing to sync against
     if (!entry.target) continue;
 
-    const framework = TARGET_FRAMEWORKS[entry.target];
+    const framework = targetType(entry.target)?.framework;
     const resolved = framework ? resolveFrameworkPackage(entry.path, framework) : null;
     // Not installed yet (pre-`npm install`): nothing to fill from; the next walk heals it
     if (!resolved) continue;

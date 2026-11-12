@@ -7,13 +7,10 @@ const path = require('path');
 const JSON5 = require('json5');
 const { writeJson } = require('@omega.js/devkit/write-json');
 const {
-  resolveProvider,
   resolveTranslationSettings,
-  translateStrings,
-  languageName,
+  translateCached,
   hashKey,
   loadCache,
-  saveCache,
 } = require('@omega.js/devkit/translate');
 
 // Locale field limits (shared with audit.js)
@@ -24,14 +21,16 @@ const configMessagesPath = path.join(process.cwd(), 'config', 'messages.json');
 const configDescriptionPath = path.join(process.cwd(), 'config', 'description.md');
 const distLocalesDir = path.join(process.cwd(), 'dist', '_locales');
 
-// Committed per-string cache (replaces the legacy gitignored .cache/):
-// translations/{lang}/messages.json (hash → translated message) and
-// translations/{lang}/description.md (translated markdown + source marker)
+// The committed per-string cache: translations/{lang}/messages.json and
+// translations/{lang}/description.json, each source hash → translation
 const translationsDir = path.join(process.cwd(), 'translations');
 
-// First line of a translated description — records the source hash so a
-// source edit invalidates it; stripped when the file is consumed
-const DESCRIPTION_MARKER = /^<!-- omega:source ([0-9a-f]{12}) -->\n?/;
+const DESCRIPTION_RULES = '- Preserve the markdown formatting (headers, bold, bullets) and keep all emojis exactly as they are.\n- Maintain the same tone: enthusiastic, conversational, and persuasive.';
+
+// Helper: the one warning a cold pass prints per language
+function warnCold(settings, lang, namespace, cold) {
+  logger.warn(`[${lang}] ${namespace}: ${cold.length} string(s) have no saved translation and ship in ${settings.default}: ${cold.join(', ')}. Build locally to translate them, then commit translations/`);
+}
 
 // Helper: Read and parse config/messages.json (JSON5 → object)
 function readConfigMessages() {
@@ -118,59 +117,53 @@ async function translateMessages(complete) {
   }
 
   const brand = build.getConfig()?.brand?.name;
+  // The build's --cached-only; a CI runner is cache-only regardless
+  const { cachedOnly } = build.getArguments();
+  const strings = Object.fromEntries(Object.entries(enMessages).map(([key, entry]) => [key, entry.message]));
   const limitsRules = Object.entries(LOCALE_LIMITS)
     .map(([field, limit]) => `- The translation of the "${field}" message must be at most ${limit} characters (Chrome Web Store limit).`)
     .join('\n');
 
-  let provider = null;
-
   for (const lang of settings.languages) {
-    const cache = loadCache(translationsDir, lang, 'messages');
-    const sources = Object.values(enMessages).map((entry) => entry.message);
-    const misses = [...new Set(sources.filter((text) => cache[hashKey(text)] === undefined))];
+    const { translated, cold, fresh } = await translateCached({
+      strings,
+      language: lang,
+      namespace: 'messages',
+      settings,
+      cachedOnly,
+      rootDir: translationsDir,
+      brand,
+      extraRules: limitsRules,
+    });
 
-    if (!misses.length) {
-      logger.log(`[${lang}] All ${sources.length} messages cached`);
-      saveCache(translationsDir, lang, 'messages', cache, sources);
+    if (cold.length) {
+      warnCold(settings, lang, 'messages', cold);
       continue;
     }
 
-    provider = provider || resolveProvider({ provider: settings.provider, model: settings.model });
-    logger.log(`[${lang}] Translating ${misses.length} message(s) (${provider.name}${provider.model ? `/${provider.model}` : ''})...`);
-
-    const { result } = await translateStrings({
-      strings: misses,
-      language: lang,
-      languageName: languageName(lang),
-      brand,
-      extraRules: limitsRules,
-      send: provider.send,
-    });
-
-    misses.forEach((text, i) => {
-      cache[hashKey(text)] = result[i];
-    });
+    if (!fresh.length) {
+      logger.log(`[${lang}] All ${Object.keys(strings).length} messages cached`);
+      continue;
+    }
 
     // Warn on Chrome Web Store limit violations (keys sharing a message share a translation)
-    for (const [key, entry] of Object.entries(enMessages)) {
+    for (const [key, text] of Object.entries(translated)) {
       const limit = LOCALE_LIMITS[key];
-      const translated = cache[hashKey(entry.message)];
 
-      if (limit && translated && translated.length > limit) {
-        logger.warn(`[${lang}] "${key}" translation is ${translated.length} chars (limit ${limit}) — shorten it in translations/${lang}/messages.json`);
+      if (limit && text.length > limit) {
+        logger.warn(`[${lang}] "${key}" translation is ${text.length} chars (limit ${limit}): shorten it in translations/${lang}/messages.json`);
       }
     }
 
-    saveCache(translationsDir, lang, 'messages', cache, sources);
-    logger.log(`[${lang}] Messages translation saved`);
+    logger.log(`[${lang}] ${fresh.length} message(s) translated (${settings.provider}), saved`);
   }
 
   // Complete
   return complete();
 }
 
-// Translate config/description.md per language — whole-document, cached as
-// committed markdown with a source-hash marker (edit the source → retranslate).
+// Translate config/description.md per language, whole-document, through the
+// same committed cache (edit the source → retranslate).
 async function translateDescription(complete) {
   // Only run in build mode
   if (!build.isBuildMode()) {
@@ -194,33 +187,27 @@ async function translateDescription(complete) {
     return complete();
   }
 
-  const sourceHash = hashKey(enDescription);
   const brand = build.getConfig()?.brand?.name;
-  let provider = null;
+  const { cachedOnly } = build.getArguments();
 
   for (const lang of settings.languages) {
-    const outPath = path.join(translationsDir, lang, 'description.md');
-    const existing = jetpack.exists(outPath) ? jetpack.read(outPath) : null;
+    const { cold, fresh } = await translateCached({
+      strings: { description: enDescription },
+      language: lang,
+      namespace: 'description',
+      settings,
+      cachedOnly,
+      rootDir: translationsDir,
+      brand,
+      extraRules: DESCRIPTION_RULES,
+    });
 
-    if (existing && existing.match(DESCRIPTION_MARKER)?.[1] === sourceHash) {
-      logger.log(`[${lang}] Description cached`);
+    if (cold.length) {
+      warnCold(settings, lang, 'description', cold);
       continue;
     }
 
-    provider = provider || resolveProvider({ provider: settings.provider, model: settings.model });
-    logger.log(`[${lang}] Translating description (${enDescription.length} chars)...`);
-
-    const { result } = await translateStrings({
-      strings: [enDescription],
-      language: lang,
-      languageName: languageName(lang),
-      brand,
-      extraRules: '- Preserve the markdown formatting (headers, bold, bullets) and keep all emojis exactly as they are.\n- Maintain the same tone — enthusiastic, conversational, and persuasive.',
-      send: provider.send,
-    });
-
-    jetpack.write(outPath, `<!-- omega:source ${sourceHash} -->\n${result[0]}`);
-    logger.log(`[${lang}] Description translation saved`);
+    logger.log(fresh.length ? `[${lang}] Description translated (${settings.provider}), saved` : `[${lang}] Description cached`);
   }
 
   // Complete
@@ -228,20 +215,21 @@ async function translateDescription(complete) {
 }
 
 /**
- * Read a translated description (marker stripped) — used by the package task
- * for store assets.
+ * Read the saved translation of the CURRENT config/description.md, used by
+ * the package task for store assets. A cold language answers null, so its
+ * store listing falls back to the English one.
  * @param {string} lang - language code
  * @param {string} [baseDir] - translations dir override (tests)
  * @returns {string|null}
  */
 function readTranslatedDescription(lang, baseDir) {
-  const file = path.join(baseDir || translationsDir, lang, 'description.md');
-
-  if (!jetpack.exists(file)) {
+  if (!jetpack.exists(configDescriptionPath)) {
     return null;
   }
 
-  return jetpack.read(file).replace(DESCRIPTION_MARKER, '');
+  const source = jetpack.read(configDescriptionPath);
+
+  return loadCache(baseDir || translationsDir, lang, 'description')[hashKey(source)] ?? null;
 }
 
 // Export task

@@ -20,10 +20,10 @@ const { join } = require('node:path');
 const fs = require('node:fs');
 const jetpack = require('fs-jetpack');
 
-const { PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG, FAVICON_CONFIG } = require('./assets-config.js');
+const { PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG } = require('./assets-config.js');
 const {
-  LOGO_VARIANTS, WEBMANIFEST_NAME, logoVariantFiles, socialIconFiles,
-  faviconImageFiles, templateExportFiles, appIconFiles, assetsOutputDirs,
+  LOGO_VARIANTS, logoVariantFiles, socialIconFiles,
+  templateExportFiles, appIconFiles, assetsOutputDirs,
 } = require('./derived.js');
 
 /**
@@ -32,7 +32,7 @@ const {
  * derives nothing — which is what makes a removed source remove its outputs.
  *
  * The brandmark is guaranteed by the service's setup, so the operations that
- * read it alone (social icons, favicons, app icons) always derive their set.
+ * read it alone (social icons, app icons) always derive their set.
  *
  * @param {string} brandRoot - Absolute brand-monorepo root.
  * @returns {Set<string>} Paths relative to `.omega/assets/`.
@@ -61,8 +61,6 @@ function derivedAssetFiles(brandRoot) {
   }
 
   files.push(...appIconFiles().map((entry) => entry.file));
-  files.push(...faviconImageFiles().map((name) => join(FAVICON_CONFIG.outputDir, name)));
-  files.push(join(FAVICON_CONFIG.outputDir, WEBMANIFEST_NAME));
 
   return new Set(files);
 }

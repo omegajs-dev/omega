@@ -22,7 +22,8 @@
  */
 const { buildUser, callHandler, withEnvironment, PRODUCTION_ENVIRONMENT } = require('./_route-harness.js');
 
-const handler = require('../../../dist/omega/routes/payments/cancel/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/cancel/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 // A paid subscriber whose subscription is minutes old — the shape the age guard exists for.

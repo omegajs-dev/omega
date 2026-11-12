@@ -89,7 +89,7 @@ Reference plists from a working MAS-published Electron app (Slapform) are archiv
 | `platforms.linux.arch` | `['x64']` | Architectures. ia32 is essentially extinct on modern Linux. |
 | `platforms.linux.formats.deb` | on | The Debian package. `false` drops it. |
 | `platforms.linux.formats.appimage` | on | The AppImage. `false` drops it. |
-| `platforms.linux.formats.snap` | on | Snap Store publishing. Presence is the switch ([#867](https://github.com/Omega-JS-Stack/omega/issues/867)): `false` drops it. On by default, it owes `SNAPCRAFT_STORE_CREDENTIALS`: a publish refuses without it, while a plain local BUILD skips the snap target. |
+| `platforms.linux.formats.snap` | on | Snap Store publishing. Presence is the switch ([#867](https://github.com/Omega-JS-Stack/omega/issues/867)): `false` drops it. On by default, it owes `SNAPCRAFT_STORE_CREDENTIALS`: a Linux package or release, and a publish, refuse without it. The snap is named `brand.id`. |
 | `platforms.linux.formats.snap.confinement` | `'strict'` | `strict` (sandboxed) or `classic` (unrestricted, requires Snap Store approval). |
 | `platforms.linux.formats.snap.grade` | `'stable'` | `stable` or `devel`. |
 | `platforms.linux.formats.snap.autoStart` | `true` | Register the snap to auto-start on login. |
@@ -100,9 +100,11 @@ Reference plists from a working MAS-published Electron app (Slapform) are archiv
 Behavior, since the snap became a declared FORMAT (#867):
 
 - **Nothing declared** → the snap SHIPS, like every other format: presence is the switch and the default is on, so the brand owes `SNAPCRAFT_STORE_CREDENTIALS` and `omega manage` asks for it.
-- **Shipped (written or defaulted) + no `SNAPCRAFT_STORE_CREDENTIALS`** → a plain local BUILD skips the snap target, with a log line naming the credential and how to get it, so a fresh scaffold still builds `.deb + .AppImage`. `omega publish` REFUSES in its first step, naming the credential, `platforms.linux.formats.snap` (on by default until set to `false`) and `omega manage --service publishing`. A release that silently drops a format it ships is the failure this replaced.
+- **The name is `brand.id`** (`@omega.js/config`'s `snapName`). The build pins it as electron-builder's `linux.executableName` (electron-builder names the snap after the Linux executable), the `publishing` walk registers it on the Snap Store, and the site's `/download/linux/snap` link ends in it, so the three cannot disagree.
+- **Shipped (written or defaulted) + no `SNAPCRAFT_STORE_CREDENTIALS`** → the tasks that make installers, `package` and `release`, FAIL first thing on Linux, naming `platforms.linux.formats.snap` and `SNAPCRAFT_STORE_CREDENTIALS`. A plain build, a dev run, `package-quick` (`--dir`, no snap) and a test boot make no installer, so they neither refuse nor warn. A mac or Windows package or release goes on: electron-builder builds the host platform only. `omega publish` REFUSES in its first step on every platform, naming the credential, `platforms.linux.formats.snap` (on by default until set to `false`) and `omega manage --service publishing`. Each store format is checked against its own keys (`formatKeysSet` in `@omega.js/config`).
+- **A `brand.id` with `.` or `+`** cannot name a snap (lowercase letters, digits and single hyphens, with a letter, at most 40 characters), so a brand that ships the snap with one fails validation, naming the id and the snap. Change the id or set `platforms.linux.formats.snap: false`.
 - **Shipped + `SNAPCRAFT_STORE_CREDENTIALS` set** → the snap target emits and publishes on release.
-- **`platforms.linux.formats.snap: false`** → off, regardless of credentials. The explicit opt-out.
+- **`platforms.linux.formats.snap: false`** → off, regardless of credentials: no snap target, no login check, no name registered. The explicit opt-out.
 
 To turn snap publishing on for a project that ships the format:
 
@@ -110,11 +112,11 @@ To turn snap publishing on for a project that ships the format:
    ```bash
    snapcraft export-login -    # writes a credentials blob to stdout
    ```
-2. Paste the entire blob (multi-line) into `.env` as `SNAPCRAFT_STORE_CREDENTIALS=...`.
+2. Paste the entire blob (multi-line) into `.env` as `SNAPCRAFT_STORE_CREDENTIALS=...`, or let `npx omega manage --service publishing` ask for it. The same walk registers the name (`brand.id`) with `snapcraft`, which it expects on the machine: the step prints the install line when it is missing. No target needs `snapcraft` to run, so `omega dev` and `omega status` never ask for it.
 3. Run `npx omega deploy` (its precheck flows the secret to GitHub Actions).
 4. The next `npx omega release --target=<name>` at the brand root builds + uploads the snap automatically. No config flip needed.
 
-Reference: the workflow's Linux step conditionally installs `snapcraft` (`sudo snap install snapcraft --classic`) only when both (a) the brand still ships the snap format (read through `@omega.js/config`'s own `enabledFormats`, so the check cannot drift from the build's) AND (b) the `SNAPCRAFT_STORE_CREDENTIALS` secret is present.
+Reference: the workflow's Linux step installs `snapcraft` (`sudo snap install snapcraft --classic`) whenever the brand ships the snap format, read through `@omega.js/config`'s own `enabledFormats` so the check cannot drift from the build's. It never checks the secret: a missing `SNAPCRAFT_STORE_CREDENTIALS` fails the build step by name.
 
 ## File associations + custom protocols (uncommon)
 

@@ -231,6 +231,9 @@ module.exports = defineCases({
 
 Tests share `ctx.state` across the suite. If one fails, remaining tests are skipped (`stopOnFailure: false` to disable).
 
+- A suite's `setup` and `cleanup` and each `ctx.after` function run under the limit a case has (the suite's `timeout`, else 30s): a `setup` past it fails every case, and an `after` past it fails its case.
+- A suite `cleanup` past it fails a `build` run, but only warns on stderr in the in-app `background`, `view` and `boot` suites ([testing.md](../shared/testing.md#mirrored-suite-shape)).
+
 ### Group (sequential, share state, run all regardless of failures)
 
 ```js

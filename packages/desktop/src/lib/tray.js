@@ -1,50 +1,6 @@
-// Tray — file-based tray definition.
-//
-// @omega.js/desktop looks for the consumer's `src/integrations/tray/index.js` and calls it with a builder API:
-//
-//   // src/integrations/tray/index.js
-//   module.exports = ({ omega, tray }) => {
-//     tray.icon('src/assets/icons/tray-Template.png');
-//     tray.tooltip('MyApp');
-//
-//     // Start from @omega.js/desktop's default template:
-//     tray.useDefaults();
-//
-//     // ...or build from scratch:
-//     tray.item({ id: 'open', label: 'Open', click: () => omega.windows.show('main') });
-//     tray.separator();
-//     tray.item({ id: 'quit', label: 'Quit', click: () => require('electron').app.quit() });
-//
-//     // Mutate by id (works during definition AND at runtime via `omega.tray.*`):
-//     tray.insertAfter('open', { id: 'preferences', label: 'Preferences...', click: ... });
-//     tray.update('check-for-updates', { label: 'Updates' });
-//     tray.remove('website');
-//     tray.hide('website');
-//   };
-//
-// Builder API (during definition):
-//   tray.icon(path) / tray.tooltip(text)
-//   tray.item(descriptor) / tray.separator() / tray.submenu(label, items)
-//   tray.useDefaults()        — populate with @omega.js/desktop's default template
-//   tray.clear()              — start over
-//
-// Id-path API (during definition AND at runtime via `omega.tray.*`):
-//   .find / .has / .update / .remove / .enable / .show / .hide /
-//   .insertBefore / .insertAfter / .appendTo
-//
-// Items support dynamic labels (function) and dynamic enabled/visible/checked.
-// Call `omega.tray.refresh()` after mutating state to re-render the menu.
-//
-// Default template ids (flat — no `tray/` prefix; the lib namespace is implicit):
-//   title              — disabled label showing the app name
-//   open               — "Open <app>"
-//   check-for-updates  — wired to autoUpdater
-//   website            — opens brand.url in external browser (only if configured)
-//   quit               — quits the app
-//
-// Disabling at runtime: call `omega.tray.disable()` from anywhere in main,
-// idempotent, tears down any existing Tray + clears items. There is no config
-// flag for this; default is "enabled, looks at the conventional path."
+// Tray: the file-based tray. The consumer's src/integrations/tray/index.js is an ES
+// module whose default export runs once at boot as ({ omega, tray }). The builder, the
+// id-path API, the default ids and disable(): docs/desktop/tray.md.
 
 const path = require('path');
 const fs   = require('fs');
@@ -87,13 +43,7 @@ const tray = {
 
     if (fs.existsSync(absPath)) {
       const loadConsumerFile = require('../utils/load-consumer-file.js');
-      const loaded = loadConsumerFile(absPath);
-      if (typeof loaded === 'function') {
-        tray._definitionFn = loaded;
-      } else if (loaded != null) {
-        logger.warn(`tray definition at ${absPath} did not export a function — ignoring.`);
-        tray._definitionFn = null;
-      }
+      tray._definitionFn = loadConsumerFile(absPath);
     } else {
       logger.log(`no tray definition at ${absPath} — using default template.`);
     }
@@ -154,17 +104,10 @@ const tray = {
     };
   },
 
-  // Resolve the runtime tray icon path. Reads from `<projectRoot>/dist/config/icons/<platform>/`
-  // which is populated by `gulp/build-config` using its 3-tier waterfall (consumer config →
-  // consumer convention → @omega.js/desktop bundled). So at runtime we just consume what build-config
-  // already resolved — no need to re-walk the chain (and `__dirname` is unreliable inside
-  // esbuild-bundled main.bundle.js anyway).
-  //
-  // For consumers who skip the gulp build (rare — testing scenarios), we also fall back to
-  // the consumer convention `<projectRoot>/config/icons/<platform>/<file>` directly, matching
-  // tier 2 of the build-time resolver.
-  //
-  // Returns null if nothing is found (caller logs).
+  // The runtime tray icon: what gulp/build-config resolved into dist/config/icons/<platform>/
+  // (config/icons/<platform>/, then config/icons/global/, then the bundled default), so nothing
+  // re-walks that order here, where `__dirname` is unreliable in the bundle. A run that skipped
+  // the build falls back to config/icons/<platform>/<file>. Null when nothing is found.
   _defaultIconPath() {
     // The icon dirs are OMEGA's vocabulary (mac/windows/linux), so the OS is
     // read through the one translation point (#867). Electron runs nowhere else,

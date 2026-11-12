@@ -59,6 +59,7 @@ const core = require('@omega.js/analytics/core');
 // keeps only what is genuinely desktop's — the Measurement Protocol transport,
 // the pre-init queue, and the IPC bridge.
 const analytics_ = require('@omega.js/analytics');
+const { analyticsProvider } = require('@omega.js/config/analytics-providers');
 
 const logger = new LoggerLite('analytics');
 
@@ -209,9 +210,10 @@ const analytics = {
     analytics_.event(name, analytics._enrichParams(params || {}));
   },
 
-  // The Measurement Protocol transport: one resolved descriptor → one POST.
+  // The Measurement Protocol transport: one resolved descriptor → one POST, for
+  // the providers whose row says `measurementProtocol`.
   _send(descriptor) {
-    if (descriptor.provider !== 'ga4') {
+    if (!analyticsProvider(descriptor.provider).measurementProtocol) {
       return false;
     }
 

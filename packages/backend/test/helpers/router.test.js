@@ -32,7 +32,7 @@ function consumerCwd(route) {
   const dir = path.join(cwd, 'routes', route);
 
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'get.js'), "module.exports = async ({ ctx }) => ctx.respond({ from: 'consumer' });");
+  fs.writeFileSync(path.join(dir, 'get.js'), "export default async ({ ctx }) => ctx.respond({ from: 'consumer' });");
 
   return cwd;
 }

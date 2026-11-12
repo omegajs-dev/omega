@@ -1,5 +1,5 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
 
 // Where a portal session returns to when the caller names no URL of its own, or
 // names one that is not the brand's — the account page's billing section, the
@@ -13,7 +13,7 @@ const DEFAULT_RETURN_PATH = '/dashboard/account#billing';
  * but does NOT allow cancellation (users must use POST /payments/cancel).
  * Requires authentication.
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   // Require authentication
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -39,7 +39,7 @@ module.exports = async ({ ctx, omega, user, data }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown provider: ${provider}`, { code: 400 });
   }

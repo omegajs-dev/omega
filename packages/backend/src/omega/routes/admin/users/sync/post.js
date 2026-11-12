@@ -2,10 +2,13 @@
  * POST /admin/users/sync - Sync Firebase Auth users to Firestore
  * Admin-only endpoint to synchronize user records
  */
-const { merge } = require('lodash');
-const { User } = require('../../../../helpers/account.js');
+import lodash from 'lodash';
+import account from '../../../../helpers/account.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+const { merge } = lodash;
+const { User } = account;
+
+export default async ({ ctx, omega, user, data, analytics }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication (allow in dev)

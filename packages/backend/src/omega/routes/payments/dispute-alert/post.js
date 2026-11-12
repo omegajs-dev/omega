@@ -1,8 +1,8 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
-const powertools = require('node-powertools');
-const safeCompare = require('../../../helpers/safe-compare.js');
-const env = require('../../../libraries/env.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
+import powertools from 'node-powertools';
+import safeCompare from '../../../helpers/safe-compare.js';
+import env from '../../../libraries/env.js';
 
 /**
  * POST /payments/dispute-alert?provider=chargeblast&key=XXX
@@ -16,7 +16,7 @@ const env = require('../../../libraries/env.js');
  * This handler is provider-agnostic. Each provider module defines:
  *   - normalize(body) — extracts the standard dispute alert shape
  */
-module.exports = async ({ ctx, omega }) => {
+export default async ({ ctx, omega }) => {
   const admin = omega.firebase.admin;
   const body = ctx.request.body;
   const query = ctx.request.query;
@@ -33,7 +33,7 @@ module.exports = async ({ ctx, omega }) => {
   // Load the provider module
   let providerModule;
   try {
-    providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+    providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
   } catch (e) {
     return ctx.respond(`Unknown alert provider: ${provider}`, { code: 400 });
   }

@@ -37,6 +37,7 @@ const EmulatorCommand = require('../../dist/cli/commands/emulator.js');
 const orphans = require('../../dist/cli/commands/emulator-orphans.js');
 const { CLASSIC_PORTS, isPortFree } = require('../../dist/vendor/config/ports.js');
 const { writeJson } = require('../../dist/vendor/devkit/write-json.js');
+const { STOP_GRACE_MS } = require('../../dist/vendor/devkit/process-tree.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 const { parseProcessTable, isOrphanedEmulatorFamily, describeFamilyMember, reapMachineOrphans } = orphans;
@@ -206,7 +207,7 @@ async function until(probe, timeoutMs) {
 
 /** Every live pid whose command line contains `needle`, from the real `ps`. */
 function livePidsRunning(needle) {
-  return parseProcessTable(orphans.readProcessTable())
+  return parseProcessTable(orphans.readProcessTableText())
     .filter((entry) => entry.command.includes(needle))
     .map((entry) => entry.pid);
 }
@@ -467,9 +468,8 @@ module.exports = defineCases({
 
         const waited = sent.SIGKILL - sent.SIGTERM;
 
-        expect(orphans.STOP_GRACE_MS, 'the grace is exported from its one home').toBe(2000);
-        expect(waited, 'SIGTERM gets the whole stop grace before SIGKILL').toBeGreaterThanOrEqual(orphans.STOP_GRACE_MS);
-        expect(waited, 'and no longer than one more second').toBeLessThan(orphans.STOP_GRACE_MS + 1000);
+        expect(waited, 'SIGTERM gets the whole stop grace before SIGKILL').toBeGreaterThanOrEqual(STOP_GRACE_MS);
+        expect(waited, 'and no longer than one more second').toBeLessThan(STOP_GRACE_MS + 1000);
       },
     },
 
@@ -727,7 +727,7 @@ module.exports = defineCases({
           childProcess.execSync(`sh -c 'node ${script} > /dev/null 2>&1 &'`, { stdio: 'ignore' });
 
           const orphanPid = await until(() => {
-            const found = parseProcessTable(orphans.readProcessTable())
+            const found = parseProcessTable(orphans.readProcessTableText())
               .filter((entry) => entry.command.includes(script) && entry.ppid === 1)
               .map((entry) => entry.pid);
 

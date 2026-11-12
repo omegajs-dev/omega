@@ -9,6 +9,6 @@
  * charged. Sending the wrong email is worse than sending none, so this transition
  * stays a record until the template carries the copy ([#212]).
  */
-module.exports = async function ({ ctx, before, after, order, uid }) {
+export default async function ({ ctx, before, after, order, uid }) {
   ctx.log(`Transition [subscription/cancellation-removed]: uid=${uid}, product=${after.product?.id}, previousCancelDate=${before?.cancellation?.date?.timestamp}, order=${order?.id || 'none'} (no email — the order template has no cancellation-removed variant)`);
 };

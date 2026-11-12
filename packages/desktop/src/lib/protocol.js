@@ -8,9 +8,21 @@
 //      On macOS this also enables the open-url event. The scheme is always brand.id —
 //      no config knob.
 
+const path = require('path');
+const jetpack = require('fs-jetpack');
 const LoggerLite = require('./logger-lite.js');
+const { pidAlive } = require('./restart-manager/install.js');
 
 const logger = new LoggerLite('protocol');
+
+// The lock holder's pid, in userData: a launch that finds a live holder there was
+// launched to forward, so taking the lock instead is a takeover worth a line.
+const HOLDER_FILE = 'single-instance-holder.pid';
+
+// How often a held quit looks again for the forwarded launch's exit, and the
+// longest it waits before it quits anyway
+const FORWARD_POLL_MS = 50;
+const FORWARD_HOLD_LIMIT_MS = 5000;
 
 const protocol = {
   _initialized: false,
@@ -18,6 +30,7 @@ const protocol = {
   _electron:    null,
   _hasLock:     true,
   _schemes:     [],
+  _forwarding:  new Set(),      // pids of duplicates a second-instance event named, until they exit
 
   initialize(omega) {
     if (protocol._initialized) {
@@ -36,26 +49,28 @@ const protocol = {
       return;
     }
 
-    // Single-instance lock. If we don't get it, the original instance got our argv
-    // via second-instance — main.js checks hasSingleInstanceLock() right after this
-    // initialize() and quits the duplicate WITHOUT running the rest of the boot
-    // (two live instances would fight over storage, servers, and — for agents like
-    // restart-manager — shared runtime files).
-    //
-    // The object rides along because the event's OWN argv is Chromium-processed
-    // (switches first, Chromium's own switches spliced in, the values detached at
-    // the end), so a brand parsing it reads its flags empty (#921). `additionalData`
-    // arrives untouched as the fourth argument of second-instance, so every brand
-    // gets the duplicate's real command line, in order, for free.
+    // Single-instance lock. A duplicate's argv goes to the holder via second-instance,
+    // and main.js quits the duplicate before the rest of the boot runs: two live
+    // instances would fight over storage, servers and shared runtime files.
 
+    // The object arrives untouched as second-instance's `additionalData`: the real
+    // argv (the event's own is Chromium-processed, values detached), the cwd, and the
+    // pid a holder's quit waits on (afterForwardedExit).
     const lockOff = protocol.singleInstanceOff(omega.config);
-    protocol._hasLock = lockOff || app.requestSingleInstanceLock({ argv: process.argv, cwd: process.cwd() });
+    const holderFile = path.join(app.getPath('userData'), HOLDER_FILE);
+    const holderAtLaunch = lockOff ? null : protocol._liveHolder(holderFile);
+    protocol._hasLock = lockOff || app.requestSingleInstanceLock({ argv: process.argv, cwd: process.cwd(), pid: process.pid });
     if (lockOff) {
       logger.log('single-instance lock off by config');
     } else if (!protocol._hasLock) {
       logger.warn('single-instance lock lost — another copy of the app is running.');
     } else {
       logger.log('single-instance lock acquired.');
+      // A holder alive at launch means this launch came to forward; it may still be exiting
+      if (holderAtLaunch) {
+        logger.warn(`single-instance lock taken over from a holder that exited (pid ${holderAtLaunch})`);
+      }
+      jetpack.write(holderFile, String(process.pid));
     }
 
     // Register custom URL scheme. Always derived from brand.id — `<brand.id>://...` is
@@ -86,6 +101,53 @@ const protocol = {
 
   hasSingleInstanceLock() {
     return protocol._hasLock;
+  },
+
+  // The pid the holder file names, when that process is alive and is not this one
+  _liveHolder(holderFile) {
+    const pid = Number(jetpack.read(holderFile));
+    return pid !== process.pid && pidAlive(pid) ? pid : null;
+  },
+
+  // deep-link's second-instance listener, which runs ahead of every brand
+  // listener, names the duplicate here; it stays named while it is alive.
+  markForwarding(pid) {
+    if (!pidAlive(pid)) return;
+    protocol._forwarding.add(pid);
+  },
+
+  // The named duplicates still alive; the exited ones are dropped
+  _aliveForwarding() {
+    for (const pid of protocol._forwarding) {
+      if (!pidAlive(pid)) protocol._forwarding.delete(pid);
+    }
+    return [...protocol._forwarding];
+  },
+
+  // Run fn now, or once every named duplicate has exited: a holder that quits
+  // first breaks the lock handshake, and the duplicate takes the lock instead of
+  // exiting. The wait ends at FORWARD_HOLD_LIMIT_MS whatever happens; `schedule`
+  // (setTimeout's shape) is the seam a test swaps, so its wait counts no real time.
+  afterForwardedExit(fn, options) {
+    const schedule = options?.schedule || setTimeout;
+    if (protocol._aliveForwarding().length === 0) {
+      fn();
+      return;
+    }
+
+    logger.log(`quit held until the forwarded launch exits (pid ${protocol._aliveForwarding().join(', ')})`);
+    let waited = 0;
+    const look = () => {
+      waited += FORWARD_POLL_MS;
+      const alive = protocol._aliveForwarding();
+      if (alive.length === 0) return fn();
+      if (waited >= FORWARD_HOLD_LIMIT_MS) {
+        logger.warn(`quit held ${FORWARD_HOLD_LIMIT_MS / 1000} s and the forwarded launch has not exited (pid ${alive.join(', ')}); quitting anyway`);
+        return fn();
+      }
+      schedule(look, FORWARD_POLL_MS);
+    };
+    schedule(look, FORWARD_POLL_MS);
   },
 
   getSchemes() {

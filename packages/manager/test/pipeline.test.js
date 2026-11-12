@@ -8,8 +8,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { evaluatePipeline, findRunRecord, resolveVerifyTargets, buildChildArgs, CORE_SERVICES, DEPLOY_LEGS, PUBLISH_LEGS } = require('../src/commands/pipeline.js');
+const { evaluatePipeline, findRunRecord, resolveVerifyTargets, buildChildArgs, CORE_SERVICES, deployLeg } = require('../src/commands/pipeline.js');
 const { runVerifyLegs } = require('../src/lib/verify-live.js');
+const { TARGET_TYPE_ROWS } = require('@omega.js/config/target-types');
 
 /** Full-run record where every core service is green. */
 function greenRecord(extra = []) {
@@ -134,17 +135,24 @@ module.exports = defineCases({
       },
     },
 
-    // #872: every target's bare `omega deploy` is a CI dispatch now. The pipeline
-    // is the LOCAL lane, so the legs it can run from this machine say so.
+    // Every target's bare `omega deploy` is a CI dispatch. The pipeline is the
+    // LOCAL lane, so the rows it can deploy from this machine say `direct`.
     {
-      name: 'pipeline: the deployable legs run LOCALLY (--direct), the publish legs stay gated',
+      name: 'pipeline: web and backend deploy direct from this machine, desktop and extension through the verb',
       run: (ctx) => {
-        ctx.expect(DEPLOY_LEGS.web).toEqual(['npm', 'run', 'deploy', '--', '--direct']);
-        ctx.expect(DEPLOY_LEGS.backend, 'the backend leg deploys from this machine, not through CI').toEqual(['npm', 'run', 'deploy', '--', '--direct']);
+        const direct = ['npm', 'run', 'deploy', '--', '--direct'];
+        const verb = ['npx', 'omega', 'deploy'];
+        ctx.expect(deployLeg('web')).toEqual(direct);
+        ctx.expect(deployLeg('backend'), 'the backend leg deploys from this machine, not through CI').toEqual(direct);
+        ctx.expect(deployLeg('desktop'), 'a gated publish leg, never a local one').toEqual(verb);
+        ctx.expect(deployLeg('extension'), 'a gated publish leg, never a local one').toEqual(verb);
+      },
+    },
 
-        for (const target of PUBLISH_LEGS) {
-          ctx.expect(!DEPLOY_LEGS[target].includes('--direct'), `${target} is a gated publish leg, never a local one`).toBeTruthy();
-        }
+    {
+      name: 'pipeline: the publish legs, and so the ship list, are exactly desktop and extension',
+      run: (ctx) => {
+        ctx.expect(TARGET_TYPE_ROWS.filter((row) => row.publishes).map((row) => row.id)).toEqual(['desktop', 'extension']);
       },
     },
 

@@ -19,8 +19,7 @@ const path = require('node:path');
 const chalk = require('chalk').default;
 const jetpack = require('fs-jetpack');
 
-const { TARGET_FRAMEWORKS } = require('../../../config.js');
-const { sourceRepo, targetUrl, hasLogoSources, BRANDMARK_PNG_DEST, apiAddress, defaultAddressReason } = require('@omega.js/config');
+const { sourceRepo, targetUrl, hasLogoSources, BRANDMARK_PNG_DEST, apiAddress, defaultAddressReason, targetType } = require('@omega.js/config');
 const { recordDeploy, readDeployRecord } = require('@omega.js/devkit/deploy-record');
 const { resolvePackageRealDir } = require('@omega.js/devkit/local');
 
@@ -32,8 +31,9 @@ const MAX_FILES_SHOWN = 10;
 // mounts its routes under /omega (packages/backend route prefix)
 const API_HEALTH_PATH = '/omega/health';
 
-// The identity files a deployed site serves from the brand's minted set: the
-// root favicon browsers probe with no link tag, and the bridged raster brandmark.
+// The identity files a deployed site serves, the target's own or derived by
+// its build from the brand's brandmark: the root favicon browsers probe with no
+// link tag, and the raster brandmark.
 const BRAND_ASSET_PATHS = ['/favicon.ico', `/${BRANDMARK_PNG_DEST}`];
 
 const FETCH_HEADERS = {
@@ -215,7 +215,7 @@ function checkTargetFiles(recorder, entry) {
  * dims out when the registry lookup fails (e.g. package not published yet).
  */
 function checkFrameworkVersion(recorder, entry, ctx) {
-  const framework = TARGET_FRAMEWORKS[entry.target];
+  const framework = targetType(entry.target)?.framework;
   if (!framework) return;
 
   // Deps live on the ONE manifest per target (src/dist pillar)
@@ -339,10 +339,10 @@ async function checkHomepage(recorder, entry, ctx) {
 }
 
 /**
- * Brand-asset check: a deployed site whose brand has logo sources serves its
- * minted identity, so a snapshot that left the set behind fails here naming the
- * URL instead of shipping a site with no logo. Runs once the homepage is live;
- * a dry run lists the probes.
+ * Brand-asset check: a deployed site whose brand has a brandmark serves the
+ * favicon and raster brandmark (its own, or derived from it), so a build that left
+ * them out fails here naming the URL instead of shipping a site with no logo.
+ * Runs once the homepage is live; a dry run lists the probes.
  */
 async function checkBrandAssets(recorder, entry, ctx) {
   if (!hasLogoSources(ctx.brandRoot)) return;
@@ -427,7 +427,7 @@ async function checkApiHealth(recorder, entry, ctx) {
     return;
   }
 
-  const framework = TARGET_FRAMEWORKS[entry.target];
+  const framework = targetType(entry.target)?.framework;
   const deployed = data?.backendVersion;
   if (!deployed) return;
 

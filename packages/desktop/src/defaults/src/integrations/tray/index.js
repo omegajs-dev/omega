@@ -19,7 +19,7 @@
 //
 // This file is OPTIONAL: delete it and @omega.js/desktop still ships a working tray.
 
-module.exports = ({ omega, tray }) => {
+export default ({ omega, tray }) => {
   // Use @omega.js/desktop's default template + auto-resolved icon + auto-resolved tooltip.
   tray.useDefaults();
 

@@ -1,27 +1,24 @@
 /**
- * Test: routes/admin/post/post.formatImageDownloadError
- * Unit tests for the readable image-download error messages used by the
- * admin/post route.
+ * Test: routes/admin/post/images.formatImageDownloadError, the readable
+ * image-download error messages of the admin/post route.
  *
  * Run (from the framework repo): npm test routes/admin/post-download-error
  *
  * Contract:
  *   - Raw HTML error bodies (CDN 404 pages) are stripped to their text, so
- *     consumers surface "Could not download image (<url>): 404" instead of
- *     markup that downstream HTML rendering swallows.
- *   - The failing image URL is always included so the caller knows WHICH
- *     image broke.
+ *     consumers surface "Could not download image (<url>): 404", not markup.
+ *   - The failing image URL is always included, naming WHICH image broke.
  *   - Long reasons are truncated; empty reasons fall back to "unknown error".
  */
-const post = require('../../../dist/omega/routes/admin/post/post');
+const images = require('../../../dist/omega/routes/admin/post/images.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
-const { formatImageDownloadError } = post;
+const { formatImageDownloadError } = images;
 
 const SRC = 'https://images.unsplash.com/photos/ux-prism-qv5lQ4DwOS8';
 
 module.exports = defineCases({
-  description: 'routes/admin/post/post.formatImageDownloadError',
+  description: 'routes/admin/post/images.formatImageDownloadError',
   type: 'group',
 
   tests: [

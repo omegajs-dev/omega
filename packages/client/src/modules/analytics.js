@@ -28,6 +28,7 @@
  */
 import analytics from '@omega.js/analytics';
 import core from '@omega.js/analytics/core';
+import { analyticsProvider } from '@omega.js/config/analytics-providers';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('analytics');
@@ -314,15 +315,15 @@ class Analytics {
 
   /**
    * The Measurement Protocol transport for the runtimes with no page pixels.
-   * GA4 is the only provider it can deliver: Meta's and TikTok's browser pixels
-   * do not exist in an Electron window or an extension context, so their
-   * descriptors report "blocked" and the fire log says so.
+   * It delivers only the providers whose row says `measurementProtocol`: a
+   * browser pixel does not exist in an Electron window or an extension context,
+   * so every other descriptor reports "blocked" and the fire log says so.
    *
    * @param {object} descriptor - The resolved provider descriptor.
    * @returns {boolean} true when the descriptor was delivered.
    */
   _sendViaMeasurementProtocol(descriptor) {
-    if (descriptor.provider !== 'ga4') {
+    if (!analyticsProvider(descriptor.provider).measurementProtocol) {
       return false;
     }
 

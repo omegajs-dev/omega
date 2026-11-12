@@ -17,6 +17,8 @@ const { refuseWhenCustom, refuseWhenToolsMissing } = require('../utils/project-t
 const emulatorOrphans = require('./emulator-orphans');
 const { writeJson } = require('@omega.js/devkit/write-json');
 const { STOP_SIGNALS } = require('@omega.js/devkit/stop-signals');
+// STOP_GRACE_MS is the orphan sweep's grace too, so both grant SIGTERM the same wait.
+const { readProcessTable, descendantsOf, STOP_GRACE_MS } = require('@omega.js/devkit/process-tree');
 
 // Used by both `npx omega emulator` and `npx omega test` auto-start path.
 // Note: `emulators:start` enables the UI by default (controlled by firebase.json's
@@ -37,10 +39,6 @@ const PID_RECORD_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 // A command line that belongs to emulator machinery. Deliberately broad: it
 // only ever narrows a candidate that ALREADY named this project id.
 const EMULATOR_COMMAND = /emulator|firebase/i;
-
-// How long a recorded emulator process gets to leave on SIGTERM before the
-// stop path escalates: one grace for this stop path and the orphan sweep alike.
-const { STOP_GRACE_MS } = emulatorOrphans;
 
 // How long the port→pid lookup gets to answer before a sweep gives up on it.
 // lsof stats every mounted filesystem first, so a machine with a network mount
@@ -529,37 +527,7 @@ function readProcessInfo(pid) {
  * @returns {number[]} rootPid plus every descendant, deduped.
  */
 function collectDescendantPids(rootPid) {
-  const { execSync } = require('child_process');
-  const children = new Map();
-
-  try {
-    const rows = execSync('ps -A -o pid=,ppid=', { encoding: 'utf8' }).trim().split('\n');
-
-    for (const row of rows) {
-      const [pid, ppid] = row.trim().split(/\s+/).map(Number);
-
-      if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
-
-      if (!children.has(ppid)) children.set(ppid, []);
-      children.get(ppid).push(pid);
-    }
-  } catch (error) {
-    return [rootPid];
-  }
-
-  const collected = new Set([rootPid]);
-  const queue = [rootPid];
-
-  while (queue.length > 0) {
-    for (const child of children.get(queue.shift()) || []) {
-      if (collected.has(child)) continue;
-
-      collected.add(child);
-      queue.push(child);
-    }
-  }
-
-  return [...collected];
+  return [rootPid, ...descendantsOf(readProcessTable(), rootPid)];
 }
 
 class EmulatorCommand extends BaseCommand {

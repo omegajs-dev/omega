@@ -1,30 +1,20 @@
 /**
  * Assets cache invalidation: the force refresh behind `omega manage
- * --reset-assets` (#214). Every assets operation is mtime-diffed, so a
- * converged brand regenerates nothing; when a derived file is wrong for a
- * reason no timestamp records (a hand-mangled export, a sharp/ag-psd
- * upgrade that renders differently), the only lever was hand-deleting
- * `.omega/assets/`. omega-manager had `--reset-templates` /
- * `--reset-logos` for exactly this.
+ * --reset-assets`, for a derived file wrong for a reason no timestamp records.
+ * Invalidation IS deletion: `isStale()` calls a missing derived file stale, so
+ * removing a kind's outputs is what makes the same walk regenerate them.
  *
- * Invalidation IS deletion here: `isStale()` calls a missing derived file
- * stale, so removing a kind's outputs is precisely what makes the same walk
- * regenerate them, with no second freshness mechanism to keep in sync.
- *
- * Only `.omega/assets/` is cache. The brand's committed collateral
- * (`assets/logo/*.svg`, `assets/templates/*.psd`) is a SOURCE and is never
- * resettable: a reset that ate the PSD an operator edited by hand would be
- * unrecoverable.
- *
- * The two kinds together are the whole cache: `templates` is the PSD export
- * PNGs, `logos` is everything the logo sources derive (variants, app icon
- * containers, social icons, favicons).
+ * Only `.omega/assets/` is cache; the brand's committed `assets/logo/*.svg`
+ * and `assets/templates/*.psd` are SOURCES and never resettable. The two
+ * kinds together are the whole cache: `templates` is the PSD export PNGs,
+ * `logos` everything the logo sources derive (variants, app icon containers,
+ * social icons).
  */
 const { join } = require('node:path');
 const jetpack = require('fs-jetpack');
 
 const {
-  PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG, FAVICON_CONFIG,
+  PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG,
 } = require('./assets-config.js');
 const { templateExportFiles, appIconFiles } = require('./derived.js');
 
@@ -48,7 +38,6 @@ function kindPaths(kind) {
   return [
     ...Object.values(PROCESSING_RULES).map((rule) => rule.outputDir),
     SOCIAL_ICON_CONFIG.outputDir,
-    FAVICON_CONFIG.outputDir,
     ...appIconFiles().map((entry) => entry.file),
   ];
 }

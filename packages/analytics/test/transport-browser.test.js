@@ -7,9 +7,10 @@
  * against the state a real page would be in.
  */
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const { ANALYTICS_PROVIDERS } = require('@omega.js/config');
 
 const browser = require('../src/transports/browser.js');
-const ga4 = require('../src/adapters/ga4.js');
+const google = require('../src/adapters/google.js');
 const meta = require('../src/adapters/meta.js');
 const tiktok = require('../src/adapters/tiktok.js');
 
@@ -24,12 +25,23 @@ module.exports = defineCases({
   description: 'transport-browser',
   tests: [
     {
+      name: 'the browser senders are exactly the rows that say browserSender',
+      run: (ctx) => {
+        const rows = Object.values(ANALYTICS_PROVIDERS);
+        const withSender = rows.filter((row) => row.browserSender).map((row) => row.id).sort();
+
+        ctx.expect(Object.keys(browser.SENDERS).sort(), 'a sender for every row that says it has one, and none for a row that does not').toEqual(withSender);
+        ctx.expect(withSender, 'every provider has a page pixel').toEqual(['google', 'meta', 'tiktok']);
+      },
+    },
+
+    {
       name: 'no globals at all: every provider no-ops without throwing',
       run: (ctx) => {
         clearGlobals();
         ctx.after(clearGlobals);
 
-        for (const adapter of [ga4, meta, tiktok]) {
+        for (const adapter of [google, meta, tiktok]) {
           const descriptor = adapter.resolve('sign_up', { method: 'email' });
           ctx.expect(browser.send(descriptor), `${adapter.provider} reports it could not deliver`).toBe(false);
         }
@@ -45,7 +57,7 @@ module.exports = defineCases({
         const calls = [];
         globalThis.gtag = (...args) => calls.push(args);
 
-        ctx.expect(browser.send(ga4.resolve('sign_up', { method: 'email' }))).toBe(true);
+        ctx.expect(browser.send(google.resolve('sign_up', { method: 'email' }))).toBe(true);
         ctx.expect(calls).toEqual([['event', 'sign_up', { method: 'email' }]]);
       },
     },
@@ -133,7 +145,7 @@ module.exports = defineCases({
 
         browser.send(withId(meta.resolve('purchase', params)));
         browser.send(withId(tiktok.resolve('purchase', params)));
-        browser.send(withId(ga4.resolve('purchase', params)));
+        browser.send(withId(google.resolve('purchase', params)));
 
         ctx.expect(calls[0].at(-1), 'Meta reads eventID from the fourth argument').toEqual({ eventID: 'purchase.ORD-1' });
         ctx.expect(calls[1].at(-1), 'TikTok reads event_id from the third').toEqual({ event_id: 'purchase.ORD-1' });
@@ -162,7 +174,7 @@ module.exports = defineCases({
         const calls = [];
         globalThis.gtag = (...args) => calls.push(args);
 
-        ctx.expect(browser.send(ga4.resolve('sign_up', { method: 'email' }))).toBe(true);
+        ctx.expect(browser.send(google.resolve('sign_up', { method: 'email' }))).toBe(true);
         ctx.expect(browser.send(meta.resolve('sign_up', { method: 'email' }))).toBe(false);
         ctx.expect(calls.length).toBe(1);
       },

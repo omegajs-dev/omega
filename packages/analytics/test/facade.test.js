@@ -55,7 +55,7 @@ module.exports = defineCases({
 
         const result = analytics.event('sign_up', { method: 'email' });
 
-        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['ga4', 'meta', 'tiktok']);
+        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['google', 'meta', 'tiktok']);
         ctx.expect(transport.sent.map((d) => d.name)).toEqual(['sign_up', 'CompleteRegistration', 'CompleteRegistration']);
         ctx.expect(result.results.map((r) => r.outcome)).toEqual(['sent', 'sent', 'sent']);
       },
@@ -69,7 +69,7 @@ module.exports = defineCases({
 
         const result = analytics.event('vert_click', { vert_id: 'omega-promo', vert_lane: 'promo' });
 
-        ctx.expect(transport.sent.map((d) => d.provider), 'only the mapped provider is executed').toEqual(['ga4']);
+        ctx.expect(transport.sent.map((d) => d.provider), 'only the mapped provider is executed').toEqual(['google']);
         ctx.expect(result.results.map((r) => r.outcome)).toEqual(['sent', 'skipped (no mapping)', 'skipped (no mapping)']);
       },
     },
@@ -87,7 +87,7 @@ module.exports = defineCases({
 
         ctx.expect(transport.sent, 'logout reaches no provider').toEqual([]);
         ctx.expect(result.results.map((r) => r.outcome)).toEqual(['skipped (no mapping)', 'skipped (no mapping)', 'skipped (no mapping)']);
-        ctx.expect(lines).toEqual(['[@omega.js/analytics:events] logout → ga4 skipped (no mapping), meta skipped (no mapping), tiktok skipped (no mapping)']);
+        ctx.expect(lines).toEqual(['[@omega.js/analytics:events] logout → google skipped (no mapping), meta skipped (no mapping), tiktok skipped (no mapping)']);
       },
     },
 
@@ -99,7 +99,7 @@ module.exports = defineCases({
 
         const lines = captureLog(() => analytics.event('sign_up', { method: 'email' }));
 
-        ctx.expect(lines).toEqual(['[@omega.js/analytics:events] sign_up → ga4 sent, meta sent, tiktok sent']);
+        ctx.expect(lines).toEqual(['[@omega.js/analytics:events] sign_up → google sent, meta sent, tiktok sent']);
       },
     },
 
@@ -120,6 +120,18 @@ module.exports = defineCases({
         reset({ transport: recordingTransport(), environment: 'development' });
 
         ctx.expect(() => analytics.event('sign_upp', { method: 'email' })).toThrow(/Unknown analytics event "sign_upp"/);
+      },
+    },
+
+    {
+      name: 'a providers option naming no provider row throws in development',
+      run: (ctx) => {
+        const transport = recordingTransport();
+        reset({ transport, environment: 'development' });
+
+        // The retired GA4 id: a restriction that matched nothing would silently drop the fire
+        ctx.expect(() => analytics.event('purchase', { value: 10 }, { providers: ['ga4'] })).toThrow(/ga4/);
+        ctx.expect(transport.sent, 'nothing is sent').toEqual([]);
       },
     },
 
@@ -146,7 +158,7 @@ module.exports = defineCases({
     },
 
     {
-      name: 'marketing denied blocks meta and tiktok; ga4 still fires',
+      name: 'marketing denied blocks meta and tiktok; google still fires',
       run: (ctx) => {
         const transport = recordingTransport();
         reset({
@@ -156,13 +168,13 @@ module.exports = defineCases({
 
         const result = analytics.event('purchase', { value: 10, currency: 'USD', items: [{ item_id: 'pro' }] });
 
-        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['ga4']);
+        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['google']);
         ctx.expect(result.results.map((r) => r.outcome)).toEqual(['sent', 'skipped (consent: marketing)', 'skipped (consent: marketing)']);
       },
     },
 
     {
-      name: 'analytics denied blocks ga4 while the ad platforms still fire',
+      name: 'analytics denied blocks google while the ad platforms still fire',
       run: (ctx) => {
         const transport = recordingTransport();
         reset({
@@ -187,11 +199,11 @@ module.exports = defineCases({
         });
 
         analytics.event('sign_up', { method: 'email' });
-        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['ga4']);
+        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['google']);
 
         marketing = true;
         analytics.event('sign_up', { method: 'email' });
-        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['ga4', 'ga4', 'meta', 'tiktok']);
+        ctx.expect(transport.sent.map((d) => d.provider)).toEqual(['google', 'google', 'meta', 'tiktok']);
       },
     },
 
@@ -230,7 +242,7 @@ module.exports = defineCases({
         });
 
         ctx.expect(result.results[0].outcome).toBe('blocked (no global)');
-        ctx.expect(lines).toEqual(['[@omega.js/analytics:events] page_view → ga4 blocked (no global), meta blocked (no global), tiktok blocked (no global)']);
+        ctx.expect(lines).toEqual(['[@omega.js/analytics:events] page_view → google blocked (no global), meta blocked (no global), tiktok blocked (no global)']);
       },
     },
 
@@ -290,7 +302,7 @@ module.exports = defineCases({
           consent: analytics.createConsentGate(() => ({ analytics: true, marketing: false })),
         });
 
-        const result = analytics.event('purchase', { value: 10 }, { providers: ['ga4'] });
+        const result = analytics.event('purchase', { value: 10 }, { providers: ['google'] });
 
         ctx.expect(result.results.map((r) => r.outcome)).toEqual(['sent', 'skipped (not selected)', 'skipped (not selected)']);
       },
@@ -300,7 +312,7 @@ module.exports = defineCases({
       name: 'the pure pieces are exported for hosts that skip the facade',
       run: (ctx) => {
         ctx.expect(analytics.catalog.purchase, 'the catalog').toBeTruthy();
-        ctx.expect(analytics.adapters.ga4 && analytics.adapters.meta && analytics.adapters.tiktok, 'the adapters').toBeTruthy();
+        ctx.expect(analytics.adapters.google && analytics.adapters.meta && analytics.adapters.tiktok, 'the adapters').toBeTruthy();
         ctx.expect(typeof analytics.core.deriveNamespace, 'the moved core').toBe('function');
         ctx.expect(typeof analytics.transports.browser.send, 'the browser transport').toBe('function');
         ctx.expect(analytics.CONSENT_CATEGORIES).toEqual(['analytics', 'marketing']);

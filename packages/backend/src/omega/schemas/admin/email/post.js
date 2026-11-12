@@ -12,7 +12,7 @@
  * the belt, `prepare.internalOnlyFieldFault()` in the handler is the braces
  * ([#125](https://github.com/Omega-JS-Stack/omega/issues/125)).
  */
-module.exports = () => ({
+export default() => ({
   to: { type: ['array', 'string', 'object'], default: [] },
   cc: { type: ['array', 'string', 'object'], default: [] },
   bcc: { type: ['array', 'string', 'object'], default: [] },

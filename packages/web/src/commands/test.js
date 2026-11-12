@@ -6,7 +6,6 @@
  * target's suites; a self-test (the cwd is @omega.js/web) means web's own suite
  * and skips every target step.
  */
-const os = require('node:os');
 const path = require('node:path');
 const jetpack = require('fs-jetpack');
 const Logger = require('@omega.js/devkit/logger');
@@ -15,7 +14,7 @@ const { createRunner } = require('@omega.js/devkit/test/runner');
 const { discoverSuites } = require('@omega.js/devkit/test/discovery');
 const { guardStdout } = require('@omega.js/devkit/test/guard-stdout');
 const { exitFlushed, guardEarlyExit } = require('@omega.js/devkit/test/exit');
-const { parseTestScope, noMatchMessage, noMatchExitCode, FRAMEWORK_IDS } = require('@omega.js/devkit/test/scope');
+const { parseTestScope, noMatchMessage, noMatchExitCode, frameworkIds } = require('@omega.js/devkit/test/scope');
 const { setEnvironment } = require('@omega.js/config/environment');
 const { ensureTarget } = require('./lib/ensure-target.js');
 const { consumerPaths } = require('../consumer.js');
@@ -44,9 +43,8 @@ function runnerConfig({ projectRoot, selfTest }) {
     projectRoot,
     roots,
     packageName: '@omega.js/web',
-    frameworkAliases: FRAMEWORK_IDS['@omega.js/web'],
+    frameworkAliases: frameworkIds('@omega.js/web'),
     isolation: 'process',
-    concurrency: Math.max(1, os.availableParallelism() - 1),
     serial: ['watch'],
     // Build-heavy cases run near 30s side by side, the runner's default limit.
     defaultTimeout: 120000,

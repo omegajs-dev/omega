@@ -1,37 +1,16 @@
 /**
- * The SERVER half of `sign_up` — one home for the registration conversion
- * ([#577](https://github.com/Omega-JS-Stack/omega/issues/577)).
+ * The SERVER half of `sign_up`, the one home for the registration conversion.
+ * `sign_up` fires on both halves, so they share the dedupe id `sign_up.<uid>`:
+ * the uid is the one thing both sides hold before either fires.
  *
- * `sign_up` is the catalog's one `placement: 'both'` event, so the two halves
- * MUST deduplicate or every registration is counted twice.
- *
- *   THE DEDUPE ID IS `sign_up.<uid>`.
- *
- * Meta's Conversions API deduplicates on the PAIR (`event_name`, `event_id`), and
- * TikTok on `event_id` — so both halves have to name the same string, computed
- * from something both sides hold before either fires. The uid is the only such
- * thing: the browser has it the instant Firebase Auth resolves (it is what web's
- * `trackSignup(method, user)` already reads), the server has it here, and it is
- * unique per account for all time. Nothing derived from a clock could ever match
- * across the two.
- *
- * Which is also why this half is META + TIKTOK ONLY: GA4 has no cross-source
- * event_id deduplication, so a Measurement Protocol `sign_up` beside the
- * browser's gtag one is simply two registrations. GA4 keeps its mapping in the
- * catalog — the client half owns that provider (Ian's ruling, stage D).
- *
- * WHERE IT FIRES FROM is the #577 decision. It used to fire from the auth
- * trigger (`events/auth/on-create.js`), which has no HTTP request behind it: no
- * IP, no user agent, no `_fbc`/`_fbp`/`_ttp`, and an attribution the browser had
- * not posted yet — Meta scored the result around 4/10 on match quality. It now
- * fires from `routes/user/signup`, the post-auth request the browser ALREADY
- * makes, which carries all four and runs behind that route's own
- * `flags.signupProcessed` gate — so there is no race with the trigger's write
- * (the route polls for the doc first) and no second fire to deduplicate against.
- * The cost is deliberate and named: a surface that never posts that request
- * (desktop, extension) fires no server half — and it never had match data worth
- * sending anyway.
+ * This half goes only to the providers whose row dedupes on event_id; GA4 has
+ * no cross-source event_id dedupe, so the browser half owns it. It fires from
+ * `routes/user/signup`, the post-auth request that carries the IP, the user
+ * agent and the platform cookies, behind that route's `flags.signupProcessed`
+ * gate. A surface that never posts that request (desktop, extension) fires no
+ * server half. The contract: docs/shared/analytics.md (The placement rule).
  */
+const { ANALYTICS_PROVIDERS } = require('@omega.js/config/analytics-providers');
 const { deliverConversion } = require('./conversions.js');
 const { buildAttributionContext, buildIdentity } = require('./match-data.js');
 
@@ -68,9 +47,9 @@ function buildSignupFire({ authUser, userRecord, request }) {
       request: request,
     }),
     trackingConsent: userRecord?.trackingConsent || null,
-    // The two providers that deduplicate on event_id (see the header) — GA4 is
+    // The providers that deduplicate on event_id (see the header): the rest are
     // the browser half's to fire.
-    providers: ['meta', 'tiktok'],
+    providers: Object.values(ANALYTICS_PROVIDERS).filter((row) => row.dedupesOnEventId).map((row) => row.id),
     eventId: `sign_up.${uid}`,
   };
 }

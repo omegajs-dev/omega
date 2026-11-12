@@ -30,7 +30,8 @@
 const { buildUser, recordingResponse } = require('./_route-harness.js');
 const winback = require('../../../dist/omega/libraries/payment/winback.js');
 
-const handler = require('../../../dist/omega/routes/payments/winback/post.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const handler = loadHandler(require.resolve('../../../dist/omega/routes/payments/winback/post.js'));
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 const { User } = require('../../../dist/omega/helpers/account.js');
 const Context = require('../../../dist/omega/context.js');

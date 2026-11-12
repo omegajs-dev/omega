@@ -9,7 +9,7 @@
 const path = require('path');
 const jetpack = require('fs-jetpack');
 
-const { buildPublicConfig } = require('../../../dist/omega/routes/brand/get.js');
+const { buildPublicConfig } = require('../../../dist/omega/routes/brand/public-config.js');
 const { loadConfig } = require('../../helpers/_shared-config.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 

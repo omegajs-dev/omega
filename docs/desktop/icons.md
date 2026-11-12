@@ -23,13 +23,17 @@ config/icons/
 
 ## Resolution chain (per slot, per platform)
 
-Most specific wins:
+Most specific wins. The order is the one every target type shares (`resolveBrandImage` in `@omega.js/devkit/brand-image`); this framework declares only its candidates:
 
-1. `<projectRoot>/config/icons/<platform>/<file>` — platform-specific override
-2. `<projectRoot>/config/icons/global/<file>` — universal fallback shared by all platforms
-3. `<projectRoot>/config/icons/windows/<file>` — Linux-only extra step (legacy compat — Linux apps historically reuse Windows assets)
-4. `<@omega.js/desktop>/dist/config/icons/<platform>/<file>` — @omega.js/desktop bundled default
-5. `<@omega.js/desktop>/dist/config/icons/windows/<file>` — Linux-only extra step at the bundled level
+1. `<projectRoot>/config/icons/<platform>/<file>`: platform-specific override
+2. `<projectRoot>/config/icons/global/<file>`: universal fallback shared by all platforms
+3. `<projectRoot>/config/icons/windows/<file>`: Linux-only extra step (legacy compat: Linux apps historically reuse Windows assets)
+4. `<brandRoot>/assets/logo/brandmark.svg`: the app slot (`icon.png`) only, when the target sits in a brand. The build rasterizes it to a 1024×1024 `icon.png` in `dist/config/icons/<platform>/`, never in the target's source. The brand root comes from `@omega.js/config`'s `findBrandRoot`; a framework used alone skips this step.
+5. `<@omega.js/desktop>/dist/config/icons/<platform>/<file>`: @omega.js/desktop bundled default
+6. `<@omega.js/desktop>/dist/config/icons/windows/<file>`: Linux-only extra step at the bundled level
+
+- The tray and dmg slots are separate art and never take the brandmark.
+- A target's own `icon.png` at step 1, 2 or 3 always wins over it.
 
 Inside the runtime tray lookup (`lib/tray.js`), tray-slot misses fall back to the app icon (`icon.png`) instead of returning null.
 
@@ -76,4 +80,4 @@ config/icons/mac/dmg.png      # mac-only by definition
 
 ## Bundled defaults
 
-@omega.js/desktop ships its own `icon.png`, `tray.png`, `dmg.png` for each platform in `<@omega.js/desktop>/src/defaults/config/icons/<platform>/`. These are the final fallback when neither the consumer nor a global file provides anything — so a freshly scaffolded project produces a buildable app with the generic @omega.js/desktop icon out of the box.
+@omega.js/desktop ships its own `icon.png`, `tray.png`, `dmg.png` for each platform in `<@omega.js/desktop>/src/defaults/config/icons/<platform>/`. These are the final fallback when neither the consumer, a global file nor (for the app icon) the brand's brandmark provides anything, so a freshly scaffolded project produces a buildable app with the generic @omega.js/desktop icon out of the box.

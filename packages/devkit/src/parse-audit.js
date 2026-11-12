@@ -1,15 +1,11 @@
 /**
- * Parse-audit: vm-parse every .js file under a tree WITHOUT executing it.
+ * Parse-audit: vm-parse every .js file under a tree WITHOUT executing it, so a
+ * file that fails to PARSE in a corner no test ever loads (CLI commands,
+ * scaffold templates, setup machinery) still fails the run.
  *
- * Catches files that fail to PARSE in source corners no test ever loads —
- * CLI commands, scaffold templates, setup machinery. The motivating incident
- * (cp73c): a rename sweep corrupted regex literals in three backend
- * setup-tests modules, leaving them SyntaxErrors for three checkpoints while
- * every suite stayed green.
- *
- * CJS first (Module.wrap — the same wrapper node itself compiles modules
- * with); files that fail the CJS parse are re-checked as ESM via node's own
- * parser (`node --input-type=module --check`) so browser/ESM sources don't
+ * CJS first (Module.wrap: the same wrapper node itself compiles modules
+ * with); files that fail the CJS parse are re-checked as ESM by node's own
+ * parser, all of them in ONE child process, so browser/ESM sources don't
  * false-positive. Only files failing BOTH parses are reported.
  */
 
@@ -21,6 +17,42 @@ const { execFileSync } = require('node:child_process');
 
 // Build output and dependency trees never gate a source audit
 const DEFAULT_SKIP = ['node_modules', 'dist', '.temp', '.cache', 'coverage', 'packaged', 'release'];
+
+// The child's script: reads a JSON list of files on stdin, prints the ones that
+// do not parse as an ES module. A SourceTextModule parses without linking or running.
+const ESM_CHECK = `
+const fs = require('node:fs');
+const vm = require('node:vm');
+const files = JSON.parse(fs.readFileSync(0, 'utf8'));
+const failing = files.filter((file) => {
+  try {
+    new vm.SourceTextModule(fs.readFileSync(file, 'utf8').replace(/^#!.*/, ''), { identifier: file });
+    return false;
+  } catch (error) {
+    return true;
+  }
+});
+process.stdout.write(JSON.stringify(failing));
+`;
+
+/**
+ * The files of a list that do not parse as an ES module, checked in one child.
+ * @param {string[]} files - Absolute paths.
+ * @returns {Set<string>} The failing paths.
+ */
+function failEsmParse(files) {
+  if (files.length === 0) {
+    return new Set();
+  }
+
+  const output = execFileSync(process.execPath, ['--experimental-vm-modules', '--no-warnings', '-e', ESM_CHECK], {
+    input: JSON.stringify(files),
+    stdio: ['pipe', 'pipe', 'inherit'],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+
+  return new Set(JSON.parse(String(output)));
+}
 
 /**
  * Recursively parse-check every .js file under rootDir.
@@ -47,26 +79,25 @@ function parseAuditTree(rootDir, options = {}) {
   };
   walk(root);
 
-  const failures = [];
+  // The CJS error of each file that fails the CJS parse, in walk order
+  const cjsErrors = new Map();
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8').replace(/^#!.*/, '');
 
     try {
       new vm.Script(Module.wrap(source), { filename: file });
     } catch (cjsError) {
-      try {
-        execFileSync(process.execPath, ['--input-type=module', '--check'], {
-          input: source,
-          stdio: ['pipe', 'ignore', 'pipe'],
-        });
-      } catch (esmError) {
-        failures.push({
-          file: path.relative(root, file),
-          error: String(cjsError.message).split('\n')[0],
-        });
-      }
+      cjsErrors.set(file, cjsError);
     }
   }
+
+  const esmFailing = failEsmParse([...cjsErrors.keys()]);
+  const failures = [...cjsErrors]
+    .filter(([file]) => esmFailing.has(file))
+    .map(([file, cjsError]) => ({
+      file: path.relative(root, file),
+      error: String(cjsError.message).split('\n')[0],
+    }));
 
   return { checked: files.length, failures };
 }

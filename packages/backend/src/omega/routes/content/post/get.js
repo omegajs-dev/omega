@@ -2,12 +2,12 @@
  * GET /content/post - Fetch blog post from GitHub
  * Public endpoint to retrieve blog post content
  */
-const { Octokit } = require('@octokit/rest');
-const { parse } = require('yaml');
-const { cmsContext } = require('../../../helpers/web-target.js');
-const env = require('../../../libraries/env.js');
+import { Octokit } from '@octokit/rest';
+import { parse } from 'yaml';
+import { cmsContext } from '../../../helpers/web-target.js';
+import env from '../../../libraries/env.js';
 
-module.exports = async ({ ctx, omega, data, analytics }) => {
+export default async ({ ctx, omega, data, analytics }) => {
 
   // Check for GitHub configuration
   if (!env.has('GH_TOKEN')) {

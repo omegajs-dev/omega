@@ -16,9 +16,19 @@ const DESKTOP = '@omega.js/desktop';
 const EXTENSION = '@omega.js/extension';
 const ALL = [MANAGER, WEB, BACKEND, DESKTOP, EXTENSION];
 
+// The target types, their framework and their walk rank: the stdlib twin of
+// @omega.js/config's target-types.js rows, which a test pins it against.
+const TARGET_TYPE_TWIN = Object.freeze([
+  Object.freeze({ id: 'web', framework: WEB, walkRank: 1 }),
+  Object.freeze({ id: 'backend', framework: BACKEND, walkRank: 0 }),
+  Object.freeze({ id: 'desktop', framework: DESKTOP, walkRank: 3 }),
+  Object.freeze({ id: 'extension', framework: EXTENSION, walkRank: 2 }),
+  Object.freeze({ id: 'mobile', framework: null, walkRank: 4 }),
+]);
+
 // The order every 'each' verb walks: backend's API goes live before the
 // surfaces that call it. A target type with no rank runs after every ranked one.
-const TARGET_ORDER = Object.freeze(['backend', 'web', 'extension', 'desktop', 'mobile']);
+const TARGET_ORDER = Object.freeze([...TARGET_TYPE_TWIN].sort((a, b) => a.walkRank - b.walkRank).map((row) => row.id));
 
 const SCOPES = Object.freeze(['root', 'contextless', 'box']);
 const FANOUTS = Object.freeze(['each', 'root', 'none']);
@@ -184,4 +194,4 @@ function isReadOnlyVerb(token) {
   return entry !== null && entry.readOnly;
 }
 
-module.exports = { VERBS, TARGET_ORDER, SCOPES, FANOUTS, tokensOf, findVerb, isReadOnlyVerb };
+module.exports = { VERBS, TARGET_TYPE_TWIN, TARGET_ORDER, SCOPES, FANOUTS, tokensOf, findVerb, isReadOnlyVerb };

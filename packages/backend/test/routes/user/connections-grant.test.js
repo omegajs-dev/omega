@@ -49,8 +49,9 @@ require.cache[originalFetchPath] = {
   },
 };
 
-const postRoute = require('../../../dist/omega/routes/user/connections/post.js');
-const deleteRoute = require('../../../dist/omega/routes/user/connections/delete.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const postRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/post.js'));
+const deleteRoute = loadHandler(require.resolve('../../../dist/omega/routes/user/connections/delete.js'));
 const twitch = require('../../../dist/omega/routes/user/connections/providers/twitch.js');
 const kick = require('../../../dist/omega/routes/user/connections/providers/kick.js');
 const spotify = require('../../../dist/omega/routes/user/connections/providers/spotify.js');

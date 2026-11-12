@@ -18,6 +18,7 @@ const os = require('node:os');
 const path = require('node:path');
 const events = require('../../dist/omega/events.js');
 const { bootOmega } = require('./_boot-omega.js');
+const { settle } = require('./_handler-cases.js');
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 
 // Write a handler file and return its absolute path.
@@ -81,15 +82,6 @@ async function withSentryRecorder(omega, fn) {
   }
 }
 
-// Resolve/reject of run(), flattened for assertion.
-async function settle(promise) {
-  try {
-    return { resolved: await promise };
-  } catch (e) {
-    return { rejected: e };
-  }
-}
-
 module.exports = defineCases({
   description: 'events.run() handler dispatch + hooks',
   type: 'group',
@@ -100,7 +92,7 @@ module.exports = defineCases({
     {
       name: 'an-absolute-handler-name-is-used-verbatim',
       async run({ expect }) {
-        const file = handlerFile('module.exports = async () => "ran";');
+        const file = handlerFile('export default async () => "ran";');
 
         const outcome = await settle(events.run(makeOmega(), file, {}));
 
@@ -111,7 +103,7 @@ module.exports = defineCases({
     {
       name: 'a-relative-handler-name-resolves-under-the-consumer-events-dir',
       async run({ expect }) {
-        const file = handlerFile('module.exports = async () => "from-events-dir";');
+        const file = handlerFile('export default async () => "from-events-dir";');
         const cwd = path.dirname(path.dirname(file));
         fs.mkdirSync(path.join(cwd, 'events'), { recursive: true });
         fs.copyFileSync(file, path.join(cwd, 'events', 'users__on-create.js'));
@@ -144,7 +136,7 @@ module.exports = defineCases({
     {
       name: 'the-handler-receives-omega-ctx-and-the-event-payload',
       async run({ expect }) {
-        const file = handlerFile(`module.exports = async (context) => ({
+        const file = handlerFile(`export default async (context) => ({
           hasOmega: !!context.omega,
           hasCtx: typeof context.ctx.log === 'function',
           noRequest: context.ctx.request === null,
@@ -177,7 +169,7 @@ module.exports = defineCases({
     {
       name: 'event-keys-absent-from-the-payload-arrive-undefined-not-missing',
       async run({ expect }) {
-        const file = handlerFile(`module.exports = async (context) => Object.keys(context).sort().join(',');`);
+        const file = handlerFile(`export default async (context) => Object.keys(context).sort().join(',');`);
 
         const outcome = await settle(events.run(makeOmega(), file, {}));
 
@@ -191,7 +183,7 @@ module.exports = defineCases({
       name: 'the-named-hook-runs-pre-then-handler-then-post',
       async run({ expect }) {
         const order = [];
-        const file = handlerFile('module.exports = async () => "handled";');
+        const file = handlerFile('export default async () => "handled";');
         const omega = makeOmega({
           handlers: { 'users/on-create': async (context, phase) => order.push(phase) },
         });
@@ -207,7 +199,7 @@ module.exports = defineCases({
       name: 'only-the-hook-registered-under-this-events-name-runs',
       async run({ expect }) {
         const called = [];
-        const file = handlerFile('module.exports = async () => "handled";');
+        const file = handlerFile('export default async () => "handled";');
         const omega = makeOmega({
           handlers: {
             'users/on-create': async () => called.push('mine'),
@@ -224,7 +216,7 @@ module.exports = defineCases({
     {
       name: 'a-throwing-pre-hook-blocks-the-handler',
       async run({ expect }) {
-        const file = handlerFile('module.exports = async () => { throw new Error("handler ran"); };');
+        const file = handlerFile('export default async () => { throw new Error("handler ran"); };');
         const omega = makeOmega({
           handlers: {
             'users/on-create': async (context, phase) => {
@@ -244,7 +236,7 @@ module.exports = defineCases({
     {
       name: 'a-plain-handler-error-rejects-and-is-reported',
       async run({ expect }) {
-        const file = handlerFile('module.exports = async () => { throw new Error("handler blew up"); };');
+        const file = handlerFile('export default async () => { throw new Error("handler blew up"); };');
         const omega = makeOmega();
 
         const outcome = await settle(events.run(omega, file, {}));
@@ -260,7 +252,7 @@ module.exports = defineCases({
       async run({ expect }) {
         // The HttpsError shape verbatim: its constructor sets `httpErrorCode`
         // from the code, which is how a deliberate block is recognized here.
-        const file = handlerFile(`module.exports = async () => {
+        const file = handlerFile(`export default async () => {
           const e = new Error('permission-denied');
           e.code = 'permission-denied';
           e.httpErrorCode = { canonicalName: 'PERMISSION_DENIED', status: 403 };
@@ -281,7 +273,7 @@ module.exports = defineCases({
         // ENOENT, ECONNREFUSED, messaging/invalid-token: a string `.code` is a
         // SERVER fault. respond.js parseInts it to NaN and lands it on the 500
         // lane, so a trigger must report it too.
-        const file = handlerFile(`module.exports = async () => {
+        const file = handlerFile(`export default async () => {
           const e = new Error('ENOENT: no such file or directory');
           e.code = 'ENOENT';
           throw e;
@@ -299,7 +291,7 @@ module.exports = defineCases({
     {
       name: 'a-numeric-4xx-code-error-rethrows-unreported',
       async run({ expect }) {
-        const file = handlerFile(`module.exports = async () => {
+        const file = handlerFile(`export default async () => {
           const e = new Error('bad request');
           e.code = 400;
           throw e;
@@ -316,7 +308,7 @@ module.exports = defineCases({
     {
       name: 'a-numeric-5xx-code-error-is-reported',
       async run({ expect }) {
-        const file = handlerFile(`module.exports = async () => {
+        const file = handlerFile(`export default async () => {
           const e = new Error('upstream exploded');
           e.code = 503;
           throw e;
@@ -333,7 +325,7 @@ module.exports = defineCases({
     {
       name: 'an-httpErrorCode-error-also-rethrows-unreported',
       async run({ expect }) {
-        const file = handlerFile(`module.exports = async () => {
+        const file = handlerFile(`export default async () => {
           const e = new Error('unauthenticated');
           e.httpErrorCode = { status: 401 };
           throw e;
@@ -354,7 +346,7 @@ module.exports = defineCases({
       async run({ expect }) {
         const omega = bootOmega();
 
-        const file = handlerFile('module.exports = async () => { throw new Error("trigger blew up"); };');
+        const file = handlerFile('export default async () => { throw new Error("trigger blew up"); };');
 
         const captured = await withSentryRecorder(omega, () => settle(events.run(omega, file, {})));
 
@@ -380,7 +372,7 @@ module.exports = defineCases({
       async run({ expect }) {
         const omega = bootOmega();
 
-        const file = handlerFile(`module.exports = async () => {
+        const file = handlerFile(`export default async () => {
           const e = new Error('permission-denied');
           e.code = 'permission-denied';
           e.httpErrorCode = { canonicalName: 'PERMISSION_DENIED', status: 403 };
@@ -398,7 +390,7 @@ module.exports = defineCases({
       async run({ expect }) {
         const omega = bootOmega();
 
-        const file = handlerFile(`module.exports = async () => {
+        const file = handlerFile(`export default async () => {
           const e = new Error('connect ECONNREFUSED');
           e.code = 'ECONNREFUSED';
           throw e;
@@ -414,7 +406,7 @@ module.exports = defineCases({
     {
       name: 'a-synchronous-handler-return-value-resolves-too',
       async run({ expect }) {
-        const file = handlerFile('module.exports = () => ({ ok: true });');
+        const file = handlerFile('export default () => ({ ok: true });');
 
         const outcome = await settle(events.run(makeOmega(), file, {}));
 

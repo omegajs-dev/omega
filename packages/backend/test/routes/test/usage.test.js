@@ -306,5 +306,32 @@ module.exports = defineCases({
         expect(response.data.after.used, 'The month counter must not go down').toBe(response.data.before.used);
       },
     },
+
+    // Test 15: A `uid` in the body counts against THAT account's document
+    // through usage.forUser, while the signed-in caller's counter stays put
+    {
+      name: 'consume-for-another-account',
+      async run({ http, expect, firestore, accounts }) {
+        const callerPath = `users/${accounts.basic.uid}`;
+        const otherPath = `users/${accounts['premium-active'].uid}`;
+
+        const callerBefore = (await firestore.get(callerPath))?.usage?.requests || {};
+        const otherBefore = (await firestore.get(otherPath))?.usage?.requests || {};
+
+        const response = await http.as('basic').post('omega/test/usage', {
+          uid: accounts['premium-active'].uid,
+        });
+
+        expect(response, 'Consume for another account should succeed').toBeSuccess();
+
+        const callerAfter = (await firestore.get(callerPath))?.usage?.requests || {};
+        const otherAfter = (await firestore.get(otherPath))?.usage?.requests || {};
+
+        expect(otherAfter.monthly, 'The named account\'s month counter should move by 1').toBe((otherBefore.monthly || 0) + 1);
+        expect(otherAfter.total, 'The named account\'s total should move by 1').toBe((otherBefore.total || 0) + 1);
+        expect(callerAfter.monthly, 'The caller\'s month counter must not move').toBe(callerBefore.monthly);
+        expect(callerAfter.total, 'The caller\'s total must not move').toBe(callerBefore.total);
+      },
+    },
   ],
 });

@@ -6,6 +6,8 @@
  * Dispatches to individual handler files for each transition type.
  */
 const path = require('path');
+const jetpack = require('fs-jetpack');
+const { loadHandler } = require('../../../../libraries/load-handler.js');
 
 // Webhook event types that mean "money went back to the customer", per provider:
 // PayPal PAYMENT.SALE.REFUNDED (v1 sales) and PAYMENT.CAPTURE.REFUNDED (v2
@@ -355,19 +357,27 @@ async function settleClaim({ admin, claim, status }) {
  */
 function dispatch(transitionName, category, context) {
   const { ctx } = context;
+  const handlerPath = path.join(__dirname, category, `${transitionName}.js`);
+
+  // Neither a missing file nor a broken one fails the webhook; a broken one is reported
+  if (!jetpack.exists(handlerPath)) {
+    ctx.error(`Transition handler [${category}/${transitionName}] not found: ${handlerPath}`);
+    return;
+  }
+
+  let handler;
 
   try {
-    const handlerPath = path.join(__dirname, category, `${transitionName}.js`);
-    const handler = require(handlerPath);
-
-    // Fire-and-forget — don't block the main webhook processing
-    Promise.resolve(handler(context)).catch((e) => {
-      ctx.error(`Transition handler [${category}/${transitionName}] failed: ${e.message}`, e);
-    });
+    handler = loadHandler(handlerPath);
   } catch (e) {
-    // Handler file doesn't exist or can't be loaded — log but don't fail
-    ctx.error(`Transition handler [${category}/${transitionName}] not found: ${e.message}`);
+    ctx.report(`Transition handler [${category}/${transitionName}] failed to load: ${e.message}`, { code: 500 });
+    return;
   }
+
+  // Fire-and-forget: don't block the main webhook processing
+  Promise.resolve(handler(context)).catch((e) => {
+    ctx.error(`Transition handler [${category}/${transitionName}] failed: ${e.message}`, e);
+  });
 }
 
 // ─── Helpers ───

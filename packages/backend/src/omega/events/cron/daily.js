@@ -1,3 +1,3 @@
-const { run } = require('../../cron.js');
+import { run } from '../../cron.js';
 
-module.exports = async ({ ctx, omega, context }) => run('daily', { ctx, omega, context });
+export default async ({ ctx, omega, context }) => run('daily', { ctx, omega, context });

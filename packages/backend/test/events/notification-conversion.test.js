@@ -20,7 +20,8 @@
  *
  * Run: npx omega test framework:events/notification-conversion
  */
-const onWrite = require('../../dist/omega/events/firestore/notifications/on-write.js');
+const { loadHandler } = require('../../dist/omega/libraries/load-handler.js');
+const onWrite = loadHandler(require.resolve('../../dist/omega/events/firestore/notifications/on-write.js'));
 const defineCases = require('../../dist/vendor/devkit/test/define-cases.js');
 const Context = require('../../dist/omega/context.js');
 
@@ -175,7 +176,7 @@ module.exports = defineCases({
         const { delivery } = await runHandler({ omega: omega, before: undefined, after: doc });
 
         expect(delivery.length, delivery.join(' | ')).toBe(1);
-        expect(delivery[0].includes('ga4 skipped (consent: analytics)'), `an opted-out device reaches no platform: ${delivery[0]}`).toBe(true);
+        expect(delivery[0].includes('google skipped (consent: analytics)'), `an opted-out device reaches no platform: ${delivery[0]}`).toBe(true);
       },
     },
   ],

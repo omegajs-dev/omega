@@ -1,55 +1,7 @@
-// Context Menu — file-based right-click menu definition.
-//
-// @omega.js/desktop looks for the consumer's `src/integrations/context-menu/index.js` and calls it FOR EACH
-// context-menu event with a builder API plus the event's `params`:
-//
-//   // src/integrations/context-menu/index.js
-//   module.exports = ({ omega, menu, params, webContents }) => {
-//     // Start from @omega.js/desktop's default template (undo/redo, cut/copy/paste, link items,
-//     // reload, dev-only inspect):
-//     menu.useDefaults();
-//
-//     // Mutate by id within this event's items:
-//     menu.remove('toggle-devtools');                        // hide dev tools
-//     menu.insertAfter('copy', { id: 'search-google',
-//       label: `Search "${params.selectionText.slice(0,20)}"`,
-//       click: () => require('electron').shell.openExternal(...) });
-//
-//     // Or build entirely from scratch — useDefaults() is optional:
-//     // menu.item({ id: 'copy', role: 'copy' });
-//     // menu.separator();
-//     // menu.item({ id: 'mine', label: 'Custom', click: ... });
-//   };
-//
-// Builder API (per event):
-//   menu.item(descriptor)
-//   menu.separator()
-//   menu.submenu(label, items)
-//   menu.useDefaults()           — populate with @omega.js/desktop's default template based on params
-//   menu.clear()                 — wipe items added so far this event
-//
-// Id-path API (per event, same shape as menu/tray):
-//   .find / .has / .update / .remove / .enable / .show / .hide /
-//   .insertBefore / .insertAfter / .appendTo
-//
-// Default template ids (flat — no `context/` prefix; the lib namespace is implicit):
-//   undo, redo                                   — when params.editFlags allow
-//   cut, copy, paste, paste-and-match-style,
-//   select-all                                   — when params.isEditable
-//   copy                                          — when params.selectionText (read-only)
-//   open-link, copy-link                          — when params.linkURL
-//   reload                                        — always (page reload)
-//   inspect, toggle-devtools                      — dev mode only
-//
-// Building no items (calling no menu.* methods) suppresses the popup entirely.
-//
-// @omega.js/desktop auto-attaches the handler to every BrowserWindow's webContents that
-// goes through `omega.windows.createNamed()`. To attach manually:
-//   omega.contextMenu.attach(webContents)
-//
-// Disabling at runtime: call `omega.contextMenu.disable()`. Idempotent. After
-// disable() the lib stops responding to context-menu events on already-attached
-// webContents — no new menus are shown. No config flag.
+// Context Menu: the file-based right-click menu. The consumer's
+// src/integrations/context-menu/index.js is an ES module whose default export runs on
+// every context-menu event as ({ omega, menu, params, webContents }). The builder, the
+// id-path API, the default ids and attach/disable: docs/desktop/context-menu.md.
 
 const path = require('path');
 const fs   = require('fs');
@@ -89,13 +41,7 @@ const contextMenu = {
 
     if (fs.existsSync(absPath)) {
       const loadConsumerFile = require('../utils/load-consumer-file.js');
-      const loaded = loadConsumerFile(absPath);
-      if (typeof loaded === 'function') {
-        contextMenu._definitionFn = loaded;
-      } else if (loaded != null) {
-        logger.warn(`context-menu definition at ${absPath} did not export a function — using default.`);
-        contextMenu._definitionFn = null;
-      }
+      contextMenu._definitionFn = loadConsumerFile(absPath);
     } else {
       logger.log(`no context-menu definition at ${absPath} — using default (copy/paste based on params).`);
     }

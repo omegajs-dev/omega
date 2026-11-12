@@ -22,9 +22,9 @@
 //   development/{open-exe-folder, open-user-data, open-logs, open-app-config,
 //                test-error}                                                       (dev only)
 
-const { sendToNotes } = require('../../lib/notes.js');
+import { sendToNotes } from '../../lib/notes.js';
 
-module.exports = ({ omega, menu, defaults }) => {
+export default ({ omega, menu, defaults }) => {
   // Start from the platform-appropriate default template, then customize below.
   menu.useDefaults();
 

@@ -25,11 +25,14 @@ interop.
 | `index.js` | The facade — `event()`, `configure()`, and the fire walk |
 | `catalog.js` | The SSOT: one entry per canonical event, with every provider mapping |
 | `adapters/resolve.js` | The shared adapter mechanism (catalog lookup → mapping → payload) |
-| `adapters/ga4.js` · `meta.js` · `tiktok.js` | One file per provider: its consent category and where attribution attaches |
+| `adapters/google.js` · `meta.js` · `tiktok.js` | One file per provider: where attribution attaches |
 | `transports/browser.js` | Executes a descriptor against the page globals, guarded ([#306](https://github.com/Omega-JS-Stack/omega/issues/306)) |
 | `consent.js` | The consent seam — `createConsentGate(providerFn)`, categories, `GRANT_ALL` |
 | `core.js` | GA4 Measurement Protocol semantics (device_id/client_id/user_id derivation, payload shape) |
 | `logger.js` | This package's `[@omega.js/analytics:<module>]` tag ([logging.md](logging.md)) |
+
+Every provider's facts live in ONE row, in `@omega.js/config`'s
+`analytics-providers` (below), and every reader derives from it.
 
 **The one call**, from client code and backend code alike:
 
@@ -89,6 +92,45 @@ which is how a `both` event splits without double-counting.
 silently cost a conversion) and is logged-and-skipped in production, where the throw would
 take the customer's action with it.
 
+## The provider rows
+
+- **The one home**: `packages/config/src/analytics-providers.js`, one frozen row per
+  provider in `ANALYTICS_PROVIDERS`; `analyticsProvider(id)` answers a row, or `null` for
+  an unknown id. The values live there and nowhere else.
+- **The id** is the row's `id` everywhere: the catalog's `providers` keys, a
+  descriptor's `provider`, the `providers` fire option, the adapter file, the fire log,
+  and the config key under `analytics.providers`. GA4 is the product's name, never an id.
+  A `providers` option naming an id no row has throws in development and logs in
+  production, like an unknown event name.
+- **The backend's `providers`**: `deliverConversion` never throws at its caller, so an
+  id no row has logs one warning line naming the id and the event, in every
+  environment, and the fire goes on.
+- **The fields** and who reads them:
+  - `consentCategory`: the tracking-consent category that gates the provider. Read by
+    the facade's gate, the backend's consent walk, the web loader and
+    `CONSENT_CATEGORIES`.
+  - `dedupesOnEventId`: the platform collapses a browser half and a server half that
+    share an event id. Read by the server half of `sign_up`
+    (`libraries/analytics/signup.js`) and the confirmation page's trial half.
+  - `matchKeys`: the server match parameters it accepts, in the order the backend's
+    fire log (`conversions.js`) reads them out; an empty list means no match block.
+  - `browserSender` / `serverSender`: the browser transport's and the backend's
+    `SENDERS` can deliver it; tests pin each map to the rows, both ways.
+  - `measurementProtocol`: it has a Measurement Protocol transport. Read by the
+    client's and desktop main's Measurement Protocol transports.
+- **Order and functions**: the facade and the backend fire in the rows' order. The
+  adapters, the senders and the match blocks stay where they run; tests pin each row
+  to its adapter file and its senders, and each match block to its row's keys.
+- **In the browser**: `clientConfig()` ALWAYS bakes the rows as `analytics.capabilities`
+  (the shape `payment.capabilities` uses), since they are provider facts, not brand
+  settings; `analytics.providers` rides only when the brand configures it. Web core reads
+  them through `getAnalyticsCapabilities()` in `core/js/libs/analytics.js`, which throws
+  when a build did not bake them.
+- **A rule a row cannot express stays with its event**: the confirmation page's trial
+  exception is stated once, in `core/js/pages/payment/confirmation/modules/tracking.js`.
+- **Not in the rows**: the manager's pixel specs hold API clients, so they stay in the
+  manager.
+
 ## The catalog contract
 
 One entry per canonical event; callers only ever speak canonical names and canonical
@@ -102,7 +144,7 @@ add_to_cart: {
   params: ['currency', 'value', 'items'],
   placement: 'client',
   providers: {
-    ga4: { name: 'add_to_cart', kind: 'standard' },
+    google: { name: 'add_to_cart', kind: 'standard' },
     meta: { name: 'AddToCart', kind: 'standard', map: metaCommerce },
     tiktok: { name: 'AddToCart', kind: 'standard', map: tiktokCommerce },
   },
@@ -307,8 +349,8 @@ which is what changing what a category COVERS requires.
   honored, not counted.
 - Granting a category injects its loader immediately, no reload. REVOKING cannot unload a
   running script, so it takes effect on the next page load while Consent Mode updates now.
-- In the package, each adapter declares its `CONSENT_CATEGORY` and the facade asks the gate
-  once per provider per event. The gate reads its provider function LIVE, so a visitor who
+- In the package, the facade reads each provider's `consentCategory` off its row and asks
+  the gate once per provider per event. The gate reads its provider function LIVE, so a visitor who
   accepts mid-session is counted from that moment with nothing re-configuring. The default
   when no host injects a gate is `GRANT_ALL` — desktop, extension and backend have no banner
   to gate on.
@@ -422,7 +464,7 @@ In development the whole walk prints as ONE tagged line, the complete per-provid
 of that event:
 
 ```
-[@omega.js/analytics:events] add_to_cart → ga4 sent, meta sent, tiktok skipped (consent: marketing)
+[@omega.js/analytics:events] add_to_cart → google sent, meta sent, tiktok skipped (consent: marketing)
 ```
 
 The outcome vocabulary is the walk itself: `sent`, `skipped (consent: <category>)`,
@@ -454,7 +496,7 @@ of its own):
 
 ```
 [@omega.js/backend:omega_api] deliverConversion [meta]: sign_up blocked (dev) — nothing sent (event_id=sign_up.<uid>)
-[@omega.js/backend:omega_api] deliverConversion: sign_up → ga4 skipped (not selected) | meta blocked (dev) sent em,fn,ln,external_id,client_ip_address,client_user_agent,fbp; empty ph,ct,st,zp,country,db,ge,fbc | tiktok blocked (dev) sent … (event_id=sign_up.<uid>)
+[@omega.js/backend:omega_api] deliverConversion: sign_up → google skipped (not selected) | meta blocked (dev) sent em,fn,ln,external_id,client_ip_address,client_user_agent,fbp; empty ph,ct,st,zp,country,db,ge,fbc | tiktok blocked (dev) sent … (event_id=sign_up.<uid>)
 ```
 
 A real send is therefore proved the way **Verifying** says below — a live drive read in the

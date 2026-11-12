@@ -24,9 +24,9 @@
  * Note: recaptchaScore requires reCAPTCHA Enterprise (Google Cloud level), NOT the Firebase SMS fraud toggle.
  * Note: credential tokens (idToken, accessToken, refreshToken) require opt-in via BlockingOptions.
  */
-const { runAuthHook } = require('./utils.js');
+import { runAuthHook } from './utils.js';
 
-module.exports = async ({ ctx, omega, user, context }) => {
+export default async ({ ctx, omega, user, context }) => {
   const startTime = Date.now();
   const admin = omega.firebase.admin;
 

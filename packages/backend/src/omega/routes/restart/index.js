@@ -1,6 +1,6 @@
-const jetpack = require('fs-jetpack');
+import jetpack from 'fs-jetpack';
 
-module.exports = async ({ ctx, user, analytics }) => {
+export default async ({ ctx, user, analytics }) => {
 
   // Send analytics event
   analytics.event('restart', {});
@@ -22,8 +22,8 @@ module.exports = async ({ ctx, user, analytics }) => {
   jetpack.remove('node_modules');
 
   // Perform delayed refresh to allow a successful response
-  setTimeout(function () {
-    require('child_process').exec('refresh', (error, stdout, stderr) => {
+  setTimeout(async function () {
+    (await import('child_process')).exec('refresh', (error, stdout, stderr) => {
       // Quit the process if there is an error
       if (error || stderr) {
         console.log(`error: ${error ? error.message : stderr}`);

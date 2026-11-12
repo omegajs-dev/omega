@@ -147,7 +147,7 @@ require('@omega.js/devkit/test/temp-home');
 
 const devCommand = require('../src/commands/dev.js');
 const { STOP_SIGNALS } = require('@omega.js/devkit/stop-signals');
-const { selectDevTargets, DEFAULT_TARGETS, createLineDeduper } = devCommand;
+const { selectDevTargets, createLineDeduper } = devCommand;
 
 // The selector takes DISCOVERED targets ({ name, target: the type }): the name
 // is the picker word, the type is what orders the boot (#886).
@@ -386,7 +386,6 @@ module.exports = defineCases({
         const { selected } = selectDevTargets({ available: ALL_TARGETS });
 
         ctx.expect(selected, 'backend boots first (publishes the port map)').toEqual(['backend', 'web']);
-        ctx.expect(DEFAULT_TARGETS).toEqual(['web', 'backend']);
       },
     },
 

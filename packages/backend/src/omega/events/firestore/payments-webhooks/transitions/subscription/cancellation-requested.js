@@ -2,9 +2,9 @@
  * Transition: cancellation-requested
  * Triggered when a user requests cancellation at period end (cancellation.pending flips to true)
  */
-const { sendOrderEmail, formatDate } = require('../send-email.js');
+import { sendOrderEmail, formatDate } from '../send-email.js';
 
-module.exports = async function ({ ctx, before, after, order, uid, userDoc }) {
+export default async function ({ ctx, before, after, order, uid, userDoc }) {
   ctx.log(`Transition [subscription/cancellation-requested]: uid=${uid}, product=${after.product?.id}, cancelDate=${after.cancellation?.date?.timestamp}`);
 
   sendOrderEmail({

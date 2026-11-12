@@ -6,13 +6,19 @@ Recipes for building consumer-side routes plus @omega.js/backend-side event hand
 
 Routes live at `src/routes/{path}/{method}.js` (staged to `dist/` by `omega build`: consumers are src-first, see [build-system.md](build-system.md)). The request pipeline loads the matching method file (`get.js` / `post.js` / `put.js` / `delete.js`), and falls back to `index.js` when no method-specific file exists.
 
-A route exports an **async function receiving one object**, which the request pipeline builds (`src/omega/pipeline.js`):
+A route is an **ES module whose one default export is an async function receiving one object**, which the request pipeline builds (`src/omega/pipeline.js`):
+
+- Every handler file (routes, schemas, events, cron jobs, auth hooks, payment transitions) loads through ONE loader, `loadHandler(filePath)` (`src/omega/libraries/load-handler.js`), which reads the default export.
+- A file still in the CommonJS form (`module.exports = ...`) is refused by name: `<file> must be an ES module with one default export (export default async (...) => {})`. There is no second read.
+- The consumer `mcp.js` is read by the same devkit check with the array kind (`src/mcp/utils.js`); its refusal: [mcp.md](mcp.md#consumer-mcp-tools).
+- Inside a handler, packages and helpers come in with `import`, a lazy load inside a function is `await import()`, and the file's own folder is `import.meta.dirname`. A helper module beside it may stay CommonJS; the handler imports it.
+- No top-level `await`: the file is loaded by `require()`, which refuses an async module. An `await` goes inside the default export.
 
 ```javascript
 /**
  * POST /items - Create a new item
  */
-module.exports = async ({ ctx, omega, user, data, usage, analytics }) => {
+export default async ({ ctx, omega, user, data, usage, analytics }) => {
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });
   }
@@ -194,13 +200,15 @@ Order: most specific → least specific → catch-all.
 
 The framework's handlers live at `src/omega/events/{type}/{event}.js`: `auth/` (the Identity Platform user lifecycle), `firestore/{collection}/on-write.js` (document triggers), `cron/` (the scheduled runner, below).
 
-A handler exports an **async function receiving one object**, like a route: `await handler({ ctx, omega, user, context, change, snapshot })` is the one call the event dispatcher makes (`src/omega/events.js`). A handler exported any other way is called as a plain function: its body never runs and nothing errors.
+A handler is an **ES module whose default export is an async function receiving one object**, like a route: `await handler({ ctx, omega, user, context, change, snapshot })` is the one call the event dispatcher makes (`src/omega/events.js`).
+
+- A handler in the CommonJS form is refused by name: the dispatcher rejects with `EventMiddleware: Failed to load handler @ <path>`, the refusal as its `cause`.
 
 ```javascript
 /**
  * Notification subscription write handler
  */
-module.exports = async ({ ctx, omega, change, context }) => {
+export default async ({ ctx, omega, change, context }) => {
   const firestore = omega.firebase.admin.firestore();
 
   ctx.log('Event triggered', context.params);
@@ -235,17 +243,17 @@ Throwing is the error contract: an `HttpsError` or an explicit numeric 4xx `code
 
 Create `src/hooks/cron/daily/{job}.js`. The runner reads the STAGED copy (`dist/hooks/cron/{name}/`, off `omega.cwd`), so author it in `src/` and let `omega build` stage it.
 
-A job exports an **async function receiving one object**, like a route: `await handler({ ctx, omega, context })` is the one call the runner makes (`src/omega/cron.js`). Each job gets its own `Context`, and a job that throws is reported while the next one still runs. A job exported any other way is called as a plain function: its body never runs and nothing errors.
+A job is an **ES module whose default export is an async function receiving one object**, like a route: `await handler({ ctx, omega, context })` is the one call the runner makes (`src/omega/cron.js`). Each job gets its own `Context`, and a job that throws is reported while the next one still runs. A job in the CommonJS form is refused by name, reported the same way, and the next job still runs.
 
 ```javascript
 /**
  * Daily job
  */
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   ctx.log('Running daily job...');
 
   // Job logic here (Firebase Admin is omega.firebase.admin)
 };
 ```
 
-Every schedule works the same way (`daily/`, `frequent/`), and the framework's own jobs (`src/omega/events/cron/{name}/`) are written in this exact shape and run first.
+Every schedule works the same way (`daily/`, `frequent/`), and the framework's own jobs (`src/omega/events/cron/{name}/`) are written in this exact shape and run first. The runner runs EVERY file in a schedule folder as a job, so a job's helper module lives outside it (the framework's sit in `src/omega/events/cron/helpers/`).

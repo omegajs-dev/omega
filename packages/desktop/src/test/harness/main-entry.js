@@ -33,6 +33,11 @@ if (!app.commandLine.hasSwitch('remote-debugging-port')) {
 }
 const devtoolsPortDir = app.getPath('userData');
 
+// A brand's own `second-instance` listener, registered before the framework module loads,
+// as a brand's main.js registers it: suites/main/deep-link.test.js reads the order it ran in.
+global.__omegaTestSecondInstanceOrder = [];
+app.on('second-instance', () => { global.__omegaTestSecondInstanceOrder.push('brand'); });
+
 async function bootOmega() {
   // Publish the harness's resolved DevTools port (see the appendSwitch block at
   // the top of this file) for suites to consume. OVERWRITES any inherited

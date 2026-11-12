@@ -19,20 +19,20 @@
  * failures follow the type hierarchy ($feed → other feeds → $parent; $parent
  * → other parent items; NOTHING falls back to $brand).
  */
-const powertools = require('node-powertools');
-const moment = require('moment');
+import powertools from 'node-powertools';
+import moment from 'moment';
 
-const {
+import {
   PROMPT_SOURCE,
   PROMPT,
   resolveSources,
   trackContentSource,
   getRecentTitles,
-} = require('../../../libraries/content/source-resolver.js');
+} from '../../../libraries/content/source-resolver.js';
 
 let postId;
 
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   // External boundary (live feed fetches + AI generation + publishing) — the
   // cron entry gates itself like every other external call. Ungated, a normal
   // test run harvests real feeds from the consumer's blog config, delaying the
@@ -51,7 +51,7 @@ module.exports = async ({ ctx, omega, context }) => {
 
   postId = moment().unix();
 
-  const brandConfig = buildBrandConfig(omega.config);
+  const brandConfig = await buildBrandConfig(omega.config);
   ctx.log('Brand config', brandConfig);
 
   const blog = omega.config.blog;
@@ -59,7 +59,7 @@ module.exports = async ({ ctx, omega, context }) => {
   const admin = omega.firebase.admin;
 
   const providerName = Object.keys(blog.providers || {}).find((key) => blog.providers[key]) || 'ghostii';
-  const provider = require(`../../../libraries/content/${providerName}.js`);
+  const { default: provider } = await import(`../../../libraries/content/${providerName}.js`);
 
   for (const entry of contentArray) {
     entry.quantity = entry.quantity || 0;
@@ -106,13 +106,13 @@ module.exports = async ({ ctx, omega, context }) => {
   }
 };
 
-function buildBrandConfig(config) {
-  const { buildPublicConfig } = require(require('path').join(__dirname, '..', '..', '..', 'routes', 'brand', 'get.js'));
+async function buildBrandConfig(config) {
+  const { buildPublicConfig } = await import('../../../routes/brand/public-config.js');
   return buildPublicConfig(config);
 }
 
-function fetchRemoteBrand(brandUrl) {
-  const fetch = require('wonderful-fetch');
+async function fetchRemoteBrand(brandUrl) {
+  const { default: fetch } = await import('wonderful-fetch');
   return fetch(`${brandUrl}/omega/brand`, {
     timeout: 120000,
     tries: 3,

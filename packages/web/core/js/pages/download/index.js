@@ -106,19 +106,20 @@ function setupPlatformDetection() {
     return;
   }
 
-  const platformName = $card.querySelector('.omega-dl-card__name, strong')?.textContent.trim() || detectedPlatform;
   const $chipIcon = $card.querySelector('.omega-dl-card__mark, .omega-icon-chip, .fa');
 
   $hero.href = $link.getAttribute('href');
-  $hero.querySelector('[data-hero-label]').textContent = `Download for ${platformName}`;
+  $hero.querySelector('[data-hero-label]').textContent = $link.textContent.trim();
   if ($chipIcon) {
     $hero.querySelector('[data-hero-icon]').innerHTML = $chipIcon.querySelector('svg')?.outerHTML || '';
   }
 
-  // The hero IS a download button — same tracking + onboarding as the cards
+  // The hero IS a download button: same tracking and onboarding as the cards
   $hero.addEventListener('click', () => {
-    trackDownloadClick(detectedPlatform, $hero.textContent.trim(), $hero.href);
-    showOnboardingModal(detectedPlatform);
+    trackDownloadClick(detectedPlatform, $link.dataset.downloadName, $hero.href);
+    if (!isStoreLink($link)) {
+      showOnboardingModal(detectedPlatform);
+    }
   });
 
   $fallback.setAttribute('hidden', '');
@@ -133,13 +134,23 @@ function setupDownloadTracking() {
     $button.addEventListener('click', function() {
       const $platformPane = this.closest('[data-download-card][data-platform]');
       const platformId = $platformPane ? $platformPane.dataset.platform : 'unknown';
-      const downloadName = this.textContent.trim();
+      // The format's own name, never the words: a main half reads
+      // "Download for Linux" while it hands over the Debian package.
+      const downloadName = this.dataset.downloadName;
       const downloadUrl = this.getAttribute('href');
 
       trackDownloadClick(platformId, downloadName, downloadUrl);
-      showOnboardingModal(platformId);
+      if (!isStoreLink(this)) {
+        showOnboardingModal(platformId);
+      }
     });
   });
+}
+
+// A `store` format (the format table's kind, rendered onto the button) is a
+// plain link to the store: the store installs it, so there is no walkthrough.
+function isStoreLink($link) {
+  return $link.dataset.downloadKind === 'store';
 }
 
 // Slideshow auto-advance interval (ms)
@@ -358,9 +369,16 @@ function setupAutoDownload() {
 
   // Trigger the download and show onboarding modal
   const downloadUrl = $downloadLink.getAttribute('href');
-  const downloadName = $downloadLink.textContent.trim();
+  const downloadName = $downloadLink.dataset.downloadName;
 
   trackDownloadClick(detectedPlatform, downloadName, downloadUrl);
+
+  // A store has no file to fetch: the visitor goes to the store page
+  if (isStoreLink($downloadLink)) {
+    window.location.assign(downloadUrl);
+    return;
+  }
+
   showOnboardingModal(detectedPlatform);
 
   // Trigger the actual download via a hidden iframe to avoid navigating away

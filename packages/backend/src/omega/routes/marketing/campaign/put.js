@@ -5,10 +5,10 @@
  * Accepts any field from the POST schema. Only provided fields are updated.
  * Changing sendAt reschedules the campaign (if still pending).
  */
-const { buildCampaignDoc } = require('./utils');
-const prepare = require('../../../libraries/email/prepare.js');
+import { buildCampaignDoc } from './utils.js';
+import prepare from '../../../libraries/email/prepare.js';
 
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });

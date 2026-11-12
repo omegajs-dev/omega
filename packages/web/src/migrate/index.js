@@ -21,6 +21,10 @@ const { collectBareRequires, formatBareRequire } = require('@omega.js/devkit/bar
 
 const BUNDLER_ALIASES = ['__main_assets__', '__theme__', '@omega.js/client'];
 
+// The legacy framework's own package. consumer-assets rewrites or flags every
+// import of it, so the dependency scan never asks a consumer to install it.
+const LEGACY_PACKAGE = 'ultimate-jekyll-manager';
+
 // Legacy files deleted by a real migration (relative to the consumer root)
 const LEGACY_FILES = [
   'src/_config.yml',
@@ -210,7 +214,7 @@ function runMigration(root, options = {}) {
   // the client package). None is a dependency a consumer may declare, since
   // installing `@omega.js/client` beside the framework is a SECOND client
   // runtime, so naming them would hand the report a fix that breaks the project.
-  report.bareRequires = collectBareRequires(root, { aliases: BUNDLER_ALIASES });
+  report.bareRequires = collectBareRequires(root, { aliases: [...BUNDLER_ALIASES, LEGACY_PACKAGE] });
 
   return report;
 }

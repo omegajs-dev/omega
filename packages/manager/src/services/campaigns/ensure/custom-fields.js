@@ -4,16 +4,17 @@
  * The field list comes from @omega.js/backend's marketing SSOT — its OWN
  * per-provider view of the catalog (#695), the same derivation the backend's
  * contact sync writes through, so what is provisioned here and what is sent
- * there are one list (SendGrid has first/last name built in, so the catalog
- * skips them on both sides). A type mismatch can't be patched in SendGrid, so
+ * there are one list (SendGrid has first/last name built in: its row's
+ * nativeFields, left out on both sides). A type mismatch can't be patched in SendGrid, so
  * the field is deleted and recreated. Fields @omega.js/backend doesn't own are
  * never touched.
  */
 const chalk = require('chalk').default;
+const { emailProviderForRole } = require('@omega.js/config');
 const { fieldsFor } = require('../../../lib/backend-marketing.js');
 const { dryRunPlan } = require('../../../lib/run-gates.js');
 
-const SENDGRID_FIELDS = fieldsFor('sendgrid');
+const SENDGRID_FIELDS = fieldsFor(emailProviderForRole('campaigns').id);
 
 // @omega.js/backend type → SendGrid field_type
 const TYPE_MAP = { text: 'Text', number: 'Number', date: 'Date' };

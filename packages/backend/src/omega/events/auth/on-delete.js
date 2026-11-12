@@ -1,6 +1,6 @@
-const { retryWrite, runAuthHook, MAX_RETRIES } = require('./utils.js');
-const { deliverConversion } = require('../../libraries/analytics/conversions.js');
-const { buildAttributionContext, buildIdentity } = require('../../libraries/analytics/match-data.js');
+import { retryWrite, runAuthHook, MAX_RETRIES } from './utils.js';
+import { deliverConversion } from '../../libraries/analytics/conversions.js';
+import { buildAttributionContext, buildIdentity } from '../../libraries/analytics/match-data.js';
 
 /**
  * onDelete - Delete user doc
@@ -24,7 +24,7 @@ const { buildAttributionContext, buildIdentity } = require('../../libraries/anal
  * context (EventContext — NOT AuthEventContext, no ipAddress/userAgent/locale):
  *   eventId, eventType, timestamp, resource: { service, name }, params
  */
-module.exports = async ({ ctx, omega, user, context }) => {
+export default async ({ ctx, omega, user, context }) => {
   const startTime = Date.now();
   const admin = omega.firebase.admin;
 

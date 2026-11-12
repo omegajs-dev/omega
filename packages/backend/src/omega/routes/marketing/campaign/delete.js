@@ -2,7 +2,7 @@
  * DELETE /marketing/campaign - Delete a marketing campaign
  * Admin-only. Can only delete pending campaigns.
  */
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });

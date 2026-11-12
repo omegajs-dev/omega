@@ -3,7 +3,7 @@
  *
  * Meta's commerce vocabulary (content_ids, num_items) differs from GA4's
  * items[], so those entries carry a `map()` in the catalog; everything else
- * passes through as custom data. Consent category: 'marketing'.
+ * passes through as custom data. Its consent category is its provider row's.
  */
 
 const { createAdapter, pick, attachPage } = require('./resolve.js');
@@ -14,7 +14,6 @@ const ATTRIBUTION_KEYS = ['fbc', 'fbp'];
 
 const adapter = createAdapter({
   provider: 'meta',
-  consentCategory: 'marketing',
   attach: (descriptor, attribution) => {
     Object.assign(descriptor.userData, pick(attribution, ATTRIBUTION_KEYS));
     // The Conversions API's `event_source_url` (#497) — the transport's to place.

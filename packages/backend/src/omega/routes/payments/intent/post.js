@@ -1,19 +1,22 @@
-const path = require('path');
-const loadProvider = require('../../../libraries/load-provider.js');
-const powertools = require('node-powertools');
-const OrderId = require('../../../libraries/payment/order-id.js');
-const recaptcha = require('../../../libraries/recaptcha.js');
-const discountCodes = require('../../../libraries/payment/discount-codes.js');
-const registry = require('../../../libraries/payment/providers/index.js');
-const { hasAuthUser } = require('../../../libraries/auth-user.js');
-const { COLLECTION: CART_COLLECTION } = require('../../../libraries/abandoned-cart-config.js');
+import path from 'path';
+import loadProvider from '../../../libraries/load-provider.js';
+import powertools from 'node-powertools';
+import OrderId from '../../../libraries/payment/order-id.js';
+import recaptcha from '../../../libraries/recaptcha.js';
+import discountCodes from '../../../libraries/payment/discount-codes.js';
+import registry from '../../../libraries/payment/providers/index.js';
+import { hasAuthUser } from '../../../libraries/auth-user.js';
+import cartConfig from '../../../libraries/abandoned-cart-config.js';
+import { buildConfirmationUrl } from './confirmation-url.js';
+
+const CART_COLLECTION = cartConfig.COLLECTION;
 
 /**
  * POST /payments/intent
  * Creates a payment intent (e.g., Stripe Checkout Session) for subscription or one-time purchase
  * Requires authentication
  */
-module.exports = async ({ ctx, omega, user, data }) => {
+export default async ({ ctx, omega, user, data }) => {
   const admin = omega.firebase.admin;
 
   // Require authentication
@@ -160,7 +163,7 @@ module.exports = async ({ ctx, omega, user, data }) => {
 
   // Every registry row has an intent module (provider-registry.test.js), so a
   // load that throws here is a framework bug, never the caller's
-  const providerModule = loadProvider(path.join(__dirname, 'providers'), provider);
+  const providerModule = loadProvider(path.join(import.meta.dirname, 'providers'), provider);
 
   // Create the intent via the provider
   let result;
@@ -296,48 +299,6 @@ async function findMissingPurchaser(admin, uid) {
 }
 
 /**
- * Build the confirmation/success redirect URL
- *
- * `amount` is what the customer is charged TODAY, not the list price: the
- * confirmation page hands that param straight to the client's analytics modules,
- * so quoting the list price on a discounted checkout over-reports revenue to
- * GA4/pixels. The discount comes off HERE rather than in a provider, because a
- * real provider applies the coupon on its own hosted page and never revisits
- * this URL — quoting it provider-side would have left every Stripe checkout
- * reporting the full price ([#239](https://github.com/Omega-JS-Stack/omega/issues/239)).
- */
-function buildConfirmationUrl(baseUrl, { product, productId, productType, frequency, provider, trial, orderId, discount }) {
-  const listPrice = productType === 'subscription'
-    ? (product.prices?.[frequency] || 0)
-    : (product.prices?.once || 0);
-
-  // A trial charges nothing today; otherwise a validated coupon comes off the
-  // first charge (every code is duration: 'once' — the renewal stays full price)
-  const amount = trial && product.trial?.days
-    ? 0
-    : discountCodes.applyToAmount(listPrice, discount);
-
-  const url = new URL('/payment/confirmation', baseUrl);
-  url.searchParams.set('productId', productId);
-  url.searchParams.set('productName', product.name || productId);
-  url.searchParams.set('amount', String(amount));
-  url.searchParams.set('currency', 'USD');
-  // What was BOUGHT, said outright rather than inferred from the cadence beside
-  // it: the confirmation page holds nothing else about the product, and a
-  // checkout that sent the wrong frequency left it polling the account for a
-  // plan a one-time purchase never writes
-  // ([#668](https://github.com/Omega-JS-Stack/omega/issues/668)).
-  url.searchParams.set('type', productType);
-  url.searchParams.set('frequency', frequency || 'once');
-  url.searchParams.set('paymentMethod', provider);
-  url.searchParams.set('trial', String(!!trial && !!product.trial?.days));
-  url.searchParams.set('orderId', orderId);
-  url.searchParams.set('track', 'true');
-
-  return url.toString();
-}
-
-/**
  * Build the cancel/back redirect URL
  */
 function buildCancelUrl(baseUrl, { productId, frequency }) {
@@ -352,7 +313,3 @@ function buildCancelUrl(baseUrl, { productId, frequency }) {
 
   return url.toString();
 }
-
-// Exported for testing — the discounted `amount` is a provider-independent
-// promise of this route, not of whichever provider happens to run
-module.exports.buildConfirmationUrl = buildConfirmationUrl;

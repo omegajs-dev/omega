@@ -215,36 +215,23 @@ jobs:
         working-directory: targets/desktop
         run: npm run release:local
 
-      # Linux: install snapcraft when (a) the brand still SHIPS the snap format
-      # (`platforms.linux.formats.snap`, on unless dropped with `false`) AND
-      # (b) SNAPCRAFT_STORE_CREDENTIALS is set as a repo secret. Without the secret we
-      # skip snapcraft install entirely: build-config.js auto-skips the snap target on
-      # the same condition, so the build still produces .deb + .AppImage cleanly with
-      # no snap publish attempt and no failure.
-      - name: Install Snapcraft (Linux, when snap enabled + creds present)
+      # Linux: install snapcraft whenever the brand SHIPS the snap format
+      # (`platforms.linux.formats.snap`, on unless dropped with `false`). The
+      # secret is not checked here: a missing SNAPCRAFT_STORE_CREDENTIALS fails
+      # the build step below by name, never a quiet skip.
+      - name: Install Snapcraft (Linux, when the brand ships snap)
         if: matrix.os == 'ubuntu-latest'
         working-directory: targets/desktop
         run: |
-          # (a) The declaration (#867), read through @omega.js/config's own format
+          # The declaration (#867), read through @omega.js/config's own format
           # table so this check can never drift from the build's.
           # `@omega.js/desktop/config` is the vendored loader: it resolves
           # config/omega.json5 for the desktop target (brand-monorepo aware).
           if node -e 'const o = require("@omega.js/desktop/config"); const c = o.loadConfig(process.cwd(), "desktop").config; process.exit(o.enabledFormats(c, "desktop").some((e) => e.format === "snap") ? 0 : 1);'; then
-            CONFIG_OK=1
-          else
-            CONFIG_OK=0
-            echo "platforms.linux.formats.snap is dropped, skipping snapcraft install."
-          fi
-          # (b) Credentials check: empty secret means no publish creds available.
-          if [ -n "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
-            CREDS_OK=1
-          else
-            CREDS_OK=0
-            echo "SNAPCRAFT_STORE_CREDENTIALS not set, skipping snapcraft install. Run 'snapcraft export-login -' and add the blob to .env, then 'omega deploy'."
-          fi
-          if [ "$CONFIG_OK" = 1 ] && [ "$CREDS_OK" = 1 ]; then
             sudo snap install snapcraft --classic
             echo "Snapcraft installed."
+          else
+            echo "platforms.linux.formats.snap is dropped, skipping snapcraft install."
           fi
 
       # Linux: no signing. The workflow env carries the mac credentials as the

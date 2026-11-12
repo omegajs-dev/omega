@@ -6,8 +6,8 @@
  *
  * See: src/manager/libraries/email/ for the shared email builder and sender.
  */
-const prepare = require('../../../libraries/email/prepare.js');
-const env = require('../../../libraries/env.js');
+import prepare from '../../../libraries/email/prepare.js';
+import env from '../../../libraries/env.js';
 
 /**
  * How many recipients a send carries, across to/cc/bcc.
@@ -30,7 +30,7 @@ function recipientCount(data) {
   }, 0);
 }
 
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   // Require authentication
   if (!user.authenticated) {
     return ctx.respond('Authentication required', { code: 401 });

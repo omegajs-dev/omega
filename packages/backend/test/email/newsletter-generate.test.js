@@ -201,7 +201,7 @@ module.exports = defineCases({
       jetpack.write(previewPath, html);
       jetpack.write(path.join(runDir, 'newsletter.md'), markdown);
       if (structure.summary) {
-        jetpack.write(path.join(runDir, 'summary.md'), structure.summary + '\n');
+        jetpack.write(path.join(runDir, 'summary.md'), `${structure.summary}\n`);
       }
       jetpack.write(path.join(runDir, 'newsletter.mjml'), mjml || '');
       jetpack.write(path.join(runDir, 'structure.json'), JSON.stringify(structure, null, 2));
@@ -289,7 +289,7 @@ module.exports = defineCases({
       jetpack.write(previewPath, html);
       jetpack.write(path.join(runDir, 'newsletter.md'), markdown);
       if (structure.summary) {
-        jetpack.write(path.join(runDir, 'summary.md'), structure.summary + '\n');
+        jetpack.write(path.join(runDir, 'summary.md'), `${structure.summary}\n`);
       }
       jetpack.write(path.join(runDir, 'newsletter.mjml'), mjml || '');
       jetpack.write(path.join(runDir, 'structure.json'), JSON.stringify(structure, null, 2));
@@ -489,13 +489,13 @@ module.exports = defineCases({
     jetpack.write(previewPath, result.contentHtml);
     jetpack.write(path.join(runDir, 'newsletter.md'), result.contentMarkdown);
     if (result.summary) {
-      jetpack.write(path.join(runDir, 'summary.md'), result.summary + '\n');
+      jetpack.write(path.join(runDir, 'summary.md'), `${result.summary}\n`);
     }
     jetpack.write(path.join(runDir, 'structure.json'), JSON.stringify(result.structure, null, 2));
     jetpack.write(path.join(runDir, 'newsletter.mjml'), result.mjml || '');
     jetpack.write(path.join(runDir, 'metadata.json'), JSON.stringify({
       ...(result.meta || {}),
-      tags: result.tags || [],
+      tags: result.contentTags || [],
       assets: result.assets || null,
     }, null, 2));
 
@@ -542,14 +542,6 @@ module.exports = defineCases({
       for (const img of result.meta.steps.images || []) {
         console.log(`  Image ${img.section}:  provider=${img.provider} model=${img.model} (${img.durationMs}ms${img.fallback ? ', FALLBACK' : ''})`);
       }
-    }
-
-    // Beehiiv draft upload already happened inside generator.generate() —
-    // newsletter.js calls beehiiv.createPost(draft) after the GH HTML upload.
-    // Look for assets.beehiivPostId in the result (null on free plan; non-null
-    // once the Beehiiv account is on Enterprise).
-    if (result.assets?.beehiivPostId) {
-      console.log(`Beehiiv: draft post created — id=${result.assets.beehiivPostId}`);
     }
 
     // --- Auto-open in browser (macOS) ---

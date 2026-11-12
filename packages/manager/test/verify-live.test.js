@@ -5,7 +5,7 @@
  */
 const defineCases = require('@omega.js/devkit/test/define-cases');
 
-const { resolveVerifySurface, checkSite, checkDomain, checkCloudflare, runVerifyLegs, VERIFY_LEGS } = require('../src/lib/verify-live.js');
+const { resolveVerifySurface, checkSite, checkDomain, checkCloudflare, runVerifyLegs } = require('../src/lib/verify-live.js');
 
 const HTML = `<!doctype html><html><head><title>OMEGA Playground</title></head><body>${'x'.repeat(600)}</body></html>`;
 
@@ -180,11 +180,12 @@ module.exports = defineCases({
     },
 
     {
-      name: 'verify legs: a target with no live surface contributes no rows',
+      name: 'verify legs: every type but web has no live surface and contributes no rows',
       run: async (ctx) => {
-        ctx.expect(Object.keys(VERIFY_LEGS)).toEqual(['web']);
-        const rows = await runVerifyLegs(['backend'], LIVE_BRAND, { fetch: fakeFetch(), resolve: fakeResolve() });
+        const fetchImpl = fakeFetch();
+        const rows = await runVerifyLegs(['backend', 'desktop', 'extension', 'mobile'], LIVE_BRAND, { fetch: fetchImpl, resolve: fakeResolve() });
         ctx.expect(rows).toEqual([]);
+        ctx.expect(fetchImpl.calls, 'no check ran for them').toEqual([]);
       },
     },
 

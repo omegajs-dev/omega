@@ -19,8 +19,9 @@
  * test ctx alone, so the runner's own omega is never touched. Everything else
  * (the discount validation, the arithmetic, the template data) is the real path.
  */
-const newSubscription = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/subscription/new-subscription.js');
-const purchaseCompleted = require('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-completed.js');
+const { loadHandler } = require('../../../dist/omega/libraries/load-handler.js');
+const newSubscription = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/transitions/subscription/new-subscription.js'));
+const purchaseCompleted = loadHandler(require.resolve('../../../dist/omega/events/firestore/payments-webhooks/transitions/one-time/purchase-completed.js'));
 const discountCodes = require('../../../dist/omega/libraries/payment/discount-codes.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 

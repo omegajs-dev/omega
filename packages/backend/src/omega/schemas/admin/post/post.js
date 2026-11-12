@@ -1,7 +1,7 @@
 /**
  * Schema for POST /admin/post (create)
  */
-module.exports = () => ({
+export default() => ({
   title: { type: 'string', required: true },
   url: { type: 'string', required: true },
   description: { type: 'string', required: true },

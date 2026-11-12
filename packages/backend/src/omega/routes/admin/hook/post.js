@@ -1,21 +1,21 @@
 /**
  * POST /admin/hook - Run a hook or cron job manually
  *
- * Resolves the hook from multiple locations:
- *   1. @omega.js/backend internal crons (e.g. path="cron/daily/blog-auto-publisher")
- *   2. @omega.js/backend internal functions/core hooks
- *   3. Consumer project root
- *   4. Consumer hooks/ directory
+ * Resolves the hook from the first location that has the file: the framework's
+ * crons and events (path="cron/daily/blog-auto-publisher"), its functions/core
+ * hooks, the consumer project root, then the consumer's hooks/ directory.
  *
- * Supports both calling conventions:
- *   - Function export: module.exports = async ({ ctx, omega, ... }) => {}
- *   - Class export: module.exports = class { main(ctx) {} }
+ * The file is an ES module through the one handler loader, its default export a
+ * function (`export default async ({ ctx, omega, ... }) => {}`) or a class with
+ * a `main(ctx)` method (`export default class { main(ctx) {} }`).
  */
-const path = require('path');
+import path from 'path';
+import jetpack from 'fs-jetpack';
+import { loadHandler } from '../../../libraries/load-handler.js';
 
 // The framework's own tree (the events a hook path may name)
-const OMEGA_DIR = path.resolve(__dirname, '../../..');
-module.exports = async ({ ctx, omega, user, data, analytics }) => {
+const OMEGA_DIR = path.resolve(import.meta.dirname, '../../..');
+export default async ({ ctx, omega, user, data, analytics }) => {
 
   if (!user.authenticated && ctx.isProduction()) {
     return ctx.respond('Authentication required', { code: 401 });
@@ -84,17 +84,18 @@ function loadHook(ctx, hookPath) {
     const resolved = pathify(searchPath);
     ctx.log('Trying path:', resolved);
 
-    try {
-      const mod = require(resolved);
-
-      if (typeof mod === 'function' && !mod.prototype?.main) {
-        return { type: 'function', handler: mod };
-      }
-
-      return { type: 'class', handler: new mod() };
-    } catch (e) {
-      // Continue to next path
+    if (!jetpack.exists(resolved)) {
+      continue;
     }
+
+    // A file that is there loads loudly: a CommonJS hook is refused by name
+    const mod = loadHandler(resolved);
+
+    if (!mod.prototype?.main) {
+      return { type: 'function', handler: mod };
+    }
+
+    return { type: 'class', handler: new mod() };
   }
 
   return null;

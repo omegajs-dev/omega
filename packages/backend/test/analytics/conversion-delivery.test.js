@@ -559,7 +559,7 @@ module.exports = defineCases({
 
         // GA4's Measurement Protocol gets no invented slot: the campaign params
         // are what its half of this attribution has always been.
-        expect(descriptorFor(results, 'ga4').payload.url, 'GA4 gains no url param').toBe(undefined);
+        expect(descriptorFor(results, 'google').payload.url, 'GA4 gains no url param').toBe(undefined);
       },
     },
 
@@ -627,11 +627,11 @@ module.exports = defineCases({
     },
 
     {
-      name: 'ga4-gains-the-campaign-params-and-gclid',
+      name: 'google-gains-the-campaign-params-and-gclid',
       auth: 'none',
 
       async run({ expect, ctx, omega }) {
-        const descriptor = descriptorFor(deliver({ ctx, omega }), 'ga4');
+        const descriptor = descriptorFor(deliver({ ctx, omega }), 'google');
 
         expect(descriptor.name).toBe('purchase');
         expect(descriptor.payload.source, 'last touch is the credited one').toBe('meta');
@@ -655,7 +655,7 @@ module.exports = defineCases({
         const attribution = fullAttribution();
         delete attribution.last;
 
-        const descriptor = descriptorFor(deliver({ ctx, omega, attribution }), 'ga4');
+        const descriptor = descriptorFor(deliver({ ctx, omega, attribution }), 'google');
 
         expect(descriptor.payload.source, 'first touch credits the conversion when there is no last').toBe('newsletter');
         expect(descriptor.payload.medium).toBe('email');
@@ -664,7 +664,7 @@ module.exports = defineCases({
     },
 
     {
-      name: 'marketing-declined-blocks-meta-and-tiktok-but-not-ga4',
+      name: 'marketing-declined-blocks-meta-and-tiktok-but-not-google',
       auth: 'none',
 
       async run({ expect, ctx, omega }) {
@@ -677,12 +677,12 @@ module.exports = defineCases({
         expect(outcomeFor(results, 'meta'), 'an opted-out user reaches no ad platform').toBe('skipped (consent: marketing)');
         expect(outcomeFor(results, 'tiktok')).toBe('skipped (consent: marketing)');
         expect(descriptorFor(results, 'meta'), 'a blocked provider never even resolves its payload').toBe(undefined);
-        expect(outcomeFor(results, 'ga4').startsWith('skipped (consent'), 'analytics was granted, so GA4 still counts it').toBe(false);
+        expect(outcomeFor(results, 'google').startsWith('skipped (consent'), 'analytics was granted, so GA4 still counts it').toBe(false);
       },
     },
 
     {
-      name: 'analytics-declined-blocks-ga4-but-not-the-ad-platforms',
+      name: 'analytics-declined-blocks-google-but-not-the-ad-platforms',
       auth: 'none',
 
       async run({ expect, ctx, omega }) {
@@ -692,7 +692,7 @@ module.exports = defineCases({
           trackingConsent: { analytics: false, marketing: true, region: 'opt-in', version: 1 },
         });
 
-        expect(outcomeFor(results, 'ga4')).toBe('skipped (consent: analytics)');
+        expect(outcomeFor(results, 'google')).toBe('skipped (consent: analytics)');
         expect(outcomeFor(results, 'meta').startsWith('skipped (consent'), 'the two categories gate independently').toBe(false);
       },
     },
@@ -713,7 +713,7 @@ module.exports = defineCases({
 
         const results = deliver({ ctx, omega, trackingConsent: null });
 
-        for (const provider of ['ga4', 'meta', 'tiktok']) {
+        for (const provider of ['google', 'meta', 'tiktok']) {
           expect(outcomeFor(results, provider).startsWith('skipped (consent'), `${provider} fires without a snapshot`).toBe(false);
         }
       },
@@ -752,7 +752,7 @@ module.exports = defineCases({
 
         expect(tiktok.data[0].user, 'TikTok\'s lone match key is the digest its Events API requires').toEqual({ external_id: UID_DIGEST });
 
-        expect(descriptorFor(results, 'ga4').payload.source, 'no campaign params either').toBe(undefined);
+        expect(descriptorFor(results, 'google').payload.source, 'no campaign params either').toBe(undefined);
         expect(outcomeFor(results, 'meta').startsWith('skipped (consent'), 'missing match data never blocks the fire').toBe(false);
       },
     },
@@ -775,8 +775,8 @@ module.exports = defineCases({
           providers: ['meta', 'tiktok'],
         });
 
-        expect(outcomeFor(results, 'ga4'), 'GA4 must not be fired by a half that cannot dedupe against the other').toBe('skipped (not selected)');
-        expect(descriptorFor(results, 'ga4'), 'an unselected provider never even resolves its payload').toBe(undefined);
+        expect(outcomeFor(results, 'google'), 'GA4 must not be fired by a half that cannot dedupe against the other').toBe('skipped (not selected)');
+        expect(descriptorFor(results, 'google'), 'an unselected provider never even resolves its payload').toBe(undefined);
 
         // The two that DO dedupe are resolved and handed to their transport.
         for (const provider of ['meta', 'tiktok']) {
@@ -787,7 +787,7 @@ module.exports = defineCases({
         // Unrestricted stays unrestricted — the seam is opt-in per fire.
         const everyProvider = deliver({ ctx, omega, event: 'sign_up', params: { method: 'email', user_id: UID } });
 
-        expect(outcomeFor(everyProvider, 'ga4').startsWith('skipped (not selected)'), 'a fire that names no providers reaches every mapped one').toBe(false);
+        expect(outcomeFor(everyProvider, 'google').startsWith('skipped (not selected)'), 'a fire that names no providers reaches every mapped one').toBe(false);
       },
     },
 
@@ -867,7 +867,7 @@ module.exports = defineCases({
           omega: omega,
         });
 
-        for (const provider of ['ga4', 'meta', 'tiktok']) {
+        for (const provider of ['google', 'meta', 'tiktok']) {
           expect(outcomeFor(results, provider), `${provider} must say the NAME was wrong, not that the provider declined to map a real event`).toBe('skipped (unknown event)');
         }
 
@@ -879,7 +879,7 @@ module.exports = defineCases({
     },
 
     {
-      name: 'the-outcomes-an-ad-platform-has-no-use-for-reach-ga4-only',
+      name: 'the-outcomes-an-ad-platform-has-no-use-for-reach-google-only',
       auth: 'none',
 
       async run({ expect, ctx, omega }) {
@@ -893,7 +893,7 @@ module.exports = defineCases({
         for (const event of ['subscription_uncancel', 'subscription_plan_change', 'trial_lapse']) {
           const results = deliver({ ctx, omega, event });
 
-          expect(descriptorFor(results, 'ga4').name, `${event} resolves on GA4 under its own name`).toBe(event);
+          expect(descriptorFor(results, 'google').name, `${event} resolves on GA4 under its own name`).toBe(event);
           expect(outcomeFor(results, 'meta'), `${event} has no Meta mapping`).toBe('skipped (no mapping)');
           expect(outcomeFor(results, 'tiktok'), `${event} has no TikTok mapping`).toBe('skipped (no mapping)');
         }
@@ -915,7 +915,7 @@ module.exports = defineCases({
         for (const [event, native] of [['subscription_cancel', 'SubscriptionCancel'], ['refund', 'Refund']]) {
           const results = deliver({ ctx, omega, event });
 
-          const google = descriptorFor(results, 'ga4');
+          const google = descriptorFor(results, 'google');
           const meta = descriptorFor(results, 'meta');
           const tiktok = descriptorFor(results, 'tiktok');
 
@@ -963,7 +963,7 @@ module.exports = defineCases({
           params: { ...PURCHASE_PARAMS, is_trial: true, is_recurring: false },
         });
 
-        const google = descriptorFor(results, 'ga4');
+        const google = descriptorFor(results, 'google');
 
         expect(google.name, 'the first real charge lands in GA4 revenue').toBe('purchase');
         expect(google.payload.value).toBe(9.99);

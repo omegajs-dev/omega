@@ -11,7 +11,7 @@
  */
 
 const defineCases = require('@omega.js/devkit/test/define-cases');
-const { clientConfig, CLIENT_SECTIONS } = require('../src/index.js');
+const { clientConfig, CLIENT_SECTIONS, ANALYTICS_PROVIDERS } = require('../src/index.js');
 
 // A resolved config with one key in every shape the gate has to judge.
 const RESOLVED = () => ({
@@ -84,7 +84,7 @@ module.exports = defineCases({
 
         ctx.expect(client.brand).toEqual({ id: 'acme', name: 'Acme', url: 'https://acme.com' });
         ctx.expect(client.theme).toEqual({ id: 'classy', appearance: 'dark' });
-        ctx.expect(client.analytics).toEqual({ providers: { google: { id: 'G-1' } } });
+        ctx.expect(client.analytics.providers).toEqual({ google: { id: 'G-1' } });
         ctx.expect(client.advertising).toEqual({ providers: { adsense: { client: 'ca-pub-1' } } });
         ctx.expect(client.captcha).toEqual({ providers: { recaptcha: { siteKey: 'site-key' } } });
         ctx.expect(client.monitoring).toEqual({ enabled: true, providers: { sentry: { dsn: 'https://dsn' } } });
@@ -92,6 +92,28 @@ module.exports = defineCases({
         ctx.expect(client.features).toEqual({ requests: { name: 'Requests' } });
         ctx.expect(client.client).toEqual({ consent: { enabled: true }, auth: { config: { policy: 'authenticated' } } });
         ctx.expect(client.listings).toEqual({ chrome: { id: 'abcdefghijklmnopqrstuvwxyzabcdef' } });
+      },
+    },
+
+    {
+      name: 'every bake carries one capability entry per provider row, and providers only when configured',
+      run: (ctx) => {
+        const rows = Object.values(ANALYTICS_PROVIDERS);
+        const configured = clientConfig(RESOLVED()).analytics;
+        // A page fires events whether or not the brand configured a provider, so the rows ride every bake
+        const bare = clientConfig({ brand: { id: 'acme' } }).analytics;
+
+        for (const analytics of [configured, bare]) {
+          const baked = Object.values(analytics.capabilities);
+
+          ctx.expect(baked.map((entry) => entry.id).sort(), 'one entry per row').toEqual(rows.map((row) => row.id).sort());
+          for (const row of rows) {
+            ctx.expect(baked.find((entry) => entry.id === row.id), `${row.id} carries its row's fields`).toEqual(JSON.parse(JSON.stringify(row)));
+          }
+        }
+
+        ctx.expect(configured.providers).toEqual({ google: { id: 'G-1' } });
+        ctx.expect(bare.providers, 'no analytics section, no providers').toBe(undefined);
       },
     },
 
@@ -194,10 +216,12 @@ module.exports = defineCases({
     },
 
     {
-      name: 'an empty resolved config answers an empty subset, never a throw',
+      name: 'an empty resolved config answers the provider capabilities alone, never a throw',
       run: (ctx) => {
-        ctx.expect(clientConfig({})).toEqual({});
-        ctx.expect(clientConfig()).toEqual({});
+        for (const client of [clientConfig({}), clientConfig()]) {
+          ctx.expect(Object.keys(client), 'nothing but the bake every page needs').toEqual(['analytics']);
+          ctx.expect(Object.keys(client.analytics)).toEqual(['capabilities']);
+        }
       },
     },
 

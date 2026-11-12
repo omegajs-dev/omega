@@ -111,16 +111,16 @@ module.exports = defineCases({
     },
 
     {
-      name: 'FRAMEWORK_IDS covers exactly the dispatcher\'s frameworks with the cp94a id sets',
+      name: 'frameworkIds: each target framework answers its row\'s id, a package no row names answers none',
       run: (ctx) => {
-        const { FRAMEWORK_IDS } = require('../src/test/scope.js');
-        const { FRAMEWORKS } = require('../src/omega-bin.js');
+        const { frameworkIds } = require('../src/test/scope.js');
+        const { TARGET_TYPE_ROWS } = require('@omega.js/config/target-types');
 
-        ctx.expect(Object.keys(FRAMEWORK_IDS).sort()).toEqual([...FRAMEWORKS].sort());
-        ctx.expect(FRAMEWORK_IDS['@omega.js/web']).toEqual(['web']);
-        ctx.expect(FRAMEWORK_IDS['@omega.js/backend']).toEqual(['backend']);
-        ctx.expect(FRAMEWORK_IDS['@omega.js/desktop']).toEqual(['desktop']);
-        ctx.expect(FRAMEWORK_IDS['@omega.js/extension']).toEqual(['extension']);
+        for (const row of TARGET_TYPE_ROWS.filter((entry) => entry.framework)) {
+          ctx.expect(frameworkIds(row.framework), row.framework).toEqual([row.id]);
+        }
+        ctx.expect(frameworkIds('@omega.js/manager')).toEqual([]);
+        ctx.expect(frameworkIds('@omega.js/nope')).toEqual([]);
       },
     },
 

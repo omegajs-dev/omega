@@ -1,6 +1,6 @@
 /**
  * Schema for DELETE /verts
  */
-module.exports = () => ({
+export default() => ({
   id: { type: 'string', required: true },
 });

@@ -1,4 +1,4 @@
-module.exports = () => ({
+export default() => ({
   // `status` honors an admin's `uid` (it checks the connection at the provider
   // on that user's behalf); `authorize` refuses it by name
   // ([#782](https://github.com/Omega-JS-Stack/omega/issues/782)). No default

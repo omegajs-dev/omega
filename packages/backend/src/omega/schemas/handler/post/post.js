@@ -1,7 +1,7 @@
 /**
  * Schema for POST /handler/post
  */
-module.exports = () => ({
+export default() => ({
   url: { type: 'string', required: true },
   title: { type: 'string', required: true },
   invoiceEmail: { type: 'string' },

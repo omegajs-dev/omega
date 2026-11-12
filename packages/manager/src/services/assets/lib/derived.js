@@ -16,14 +16,11 @@
 const { join } = require('node:path');
 
 const {
-  PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG, ICON_PLATFORMS, FAVICON_CONFIG,
+  PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG, ICON_PLATFORMS,
 } = require('./assets-config.js');
 
 /** The two variants every logo source produces: the SVG as-is, and all-black. */
 const LOGO_VARIANTS = ['color', 'black'];
-
-/** The webmanifest — derived from config, not from the brandmark, so it is content-diffed. */
-const WEBMANIFEST_NAME = 'site.webmanifest';
 
 /**
  * One logo variant's files, relative to the rule's output dir.
@@ -43,17 +40,6 @@ function logoVariantFiles(rule, variant) {
  */
 function socialIconFiles() {
   return ['color-x.svg', ...SOCIAL_ICON_CONFIG.sizes.map((size) => `color-${size}.png`)];
-}
-
-/**
- * The favicon IMAGES, relative to FAVICON_CONFIG.outputDir — the PNG ladder
- * plus the multi-size .ico. The webmanifest is not here: it derives from
- * config rather than from the brandmark, so it is diffed differently.
- *
- * @returns {string[]} File names.
- */
-function faviconImageFiles() {
-  return [...FAVICON_CONFIG.files.map((file) => file.name), 'favicon.ico'];
 }
 
 /**
@@ -95,7 +81,6 @@ function assetsOutputDirs() {
     SOCIAL_ICON_CONFIG.outputDir,
     ...Object.values(TEMPLATE_CONFIG).map((config) => config.outputDir),
     ...Object.keys(ICON_PLATFORMS).map((platform) => join('app', platform)),
-    FAVICON_CONFIG.outputDir,
   ])];
 
   return dirs.filter((dir) => !dirs.some((other) => other !== dir && dir.startsWith(`${other}/`)));
@@ -103,10 +88,8 @@ function assetsOutputDirs() {
 
 module.exports = {
   LOGO_VARIANTS,
-  WEBMANIFEST_NAME,
   logoVariantFiles,
   socialIconFiles,
-  faviconImageFiles,
   templateExportFiles,
   appIconFiles,
   assetsOutputDirs,

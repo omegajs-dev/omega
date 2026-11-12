@@ -2,7 +2,7 @@
  * POST /test/schema - Test schema validation
  * Returns the resolved settings for testing purposes
  */
-module.exports = async ({ ctx, user, data }) => {
+export default async ({ ctx, user, data }) => {
   ctx.log('test/schema: User subscription info', {
     subscriptionId: user.subscription?.product?.id,
     subscriptionStatus: user.subscription?.status,

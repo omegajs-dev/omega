@@ -1,7 +1,7 @@
 /**
  * Schema for POST /admin/repo/content
  */
-module.exports = () => ({
+export default() => ({
   path: { type: 'string', required: true },
   content: { type: 'string', required: true },
   type: { type: 'string', default: 'text' },

@@ -1,6 +1,6 @@
 /**
  * Schema: GET /payments/discount
  */
-module.exports = () => ({
+export default() => ({
   code: { type: 'string', required: true },
 });

@@ -1,5 +1,5 @@
-const { isDisposable } = require('../../libraries/email/validation.js');
-const { runAuthHook, resolveSignupLimit } = require('./utils.js');
+import { isDisposable } from '../../libraries/email/validation.js';
+import { runAuthHook, resolveSignupLimit } from './utils.js';
 
 const ERROR_TOO_MANY_ATTEMPTS = 'Unable to create account at this time. Please try again later.';
 const ERROR_DISPOSABLE_EMAIL = 'This email domain is not allowed. Please use a different email address.';
@@ -30,7 +30,7 @@ const ERROR_DISPOSABLE_EMAIL = 'This email domain is not allowed. Please use a d
  * Note: recaptchaScore requires reCAPTCHA Enterprise (Google Cloud level), NOT the Firebase SMS fraud toggle.
  * Note: credential tokens (idToken, accessToken, refreshToken) require opt-in via BlockingOptions.
  */
-module.exports = async ({ ctx, omega, user, context }) => {
+export default async ({ ctx, omega, user, context }) => {
   const startTime = Date.now();
   const functions = omega.firebase.functions;
   const ipAddress = context.ipAddress || '';

@@ -4,6 +4,6 @@
 // Use this for: bumping version files in extra places, last-mile validations, archiving the
 // previous release before overwriting.
 
-module.exports = async (ctx) => {
+export default async (ctx) => {
   // ctx = { build, projectRoot }
 };

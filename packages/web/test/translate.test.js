@@ -9,9 +9,16 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { stripVTControlCharacters } = require('node:util');
 const defineCases = require('@omega.js/devkit/test/define-cases');
+const { withoutCI } = require('@omega.js/devkit/test/without-ci');
+
+// A temp consumer's config load records its brand: keep that off the real ~/.omega
+require('@omega.js/devkit/test/temp-home');
 
 const { translateSite } = require('../src/translate/index.js');
+const translateCommand = require('../src/commands/translate.js');
+const { scaffoldDefaults } = require('../src/scaffold.js');
 const { hashKey, CONTROL } = require('@omega.js/devkit/translate');
 
 // This file is about the PROVIDER pass. The framework's own default pages ride
@@ -20,7 +27,8 @@ const { hashKey, CONTROL } = require('@omega.js/devkit/translate');
 // exist, so what these tests assert stays theirs alone.
 // translate-packaged-defaults.test.js owns that lane.
 const NO_PACKAGED = path.join(os.tmpdir(), 'omega-packaged-defaults-absent');
-const translate = (options) => translateSite({ packagedRoot: NO_PACKAGED, ...options });
+// A runner makes every pass cache-only, so a case that expects live calls runs with the CI flags lifted.
+const translate = (options) => withoutCI(() => translateSite({ packagedRoot: NO_PACKAGED, ...options }));
 
 const PAGE = (title, body, prefix = '') => `<!doctype html><html lang="en" dir="ltr"${prefix ? ` data-omega-path-prefix="${prefix}"` : ''}><head>
 <title>${title}</title>
@@ -545,6 +553,136 @@ module.exports = defineCases({
         ctx.expect(!locs.includes('https://mini.co/es') && !locs.includes('https://mini.co/ar'), 'an untranslated copy is never listed').toBeTruthy();
 
         fs.rmSync(root, { recursive: true, force: true });
+      },
+    },
+
+    {
+      name: 'translateSite: on a runner (CI set, no cachedOnly) the pass is cache-only',
+      run: async (ctx) => {
+        const { root, dist } = stage();
+        const saved = process.env.CI;
+        process.env.CI = 'true';
+
+        try {
+          const stats = await translateSite({
+            root, outDir: dist, config: CONFIG, packagedRoot: NO_PACKAGED,
+            logger: { log: () => {}, warn: () => {}, error: () => {} },
+            send: async () => { throw new Error('a runner must never call the provider'); },
+          });
+
+          ctx.expect(stats.failures, 'no provider call was attempted').toEqual([]);
+          ctx.expect(stats.newStrings).toBe(0);
+          ctx.expect(stats.skippedCold.includes('es /'), 'the cold home is reported for es').toBeTruthy();
+          ctx.expect(stats.skippedCold.includes('ar /about'), 'the cold about is reported for ar').toBeTruthy();
+          const home = fs.readFileSync(path.join(dist, 'es.html'), 'utf8');
+          ctx.expect(home.includes('Grow faster with MiniCo') && !home.includes('·'), 'the cold copy ships the source text').toBeTruthy();
+        } finally {
+          if (saved === undefined) delete process.env.CI;
+          else process.env.CI = saved;
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      },
+    },
+
+    {
+      name: '`omega translate` on a runner warns about the cold page by language, as the build does',
+      run: async (ctx) => {
+        const { root, dist } = stage();
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture-website', private: true, dependencies: { '@omega.js/web': '*' } }));
+        fs.mkdirSync(path.join(root, 'config'));
+        fs.writeFileSync(path.join(root, 'config', 'omega.json5'), "{ brand: { id: 'minico', name: 'MiniCo', url: 'https://mini.co' }, translation: { languages: ['es'] }, targets: { web: { type: 'web' } } }");
+
+        // The default provider's SDK, stubbed so a call is counted and fails, never reaching the service
+        const sdkPath = require.resolve('@anthropic-ai/claude-agent-sdk', { paths: [path.dirname(require.resolve('@omega.js/devkit/translate'))] });
+        let sdkCalls = 0;
+        require.cache[sdkPath] = {
+          id: sdkPath, filename: sdkPath, loaded: true,
+          exports: { query: () => (async function* () { sdkCalls++; yield { type: 'result', subtype: 'error_during_execution', result: 'a runner must never call the provider' }; })() },
+        };
+        const saved = { CI: process.env.CI, cwd: process.cwd(), warn: console.warn, exit: process.exit, exitCode: process.exitCode };
+        const warnings = [];
+        process.env.CI = 'true';
+        console.warn = (...args) => warnings.push(stripVTControlCharacters(args.join(' ')));
+        process.exit = (code) => { throw new Error(`the command exited ${code}`); };
+        process.chdir(root);
+
+        try {
+          await translateCommand({ logFile: false });
+        } finally {
+          process.chdir(saved.cwd);
+          process.exit = saved.exit;
+          process.exitCode = saved.exitCode;
+          console.warn = saved.warn;
+          delete require.cache[sdkPath];
+          if (saved.CI === undefined) delete process.env.CI;
+          else process.env.CI = saved.CI;
+        }
+
+        try {
+          ctx.expect(sdkCalls, 'a runner never calls the provider').toBe(0);
+          ctx.expect(
+            warnings.some((line) => /\bes\b/.test(line) && line.includes('about')),
+            `a warning names the language and the cold page: ${JSON.stringify(warnings)}`
+          ).toBeTruthy();
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      },
+    },
+
+    {
+      name: 'translateSite: a live pass over a warm page and a cold page sends only the cold strings and translates both',
+      run: async (ctx) => {
+        const { root, dist } = stage();
+        const sent = [];
+        const send = async (request) => {
+          const payload = JSON.parse(request.user.slice(request.user.indexOf('\n\n') + 2));
+          sent.push(...payload);
+          return fakeSend([])(request);
+        };
+
+        // Warm /about only, then hand-edit its es entry so a cache hit is told apart from a live call
+        await translate({ root, outDir: dist, config: CONFIG, send: fakeSend([]), only: 'about' });
+        const aboutCache = path.join(root, 'translations', 'es', 'pages', 'about.json');
+        const cache = JSON.parse(fs.readFileSync(aboutCache, 'utf8'));
+        cache[hashKey('The consumer about page')] = 'La página de la empresa';
+        fs.writeFileSync(aboutCache, JSON.stringify(cache));
+
+        const stats = await translate({ root, outDir: dist, config: CONFIG, send });
+
+        ctx.expect(stats.failures).toEqual([]);
+        ctx.expect(stats.pages).toBe(2);
+        ctx.expect(sent.includes('Grow faster with MiniCo'), 'the cold home went to the provider').toBeTruthy();
+        ctx.expect(!sent.includes('The consumer about page') && !sent.includes('About - MiniCo'), 'the warm page never did').toBeTruthy();
+
+        const about = fs.readFileSync(path.join(dist, 'es', 'about', 'index.html'), 'utf8');
+        ctx.expect(about.includes('La página de la empresa'), 'the warm page reads its saved text').toBeTruthy();
+        const home = fs.readFileSync(path.join(dist, 'es.html'), 'utf8');
+        ctx.expect(home.includes('Grow faster with MiniCo·es'), 'the cold page is translated live').toBeTruthy();
+        const homeCache = JSON.parse(fs.readFileSync(path.join(root, 'translations', 'es', 'pages', 'home.json'), 'utf8'));
+        ctx.expect(homeCache[hashKey('Grow faster with MiniCo')], 'the live result is saved for the commit').toBe('Grow faster with MiniCo·es');
+
+        fs.rmSync(root, { recursive: true, force: true });
+      },
+    },
+
+    {
+      name: 'the scaffolded build workflow carries no AI key, even with one in the target .env',
+      run: (ctx) => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-wtr-workflow-'));
+        fs.writeFileSync(path.join(root, '.env'), 'OPENAI_API_KEY="sk-fixture"\nANTHROPIC_API_KEY="sk-ant-fixture"\nFIXTURE_OWN_KEY="own"\n');
+
+        try {
+          scaffoldDefaults({ outputDir: root, logger: { log: () => {}, warn: () => {}, error: () => {} } });
+          const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'build.yml'), 'utf8');
+
+          // The control: the target's own .env reached the generated secrets block
+          ctx.expect(workflow).toContain('FIXTURE_OWN_KEY: ${{ secrets.FIXTURE_OWN_KEY }}');
+          ctx.expect(workflow.includes('OPENAI_API_KEY'), 'no OpenAI key reaches the runner').toBe(false);
+          ctx.expect(workflow.includes('ANTHROPIC_API_KEY'), 'no Anthropic key reaches the runner').toBe(false);
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
       },
     },
 

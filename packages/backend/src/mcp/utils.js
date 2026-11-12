@@ -1,4 +1,5 @@
 const path = require('path');
+const { defaultExport } = require('@omega.js/devkit/run-consumer-hook');
 const safeCompare = require('../omega/helpers/safe-compare.js');
 
 const ROLE_HIERARCHY = {
@@ -37,36 +38,35 @@ function filterToolsByRole(tools, role) {
 
 /**
  * Load consumer MCP tools from the staged `dist/mcp.js` (authored at
- * `src/mcp.js`) if it exists.
- * Returns an empty array if the file doesn't exist or fails to load.
- * A route tool's `path` is the HTTP path as served (`/notes`); one without the
- * leading slash throws by name, since the client prefixes nothing.
+ * `src/mcp.js`, an ES module whose default export is the array) if it exists.
+ * Returns an empty array when there is no cwd, when the file doesn't exist, and
+ * when a tool lacks `name` or `description`, or both `path` and `handler` (that
+ * one logged). A file that fails to load throws naming the file, its cause
+ * kept; so does one that is not an ES module whose default export is an array
+ * (devkit's one read), and a route tool's `path` without the leading slash
+ * (the HTTP path as served, `/notes`).
  */
 function loadConsumerTools(cwd) {
   if (!cwd) {
     return [];
   }
 
+  const jetpack = require('fs-jetpack');
   const mcpPath = path.join(cwd, 'mcp.js');
-  let consumerTools;
+
+  if (!jetpack.exists(mcpPath)) {
+    return [];
+  }
+
+  let loaded;
 
   try {
-    const jetpack = require('fs-jetpack');
-
-    if (!jetpack.exists(mcpPath)) {
-      return [];
-    }
-
-    consumerTools = require(mcpPath);
+    loaded = require(mcpPath);
   } catch (error) {
-    console.error(`[@omega.js/backend MCP] Failed to load consumer tools from ${mcpPath}:`, error.message);
-    return [];
+    throw new Error(`[@omega.js/backend:mcp] ${mcpPath} failed to load: ${error.message}`, { cause: error });
   }
 
-  if (!Array.isArray(consumerTools)) {
-    console.error(`[@omega.js/backend MCP] Consumer mcp.js must export an array, got ${typeof consumerTools}`);
-    return [];
-  }
+  const consumerTools = defaultExport(mcpPath, loaded, 'array');
 
   for (const tool of consumerTools) {
     if (!tool.name || !tool.description) {

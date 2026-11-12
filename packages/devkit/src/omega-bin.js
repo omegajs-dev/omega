@@ -13,16 +13,13 @@ const fs = require('fs');
 const path = require('path');
 const { createRequire } = require('module');
 const { spawnSync } = require('child_process');
-const { VERBS, TARGET_ORDER, tokensOf, findVerb } = require('./verbs.js');
+const { VERBS, TARGET_TYPE_TWIN, TARGET_ORDER, tokensOf, findVerb } = require('./verbs.js');
 const { PICKER_FLAG, takePicker } = require('./target-picker.js');
 const { isMonorepoRoot } = require('./monorepo-root.js');
 
-const FRAMEWORKS = [
-  '@omega.js/web',
-  '@omega.js/backend',
-  '@omega.js/desktop',
-  '@omega.js/extension',
-];
+// The framework packages, in the type rows' order: a multi-framework manifest
+// dispatches the first framework in this order among those it declares.
+const FRAMEWORK_NAMES = TARGET_TYPE_TWIN.map((row) => row.framework).filter(Boolean);
 
 const MANAGER = '@omega.js/manager';
 
@@ -109,7 +106,7 @@ function readPackage(dir) {
 function frameworksOf(pkg) {
   if (!pkg) return [];
   const declared = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
-  return FRAMEWORKS.filter((name) => declared[name]);
+  return FRAMEWORK_NAMES.filter((name) => declared[name]);
 }
 
 /**
@@ -155,7 +152,7 @@ function findTarget(startDir) {
       const matches = frameworksOf(pkg);
       if (matches.length > 1) {
         // Targets are one-framework-per-target by design: a multi-framework
-        // manifest dispatches by FRAMEWORKS order, which must never be silent.
+        // manifest dispatches by FRAMEWORK_NAMES order, which must never be silent.
         console.error(`omega: ${dir} declares ${matches.length} frameworks (${matches.join(', ')}): dispatching ${matches[0]}`);
       }
       const own = matches[0] || null;
@@ -277,7 +274,7 @@ function monorepoPackages(root) {
   const rank = (dirName) => (TARGET_ORDER.includes(dirName) ? TARGET_ORDER.indexOf(dirName) : TARGET_ORDER.length);
   return fs.readdirSync(packagesDir)
     .map((dirName) => ({ dirName, dir: path.join(packagesDir, dirName), manifest: readPackage(path.join(packagesDir, dirName)) }))
-    .filter((pkg) => pkg.manifest && FRAMEWORKS.includes(pkg.manifest.name) && pkg.manifest.bin && pkg.manifest.bin.omega)
+    .filter((pkg) => pkg.manifest && FRAMEWORK_NAMES.includes(pkg.manifest.name) && pkg.manifest.bin && pkg.manifest.bin.omega)
     .sort((a, b) => rank(a.dirName) - rank(b.dirName) || a.dirName.localeCompare(b.dirName));
 }
 
@@ -464,4 +461,4 @@ async function run({ hostName, hostRun, argv = process.argv.slice(2), spawn = sp
   return require(cliPath).run();
 }
 
-module.exports = { run, findTarget, frameworksOf, OMEGA_SCOPE, isBrandRoot, isMonorepoRoot, verbOf, isBoxVerbArgv, TARGET_SUBDIRS, CONTEXTLESS_VERBS, BOX_VERBS, FRAMEWORKS, MANAGER };
+module.exports = { run, findTarget, frameworksOf, OMEGA_SCOPE, isBrandRoot, isMonorepoRoot, verbOf, isBoxVerbArgv, TARGET_SUBDIRS, CONTEXTLESS_VERBS, BOX_VERBS, MANAGER };

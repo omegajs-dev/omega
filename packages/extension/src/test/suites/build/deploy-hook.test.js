@@ -61,7 +61,7 @@ async function runDeploy(options) {
   fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"extension-deploy-hook-test"}');
   fs.writeFileSync(
     path.join(tmp, 'hooks', 'deploy', 'pre.js'),
-    `module.exports = async (ctx) => { global.__omegaDeployHookRan.push('deploy/pre:' + (ctx.projectRoot === process.cwd() && typeof ctx.build === 'object' && ctx.mode === 'production' ? 'ctx ok' : 'ctx wrong')); };`,
+    `export default async (ctx) => { global.__omegaDeployHookRan.push('deploy/pre:' + (ctx.projectRoot === process.cwd() && typeof ctx.build === 'object' && ctx.mode === 'production' ? 'ctx ok' : 'ctx wrong')); };`,
   );
 
   const restores = [

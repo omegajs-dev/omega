@@ -127,11 +127,15 @@ Every `*.test.js` under the resolved `@omega.js/web` package's `test/`, the top 
 ### How the files run
 
 - **Each file runs in its own process** (`isolation: 'process'`), so one file's module state, env or `require.cache` never reaches another.
-- **Up to `os.availableParallelism() - 1` files run at once** (`concurrency`, at least 1).
+- **Up to `os.availableParallelism() - 1` files run at once** (at least 1): the case runner's own `concurrency` default under process isolation, `poolSize()`; web sets no `concurrency` of its own.
 - **The files under `test/watch/` run one at a time, after every other file has ended** (`serial: ['watch']`): the rebuild-polling suites never share the machine with another file ([docs/shared/testing.md](../shared/testing.md)).
 - **Each root sets its files' cwd**: the web package for framework suites, the target root for the smoke suite and yours. The runner honors a root's `cwd` on Node 23 and up. Below it, a run that selects a file from a root whose `cwd` is not the runner's own fails before any file runs, so only a `framework:` (or `full:`) run from a target needs Node 23: a bare target run and the web package's own self-test run on Node 22 as before.
 - **Output is released per file, in discovery order**: framework suites, then the smoke suite, then yours. The pretty output, the json report's `tests` and the log read as a one-at-a-time run reads; only the durations differ.
 - **The default case timeout is 120s.** A case's own `timeout`, else its suite's, wins.
+  - A suite's `setup` and `cleanup` and each `ctx.after` function run under the same limit, so a step that never settles reports `setup timed out after <N>ms` (or `cleanup`, or `after hook`) and the run goes on; a suite `cleanup` past its limit fails the run.
+- **A file's process lives at most ten minutes** (the runner's `fileTimeout` default; web sets none of its own).
+  - Past it the runner ends the file's process and every process under it (an esbuild service, a server it started), and the file fails once as `file deadline`, naming the case in flight or saying every case had reported.
+  - The other files' results stand, and the lane ends with its report.
 
 ### Flags
 

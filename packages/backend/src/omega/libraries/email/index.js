@@ -77,7 +77,7 @@ Email.prototype.build = function (settings) {
  * Add a new contact to enabled marketing providers (lightweight, no full user doc needed).
  *
  * @param {object} options - { email, firstName, lastName, source, customFields }
- * @returns {{ sendgrid?: object, beehiiv?: object }}
+ * @returns {{ campaigns?: object, newsletter?: object }}
  */
 Email.prototype.add = function (options) {
   return this._marketing.add(options);
@@ -87,7 +87,7 @@ Email.prototype.add = function (options) {
  * Sync a user's full data to enabled marketing providers.
  *
  * @param {string|object} userDocOrUid - UID string or full user document from Firestore
- * @returns {{ sendgrid?: object, beehiiv?: object }}
+ * @returns {{ campaigns?: object, newsletter?: object }}
  */
 Email.prototype.sync = function (userDocOrUid) {
   return this._marketing.sync(userDocOrUid);
@@ -97,7 +97,7 @@ Email.prototype.sync = function (userDocOrUid) {
  * Remove a contact from all enabled marketing providers.
  *
  * @param {string} email - Email address to remove
- * @returns {{ sendgrid?: object, beehiiv?: object }}
+ * @returns {{ campaigns?: object, newsletter?: object }}
  */
 Email.prototype.remove = function (email) {
   return this._marketing.remove(email);
@@ -107,14 +107,14 @@ Email.prototype.remove = function (email) {
  * Create and optionally schedule a marketing campaign across enabled providers.
  *
  * @param {object} settings - See Marketing.sendCampaign() for full options
- * @returns {{ sendgrid?: object, beehiiv?: object }}
+ * @returns {{ campaigns?: object, newsletter?: object }}
  */
 Email.prototype.sendCampaign = function (settings) {
   return this._marketing.sendCampaign(settings);
 };
 
 /**
- * Cancel a scheduled marketing campaign (SendGrid only).
+ * Cancel a scheduled marketing campaign (campaigns role only).
  *
  * @param {string} campaignId - Single Send ID
  * @returns {{ success: boolean, error?: string }}
@@ -124,7 +124,7 @@ Email.prototype.cancelCampaign = function (campaignId) {
 };
 
 /**
- * Get a marketing campaign by ID (SendGrid only).
+ * Get a marketing campaign by ID (campaigns role only).
  *
  * @param {string} campaignId - Single Send ID
  * @returns {object|null}
@@ -134,7 +134,7 @@ Email.prototype.getCampaign = function (campaignId) {
 };
 
 /**
- * List marketing campaigns (SendGrid only).
+ * List marketing campaigns (campaigns role only).
  *
  * @param {object} [options] - { status: 'draft' | 'scheduled' | 'triggered' }
  * @returns {Array<object>}

@@ -21,7 +21,7 @@ const SWEEP_LIMIT = 100;
  * At the ceiling the doc is dead-lettered ONCE, loudly, and left alone: something
  * permanent is wrong with it and it needs a human, not another pass.
  */
-module.exports = async ({ ctx, omega, context }) => {
+export default async ({ ctx, omega, context }) => {
   const admin = omega.firebase.admin;
 
   // Query failed webhooks (dead-lettered ones are filtered below)

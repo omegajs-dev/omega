@@ -103,6 +103,35 @@ pinned by `packages/manager/test/workspace-translation-sdk.test.js`).
 - Rules baked into the system prompt: preserve HTML/URLs/placeholders
   (`$1`, `{name}`, `{{ value }}`), never translate the brand name.
 
+## The one cached call (`translateCached`)
+
+Every pass translates through ONE function in `@omega.js/devkit/translate`
+(`packages/devkit/src/translate/cached.js`): the website's page pass, and the
+extension's messages and store description passes. No pass keeps a lookup loop
+of its own.
+
+`translateCached({ strings, language, namespace, settings, cachedOnly, rootDir })`
+takes a key → source map and answers `{ translated, cold, fresh, usage }`:
+
+- It reads `translations/{lang}/{namespace}.json` (below) and answers every warm
+  string from it, with no provider call.
+- **Cache-only** (`cachedOnly`): a cold string keeps its SOURCE text, `cold`
+  names its key, nothing is saved, and no provider is called, so no AI key is
+  needed and nothing can fail.
+- Otherwise the cold strings go to the settings' provider in one
+  `translateStrings` call, `fresh` names them, and the cache is saved, pruned to
+  the current sources. A provider failure throws to the caller.
+- `send`, `brand` and `extraRules` are optional and ride to the engine (`send`
+  replaces the settings' provider, the seam the tests use).
+
+**The one switch.** A build is cache-only when it runs on a CI runner (devkit's
+`isCI`, `@omega.js/devkit/ci`) or when its caller passed `--cached-only`; the
+rule is `isCachedOnly(flag, env)` beside `translateCached`, and both the web and
+the extension build ask it. A local build without the flag translates cold
+strings live and saves them for the commit; a runner reads the committed cache
+only, and never needs a translation key. Cloud translation (a per-brand switch
+that lets a runner translate) does not exist yet.
+
 ## The committed cache (`<app>/translations/`)
 
 `translations/{lang}/{namespace}.json` maps `sha256(source)[:12]` → translated
@@ -116,9 +145,8 @@ string. Committed to git — that's the whole point:
   ([#819](https://github.com/Omega-JS-Stack/omega/issues/819), Ian 2026-09-13):
   translation runs on the developer's machine and a runner reads the committed
   cache, which is why `OPENAI_API_KEY` is an `env` delivery on every target that
-  names it and no workflow carries a line for it
-  ([#905](https://github.com/Omega-JS-Stack/omega/issues/905) owns the one
-  system, cloud translation included).
+  names it and no workflow carries a line for it. A build on a runner is
+  cache-only on its own ([the one switch](#the-one-cached-call-translatecached)).
 - **Human-overridable**: hand-edit a translation VALUE in the cache file and
   it sticks for as long as the source is unchanged (the value is the
   translation; the key only changes when the SOURCE changes).
@@ -136,8 +164,9 @@ the provider delivers, and a warm cache means zero provider calls. A provider
 FAILURE ships that page-language pair UNTRANSLATED, warning loudly with the page
 and the language (the build still exits 0): no half-translated copy ever ships
 behind full language chrome.
-`omega build --cached-only` ships cold page-language pairs UNTRANSLATED instead
-(the warning lists them) for provider-free builds; `omega translate` fills them.
+`omega build --cached-only`, and every `omega build` on a CI runner, ships cold
+page-language pairs UNTRANSLATED instead (the warning lists them) for
+provider-free builds; `omega translate` on the developer's machine fills them.
 An untranslated pair still lands the SOURCE page at its translated path
 (`dist/{lang}/...`, `{lang}.html` for the home) with its links rewritten into
 the language, because every produced copy links there and a missing file is a
@@ -311,26 +340,32 @@ translate their own `index` when they add one.
 
 ## Extension (`@omega.js/extension`)
 
-Build-mode gulp `translate` task (setup/dev builds only deploy):
+Build-mode gulp `translate` task (setup/dev builds only deploy). Both passes
+go through `translateCached`, so `omega build` follows the same switch as the
+website: live for cold strings on the developer's machine, cache-only on a CI
+runner or with `omega build --cached-only`.
 
-- **messages**: per-KEY incremental — unique `message` values without a cache
-  entry translate (CWS limits ride the prompt as extra rules; violations warn
+- **messages**: namespace `messages`, keyed by message key. Cold `message`
+  values translate (CWS limits ride the prompt as extra rules; violations warn
   with the file path to shorten). `dist/_locales/{lang}/messages.json` is
   COMPOSED from the EN source + cache (English fallback per missing key, so
   the file is always complete; developer `description` fields stay English).
-- **description**: whole-document per language →
-  `translations/{lang}/description.md`, first line
-  `<!-- omega:source <hash> -->` (stripped on read; source edit →
-  re-translate). The package task ships them as store assets
-  (`packaged/assets/description/{lang}.md`).
+- **description**: namespace `description`, the whole `config/description.md`
+  as one string, cached in `translations/{lang}/description.json` like any
+  other string (source edit → re-translate). The package task ships the saved
+  translation of the CURRENT source as a store asset
+  (`packaged/assets/description/{lang}.md`); a cold language ships none.
+- **Cold under cache-only**: each pass prints one warning per language naming
+  the namespace and the cold keys, and the build exits 0. A cold message ships
+  in the source language; a cold description ships no translated store asset.
 
 Languages/provider come from resolved config — the old hardcoded 16-language
 list in `gulp/config/locales.js` is gone (only the CWS `limits` remain there).
 
 ## Testing
 
-- devkit `test/translate.test.js` — engine protocol, providers, cache,
-  language SSOT, settings reader (fake `send`).
+- devkit `test/translate.test.js`: engine protocol, providers, cache, the
+  cached call, language SSOT, settings reader (fake `send`).
 - web `test/translate.test.js` — handcrafted dist through the real pipeline:
   copies/chrome/links/exclusions/alternates/cache/override/only-filter, the
   produced-languages-only alternates, and the untranslated-copy fallback
@@ -338,7 +373,8 @@ list in `gulp/config/locales.js` is gone (only the CWS `limits` remain there).
 - web `test/language-switcher.test.js` — the switcher's DOM read (x-default
   dropped, duplicates collapsed, current marked, escaping) and the built footer
   mount in classy and newsflash.
-- extension `build/translate.test.js` — compose + description marker glue.
+- extension `build/translate.test.js`: the translate task's compose,
+  description and cache-only glue.
 - Live canary (cp96, local Claude): omega-brand `/about` → es (102 strings,
   rerun 0 calls) and the extension's 4 messages (2 unique) + 2,703-char
   description → es, both idempotent; artifacts committed under each target's

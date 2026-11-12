@@ -11,7 +11,7 @@
  * TEST_EXTENDED_MODE and a real provider, so the delivered outcomes are not
  * exercised here).
  */
-const { sendDisputeEmail } = require('../../../dist/omega/events/firestore/payments-disputes/on-write.js');
+const { sendDisputeEmail } = require('../../../dist/omega/events/firestore/payments-disputes/send-dispute-email.js');
 const defineCases = require('../../../dist/vendor/devkit/test/define-cases.js');
 
 const ALERT = {

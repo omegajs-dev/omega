@@ -580,6 +580,11 @@ function validateConfig(config, options) {
   // ─── authDomain is the brand's own host (cp268) ────────────────────────
   validateAuthDomain(config).forEach((error) => errors.push(error));
 
+  // ─── the snap carries brand.id as its name ─────────────────────────────
+  // Required here, not at the top: validate → platforms → env-when → validate
+  const snapError = require('./platforms.js').snapNameError(config);
+  if (snapError) errors.push(snapError);
+
   // ─── the winback offer is ONE shape (#268) ─────────────────────────────
   // A coupon is percent-based or amount-based everywhere in the payment stack,
   // and the schema walker checks fields one at a time, so the pair rule lives

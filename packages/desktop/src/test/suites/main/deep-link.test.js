@@ -1,6 +1,40 @@
 // Main-process tests for lib/deep-link.js — pattern matching, dispatch pipeline, built-ins, override semantics.
 
+const { spawn } = require('child_process');
+const { app } = require('electron');
 const defineCases = require('@omega.js/devkit/test/define-cases');
+
+// A real process standing in for a forwarded launch: alive until `end()`, which
+// closes its stdin and resolves once it has exited.
+async function forwardedLaunch() {
+  const child = spawn(process.execPath, ['-e', 'process.stdin.on("end", () => process.exit(0)); process.stdin.resume();'], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: ['pipe', 'ignore', 'ignore'],
+  });
+  await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+  const exited = new Promise((resolve) => { child.once('exit', resolve); });
+  return { pid: child.pid, alive: () => child.exitCode === null, end: () => { child.stdin.end(); return exited; } };
+}
+
+// The second-instance event a duplicate with this pid sends the holder
+function forward(pid) {
+  app.emit('second-instance', {}, ['/bin/app'], '/x', { argv: ['/bin/app'], cwd: '/x', pid });
+}
+
+// Swap app methods for counters for the length of `fn`: the real ones would end the harness.
+async function withAppCounts(names, fn) {
+  const real = Object.fromEntries(names.map((name) => [name, app[name]]));
+  const counts = Object.fromEntries(names.map((name) => [name, 0]));
+  names.forEach((name) => { app[name] = () => { counts[name] += 1; }; });
+  try {
+    await fn(counts);
+  } finally {
+    names.forEach((name) => { app[name] = real[name]; });
+  }
+}
+
+// The next turn of the event loop, after the second-instance event's own turn
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
 
 module.exports = defineCases({
   type: 'suite',
@@ -271,6 +305,25 @@ module.exports = defineCases({
       },
     },
     {
+      // Ahead of every second-instance case here; app.quit is stubbed, as the real one would end the harness.
+      name: 'omega.quit() outside a second-instance event quits at once',
+      run: (ctx) => {
+        const { app } = require('electron');
+        const realQuit = app.quit;
+        const allowQuit = ctx.omega._allowQuit;
+        let quits = 0;
+        app.quit = () => { quits += 1; };
+
+        try {
+          ctx.omega.quit();
+          ctx.expect(quits).toBe(1);
+        } finally {
+          app.quit = realQuit;
+          ctx.omega._allowQuit = allowQuit;
+        }
+      },
+    },
+    {
       // #921: Electron re-serializes the duplicate's command line before second-instance
       // fires (switches first, values detached at the end), so the duplicate's REAL argv
       // rides along in additionalData. The event list below carries no url on purpose, so
@@ -322,6 +375,88 @@ module.exports = defineCases({
         } finally {
           off();
         }
+      },
+    },
+    {
+      // The harness registers its brand listener before the framework module loads.
+      name: 'the framework hears second-instance before a brand listener registered ahead of it',
+      run: (ctx) => {
+        const order = global.__omegaTestSecondInstanceOrder;
+        const url = `${ctx.omega.config.brand.id}://dup/order`;
+        const off = ctx.omega.deepLink.on('dup/order', () => { order.push('framework'); });
+
+        try {
+          order.length = 0;
+          ctx.omega.protocol._electron.app.emit('second-instance', {}, ['/bin/app', url], '/x', { argv: ['/bin/app', url], cwd: '/x' });
+          ctx.expect(order).toEqual(['framework', 'brand']);
+        } finally {
+          off();
+        }
+      },
+    },
+    {
+      // The fake schedule runs each look at once and adds up the time it was asked to wait.
+      name: 'a held quit whose forwarded launch never exits quits anyway at the 5 s limit, logging one line',
+      run: async (ctx) => {
+        const launch = await forwardedLaunch();
+        const realWarn = console.warn;
+        const warnings = [];
+        console.warn = (...args) => { warnings.push(args.join(' ')); };
+        try {
+          forward(launch.pid);
+          let waited = 0;
+          let quitAt = null;
+          const looks = [];
+          ctx.omega.protocol.afterForwardedExit(() => { quitAt = waited; }, {
+            schedule: (look, ms) => { looks.push({ look, ms }); },
+          });
+          while (quitAt === null && looks.length > 0) {
+            const { look, ms } = looks.shift();
+            waited += ms;
+            look();
+          }
+
+          ctx.expect(quitAt !== null && quitAt >= 5000).toBe(true);
+          ctx.expect(launch.alive()).toBe(true);
+          ctx.expect(warnings.filter((line) => line.includes('[@omega.js/desktop:protocol]')).length).toBe(1);
+        } finally {
+          console.warn = realWarn;
+          await launch.end();
+        }
+      },
+    },
+    {
+      name: 'a quit asked while the forwarded launch is alive is held, and runs once it has exited',
+      run: async (ctx) => {
+        const launch = await forwardedLaunch();
+        await withAppCounts(['quit'], async (counts) => {
+          forward(launch.pid);
+          await nextTurn();
+          ctx.omega.quit();
+          await nextTurn();
+          ctx.expect(counts.quit).toBe(0);
+
+          await launch.end();
+          // Well under the 5 s limit, so only the launch's exit can release it.
+          await ctx.waitFor(() => counts.quit === 1, 2000);
+        });
+      },
+    },
+    {
+      name: 'omega.relaunch() asked while the forwarded launch is alive is held the same way',
+      run: async (ctx) => {
+        const launch = await forwardedLaunch();
+        await withAppCounts(['quit', 'relaunch'], async (counts) => {
+          forward(launch.pid);
+          await nextTurn();
+          ctx.omega.relaunch();
+          await nextTurn();
+          ctx.expect(counts).toEqual({ quit: 0, relaunch: 0 });
+
+          await launch.end();
+          await ctx.waitFor(() => counts.quit === 1, 2000);
+          ctx.expect(counts.relaunch).toBe(1);
+        });
       },
     },
     {

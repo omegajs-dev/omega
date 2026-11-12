@@ -34,6 +34,19 @@ const FIREBASE = {
   },
 };
 
+// No target needs it to RUN, so no list below carries it: the publishing walk
+// probes it (missingTool) when it registers the Snap Store name
+const SNAPCRAFT = {
+  name: 'snapcraft',
+  probe: ['snapcraft', '--version'],
+  why: 'the manage walk registers the Snap Store name with it',
+  install: {
+    darwin: 'brew install snapcraft',
+    win32: 'sudo snap install snapcraft --classic. Run it inside WSL: snapcraft has no native Windows build.',
+    linux: 'sudo snap install snapcraft --classic',
+  },
+};
+
 // Per target type. An install line OPENS with something a person can paste;
 // an alternative follows in a sentence, never spliced into the command.
 const MACHINE_TOOLS = {
@@ -57,6 +70,36 @@ function machineToolsFor(target) {
 }
 
 /**
+ * Whether a tool runs: the probe RUNS it and a throw is a missing tool.
+ *
+ * @param {object} tool - A tool row (JAVA, SNAPCRAFT, ...)
+ * @param {function} execFn - execFileSync, or a test's stand-in
+ * @returns {boolean}
+ */
+function toolInstalled(tool, execFn) {
+  const [file, ...args] = tool.probe;
+  try {
+    // A Windows .cmd shim (firebase) resolves only through a shell
+    execFn(file, args, { stdio: 'ignore', shell: process.platform === 'win32' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The row a missing tool is reported in, its install line picked for the host.
+ *
+ * @param {object} tool - A tool row
+ * @param {{ name: string, type: string }} target - The target that needs it
+ * @param {string} platform - Host platform
+ * @returns {{ target: string, type: string, name: string, why: string, install: string }}
+ */
+function missRow(tool, target, platform) {
+  return { target: target.name, type: target.type, name: tool.name, why: tool.why, install: tool.install[platform] || tool.install.linux };
+}
+
+/**
  * The tools an enabled set of targets is missing: one row per missing tool per
  * target. Each tool is probed once per call, and only when a target needs it.
  *
@@ -69,22 +112,25 @@ function machineToolsFor(target) {
 function missingMachineTools(targets, { platform = process.platform, execFn = execFileSync } = {}) {
   const installed = new Map();
   const isInstalled = (tool) => {
-    if (!installed.has(tool.name)) {
-      const [file, ...args] = tool.probe;
-      try {
-        // A Windows .cmd shim (firebase) resolves only through a shell
-        execFn(file, args, { stdio: 'ignore', shell: process.platform === 'win32' });
-        installed.set(tool.name, true);
-      } catch {
-        installed.set(tool.name, false);
-      }
-    }
+    if (!installed.has(tool.name)) installed.set(tool.name, toolInstalled(tool, execFn));
     return installed.get(tool.name);
   };
 
   return targets.flatMap((target) => machineToolsFor(target)
     .filter((tool) => !isInstalled(tool))
-    .map((tool) => ({ target: target.name, type: target.type, name: tool.name, why: tool.why, install: tool.install[platform] || tool.install.linux })));
+    .map((tool) => missRow(tool, target, platform)));
+}
+
+/**
+ * One tool a single step needs (no target list carries it), probed now.
+ *
+ * @param {object} tool - A tool row (SNAPCRAFT)
+ * @param {{ name: string, type: string }} target - The target the step serves
+ * @param {object} [options] - `platform` and `execFn`, as missingMachineTools
+ * @returns {object|null} The missingMachineTools-shaped row, or null when it runs
+ */
+function missingTool(tool, target, { platform = process.platform, execFn = execFileSync } = {}) {
+  return toolInstalled(tool, execFn) ? null : missRow(tool, target, platform);
 }
 
 /**
@@ -97,4 +143,4 @@ function machineToolLine(miss) {
   return `${miss.name} is not installed (the ${miss.target} target needs it: ${miss.why}). Install with: ${miss.install}`;
 }
 
-module.exports = { MACHINE_TOOLS, machineToolsFor, missingMachineTools, machineToolLine };
+module.exports = { MACHINE_TOOLS, SNAPCRAFT, machineToolsFor, missingMachineTools, missingTool, machineToolLine };
