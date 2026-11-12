@@ -19,7 +19,7 @@ const { setEnvironment, ENVIRONMENT_VAR } = require('@omega.js/config/environmen
 const { ensureTarget } = require('./lib/ensure-target.js');
 const { buildSite } = require('../build.js');
 const { consumerPaths, loadSiteData } = require('../consumer.js');
-const { resolveStaticDirs, assertMintedAssets } = require('../static-assets.js');
+const { resolveStaticDirs } = require('../static-assets.js');
 const { resolveClientEntry } = require('../paths.js');
 const { isCachedOnly } = require('@omega.js/devkit/translate');
 const { translateSite, warnSkippedCold } = require('../translate/index.js');
@@ -112,10 +112,6 @@ async function build(options) {
   const siteData = loadSiteData(paths.root, { environment: 'production' });
   const brandRoot = findBrandRoot(paths.root);
 
-  // A runner gets the minted set only through the deploy snapshot, so a CI
-  // build without it would ship a site with no logo: stop before building.
-  assertMintedAssets({ brandRoot, env: process.env });
-
   const emptyCatalog = catalogWarning(siteData.payment);
   if (emptyCatalog) {
     logger.warn(emptyCatalog);
@@ -145,9 +141,11 @@ async function build(options) {
     version: projectPackage?.version,
     packageName: projectPackage?.name,
     manifestPath: paths.manifest,
-    staticDirs: resolveStaticDirs({
+    staticDirs: await resolveStaticDirs({
       brandRoot,
       assetsDir: paths.assets,
+      name: siteData.brand.name,
+      log: (message) => logger.log(message),
     }),
     // Responsive image matrix — on unless the
     // brand opts out via `web.imagemin.enabled: false`. The cache is

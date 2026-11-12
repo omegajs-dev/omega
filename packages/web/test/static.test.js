@@ -1,62 +1,53 @@
 /**
- * The 2026-07-13 live-site gaps, pinned:
- *  1. nav/footer bind their section data — and json-in-_includes parses as
- *     JSON5 (the packaged section files use unquoted keys/comments; strict
- *     JSON.parse silently emptied every one, admin sidebar included)
- *  2. <title> falls back to the brand name when nothing configures
- *     meta.title (the live playground shape: config has no `meta` at all)
- *  3. static-asset channel: the minted brand identity (.omega/assets
- *     favicons/brandmark/social) + the consumer's whole src/assets tree ship
- *     verbatim; the consumer layer copies last and wins collisions
+ * One classy build over the contract fixture WITHOUT site.meta: nav/footer
+ * bind their JSON5 section data, <title> falls back to the brand name, and
+ * the consumer's whole src/assets tree ships verbatim, its own favicon set
+ * included.
  *
- * One classy build over the contract fixture WITHOUT site.meta — the exact
- * shape that rendered empty <title> + empty nav on playground.omegajs.dev.
+ * Then the brand image: one real `omega build` proves the wiring, and the
+ * static copies prove the order in-process: a target's own files win, the
+ * brand's brandmark fills in the rest, and nothing is written into the
+ * target's source tree.
  */
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const cheerio = require('cheerio');
+const sharp = require('sharp');
 const defineCases = require('@omega.js/devkit/test/define-cases');
+
+// Every temp brand's config load records its brand: keep that off the real ~/.omega
+require('@omega.js/devkit/test/temp-home');
+
 // The lane NAMES the environment
 // ([#817](https://github.com/Omega-JS-Stack/omega/issues/817)): the engine reads
 // that ONE input instead of a loose `options.environment`, and a fixture build
 // with no verb above it is a development build, which is what it always was.
 const { setEnvironment } = require('@omega.js/config/environment');
-const { MINT_BRIDGE } = require('@omega.js/config');
+const { findBrandRoot } = require('@omega.js/config');
 const { buildSite } = require('../src/build.js');
-const { resolveStaticDirs, copyStaticAssets, assertMintedAssets } = require('../src/static-assets.js');
+const { resolveStaticDirs, copyStaticAssets, hasFaviconSet } = require('../src/static-assets.js');
+const build = require('../src/commands/build.js');
+const { ensureTarget } = require('../src/commands/lib/ensure-target.js');
 
 const PKG = path.resolve(__dirname, '..');
 const ROOT = path.resolve(PKG, '..', '..');
 const SITE = path.join(__dirname, 'fixtures', 'contract-site');
 const OUT = path.join(PKG, '.omega', 'static-gaps');
 const siteData = JSON.parse(fs.readFileSync(path.join(SITE, 'site-data.json'), 'utf8'));
-const MINT_MESSAGE = 'No minted logo set for a brand that has logo sources. Run: npx omega manage --service=assets, then deploy again.';
 
-let brandRoot; // fake brand tree with a minted .omega/assets set
+let assetsRoot; // the consumer's src/assets stand-in
 
 /**
- * Write a file (and its directories) under the fake brand root.
+ * Write a file (and its directories) under the consumer stand-in.
  * @param {string[]} segments
  * @param {string} content
  */
-function mint(segments, content) {
-  const file = path.join(brandRoot, ...segments);
+function place(segments, content) {
+  const file = path.join(assetsRoot, ...segments);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
-}
-
-/**
- * A fresh brand root holding the given brand-root relative files.
- * @param {string[]} files
- * @returns {string} The brand root.
- */
-function brandTree(files) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-static-brand-'));
-  for (const relative of files) {
-    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
-    fs.writeFileSync(path.join(root, relative), 'fixture');
-  }
-  return root;
 }
 
 /**
@@ -83,79 +74,167 @@ async function buildFixture(outDir, staticDirs) {
   });
 }
 
+// ─── The brand image through the real build ───
+
+// A red disc that never reaches the corners of its box
+const BRANDMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#ff0000"/></svg>';
+const BRAND_CONFIG = `{
+  brand: { id: 'fixture', name: 'Fixture', url: 'https://fixture.example.com' },
+  targets: { web: { type: 'web' } },
+}`;
+const TARGET_PACKAGE = JSON.stringify({ name: 'fixture-web', private: true, dependencies: { '@omega.js/web': '*' } });
+
+/**
+ * A scratch tree holding the given relative files (a Buffer is written as is),
+ * removed when `owner` ends: a case's ctx, or the suite's own `sharedScratch`.
+ * @param {{ after: Function }} owner
+ * @param {Object<string, string|Buffer>} files
+ * @returns {string} The root.
+ */
+function tree(owner, files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-static-brand-'));
+  owner.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const [relative, contents] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+    fs.writeFileSync(path.join(root, relative), contents);
+  }
+  return root;
+}
+
+// The shared build's tree outlives each case that reads it: the suite cleanup removes it.
+const sharedRemovals = [];
+const sharedScratch = { after: (remove) => sharedRemovals.push(remove) };
+
+/**
+ * A brand with one web target; `brand` and `target` add brand-root and target-relative files.
+ * @param {{ after: Function }} owner - As tree's.
+ * @returns {{ brandRoot: string, target: string }}
+ */
+function brandWithWeb(owner, { brand = {}, target = {} } = {}) {
+  const prefixed = Object.fromEntries(Object.entries(target).map(([relative, contents]) => [`targets/web/${relative}`, contents]));
+  const brandRoot = tree(owner, {
+    'config/omega.json5': BRAND_CONFIG,
+    'package.json': JSON.stringify({ name: 'fixture-brand', private: true }),
+    'targets/web/package.json': TARGET_PACKAGE,
+    ...brand,
+    ...prefixed,
+  });
+  return { brandRoot, target: path.join(brandRoot, 'targets', 'web') };
+}
+
+/** Run the real `omega build` in `dir`. */
+async function buildIn(dir) {
+  const previous = process.cwd();
+  process.chdir(dir);
+  try {
+    await build({ logFile: false });
+  } finally {
+    process.chdir(previous);
+  }
+}
+
+/** Every file under `dir` but the build's own output, with a digest of its bytes and its mtime. */
+function sourceState(dir) {
+  const state = {};
+  for (const entry of fs.readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(entry.parentPath, entry.name);
+    const relative = path.relative(dir, file);
+    if (/^(dist|\.omega|node_modules)(\/|$)/.test(relative)) continue;
+    state[relative] = `${crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex')} ${fs.statSync(file).mtimeMs}`;
+  }
+  return state;
+}
+
+/** Every file under `dir`, relative, with its mtime; empty when the folder is absent. */
+function filesWithMtimes(dir) {
+  if (!fs.existsSync(dir)) return {};
+  return Object.fromEntries(fs.readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    .map((file) => [path.relative(dir, file), fs.statSync(file).mtimeMs]));
+}
+
+/** The site paths of the head's favicon and manifest links on a built page. */
+function faviconLinks(html) {
+  const $ = cheerio.load(html);
+  const pathOf = (element) => new URL($(element).attr('href'), 'https://fixture.example.com').pathname;
+  return {
+    icons: $('link[rel~="icon"], link[rel="apple-touch-icon"]').toArray().map(pathOf),
+    manifest: $('link[rel="manifest"]').toArray().map(pathOf),
+  };
+}
+
+/** The brand with a brandmark and a web target with no image files, built once for the cases that read it. */
+let brandmarkOnly;
+function brandmarkOnlyBuild() {
+  brandmarkOnly ||= (async () => {
+    const fixture = brandWithWeb(sharedScratch, { brand: { 'assets/logo/brandmark.svg': BRANDMARK_SVG } });
+    // The scaffold every verb runs is the target's own business; the record starts after it
+    ensureTarget({ projectDir: fixture.target });
+    const sourceBefore = sourceState(fixture.target);
+    await buildIn(fixture.target);
+    return { ...fixture, sourceBefore, dist: path.join(fixture.target, 'dist') };
+  })();
+  return brandmarkOnly;
+}
+
+/**
+ * The static copies a build of `target` makes, in-process: the brand root as
+ * the build finds it, then resolveStaticDirs and copyStaticAssets into its dist.
+ * @returns {Promise<{ staticDirs: object[], dist: string, rootFavicon: boolean }>}
+ */
+async function shipStatic(target) {
+  const staticDirs = await resolveStaticDirs({ brandRoot: findBrandRoot(target), assetsDir: path.join(target, 'src', 'assets'), name: 'Fixture' });
+  const dist = path.join(target, 'dist');
+  const { rootFavicon } = copyStaticAssets({ staticDirs, outDir: dist });
+  return { staticDirs, dist, rootFavicon };
+}
+
 module.exports = defineCases({
   type: 'group',
   description: 'static',
   setup: async () => {
-    brandRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-static-'));
+    assetsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-static-'));
 
-    // The manager assets service mint contract
-    mint(['.omega', 'assets', 'favicon', 'favicon.ico'], 'minted-ico');
-    mint(['.omega', 'assets', 'favicon', 'favicon-32x32.png'], 'minted-32');
-    mint(['.omega', 'assets', 'favicon', 'site.webmanifest'], '{"name":"Contract"}');
-    mint(['.omega', 'assets', 'logo', 'brandmark', 'color-x.svg'], '<svg/>');
-    mint(['.omega', 'assets', 'logo', 'brandmark', 'color-512.png'], 'minted-brandmark');
-    mint(['.omega', 'assets', 'social', 'brandmark', 'color-1024.png'], 'minted-social');
-
-    // Consumer asset layer — favicon.ico collides with the mint and must win
-    mint(['consumer-assets', 'images', 'favicon', 'favicon.ico'], 'consumer-ico');
-    mint(['consumer-assets', 'images', 'hero.png'], 'consumer-hero');
+    // The consumer's own favicon set: site.webmanifest makes it a set
+    place(['images', 'favicon', 'favicon.ico'], 'consumer-ico');
+    place(['images', 'favicon', 'favicon-32x32.png'], 'consumer-32');
+    place(['images', 'favicon', 'site.webmanifest'], '{"name":"Contract"}');
+    place(['images', 'hero.png'], 'consumer-hero');
     // Non-image media (#295): the live break was alarm mp3s 404ing
-    mint(['consumer-assets', 'audio', 'alarm.mp3'], 'consumer-alarm');
-    mint(['consumer-assets', 'downloads', 'guide.pdf'], 'consumer-guide');
-    // Hidden entries — Finder/editor noise sitting in src/assets is not content
-    mint(['consumer-assets', '.DS_Store'], 'finder-noise');
-    // The PIPELINE's lanes — the asset phase owns dist/assets/{js,css,fonts}
+    place(['audio', 'alarm.mp3'], 'consumer-alarm');
+    place(['downloads', 'guide.pdf'], 'consumer-guide');
+    // Hidden entries: Finder/editor noise sitting in src/assets is not content
+    place(['.DS_Store'], 'finder-noise');
+    // The PIPELINE's lanes: the asset phase owns dist/assets/{js,css,fonts}
     // (hashed bundles, and fonts pruned to referenced faces), so these must
     // never ride the static copy
-    mint(['consumer-assets', 'js', 'main.js'], 'raw-source-must-not-ship');
-    mint(['consumer-assets', 'css', 'main.scss'], 'raw-source-must-not-ship');
-    mint(['consumer-assets', 'fonts', 'unreferenced.woff2'], 'pruned-face-must-not-return');
+    place(['js', 'main.js'], 'raw-source-must-not-ship');
+    place(['css', 'main.scss'], 'raw-source-must-not-ship');
+    place(['fonts', 'unreferenced.woff2'], 'pruned-face-must-not-return');
 
     setEnvironment('development');
-    await buildFixture(OUT, resolveStaticDirs({
-      brandRoot,
-      assetsDir: path.join(brandRoot, 'consumer-assets'),
-    }));
+    await buildFixture(OUT, await resolveStaticDirs({ brandRoot: null, assetsDir: assetsRoot }));
+  },
+  cleanup: () => {
+    for (const remove of sharedRemovals) remove();
   },
   tests: [
     {
-      name: 'resolveStaticDirs: core images first, mint bridge next, consumer layer last, missing sources dropped',
-      run: (ctx) => {
-        const dirs = resolveStaticDirs({ brandRoot, assetsDir: path.join(brandRoot, 'consumer-assets') });
+      name: 'resolveStaticDirs: core images first, the consumer layer after them, missing sources dropped',
+      run: async (ctx) => {
+        const dirs = await resolveStaticDirs({ brandRoot: null, assetsDir: assetsRoot });
         ctx.expect(dirs.map((entry) => entry.dest)).toEqual([
           'assets/images/core', // framework-shipped pictures (exit-popup faces)
-          'assets/images/favicon',
-          'assets/images/brand/brandmark.svg',
-          'assets/images/brand/brandmark.png',
-          'assets/images/brand/social.png',
-          'assets/images', // consumer layer LAST — it wins collisions
+          'assets/images', // consumer layer after them, so it wins collisions
           'assets/audio', // …and the rest of src/assets rides with it (#295)
           'assets/downloads',
         ]);
 
-        // No brand root (standalone consumer without a mint) → core + consumer layer
-        const bare = resolveStaticDirs({ brandRoot: null, assetsDir: path.join(brandRoot, 'consumer-assets') });
-        ctx.expect(bare.map((entry) => entry.dest)).toEqual(['assets/images/core', 'assets/images', 'assets/audio', 'assets/downloads']);
-
-        // No brand assets at all → the framework's own images still ship
-        ctx.expect(resolveStaticDirs({ brandRoot: path.join(brandRoot, 'nope'), assetsDir: path.join(brandRoot, 'nope2') })
+        // No consumer assets at all → the framework's own images still ship
+        ctx.expect((await resolveStaticDirs({ brandRoot: null, assetsDir: path.join(assetsRoot, 'nope') }))
             .map((entry) => entry.dest)).toEqual(['assets/images/core']);
-      },
-    },
-
-    {
-      name: 'static channel ships the minted set and the consumer layer wins collisions',
-      run: (ctx) => {
-        ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'images', 'favicon', 'favicon-32x32.png'), 'utf8')).toBe('minted-32');
-        ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'images', 'brand', 'brandmark.png'), 'utf8')).toBe('minted-brandmark');
-        ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'images', 'brand', 'brandmark.svg'), 'utf8')).toBe('<svg/>');
-        ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'images', 'brand', 'social.png'), 'utf8')).toBe('minted-social');
-        ctx.expect(fs.existsSync(path.join(OUT, 'assets', 'images', 'favicon', 'site.webmanifest')), 'webmanifest shipped').toBeTruthy();
-
-        // Consumer overrides + additions
-        ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'images', 'favicon', 'favicon.ico'), 'utf8'), 'consumer file wins the collision').toBe('consumer-ico');
-        ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'images', 'hero.png'), 'utf8')).toBe('consumer-hero');
       },
     },
 
@@ -164,8 +243,9 @@ module.exports = defineCases({
       run: (ctx) => {
         ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'audio', 'alarm.mp3'), 'utf8'), 'audio ships (was silently dropped: 404 on the live site)').toBe('consumer-alarm');
         ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'downloads', 'guide.pdf'), 'utf8')).toBe('consumer-guide');
+        ctx.expect(fs.readFileSync(path.join(OUT, 'assets', 'images', 'hero.png'), 'utf8')).toBe('consumer-hero');
 
-        // js/, css/ and fonts/ belong to the asset phase — its hashed bundles already
+        // js/, css/ and fonts/ belong to the asset phase: its hashed bundles already
         // sit in dist/assets, and a verbatim source copy would land beside them and
         // put the pruned font faces back
         ctx.expect(!fs.existsSync(path.join(OUT, 'assets', 'js', 'main.js')), 'js sources never ride the static lane').toBeTruthy();
@@ -183,7 +263,7 @@ module.exports = defineCases({
       run: (ctx) => {
         const root = path.join(OUT, 'favicon.ico');
         ctx.expect(fs.existsSync(root), 'root favicon.ico shipped').toBeTruthy();
-        ctx.expect(fs.readFileSync(root, 'utf8'), 'the root copy is the collision winner').toBe('consumer-ico');
+        ctx.expect(fs.readFileSync(root, 'utf8'), 'the root copy is the shipped one').toBe('consumer-ico');
 
         // No favicon set shipped → nothing lands at the root
         const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'omega-static-bare-'));
@@ -216,7 +296,7 @@ module.exports = defineCases({
     },
 
     {
-      name: '<title> falls back to the brand name — no page ever renders an empty title',
+      name: '<title> falls back to the brand name: no page ever renders an empty title',
       run: (ctx) => {
         let sawBrandFallback = false;
 
@@ -234,91 +314,202 @@ module.exports = defineCases({
     },
 
     {
-      name: 'head wires the minted set: webmanifest link + og:image brand fallback',
+      name: 'head wires the shipped favicon set: webmanifest link + og:image brand fallback',
       run: (ctx) => {
         const html = fs.readFileSync(path.join(OUT, 'about.html'), 'utf8');
-        ctx.expect(html.includes('/assets/images/favicon/site.webmanifest'), 'manifest link points at the minted webmanifest').toBeTruthy();
+        ctx.expect(html.includes('/assets/images/favicon/site.webmanifest'), 'manifest link points at the shipped webmanifest').toBeTruthy();
         ctx.expect(!html.includes('/manifest.json'), 'the old never-emitted /manifest.json link is gone').toBeTruthy();
-        ctx.expect(!html.includes('browserconfig.xml') && !html.includes('safari-pinned-tab'), 'legacy favicon tags dropped (mint never produces them)').toBeTruthy();
+        ctx.expect(!html.includes('browserconfig.xml') && !html.includes('safari-pinned-tab'), 'legacy favicon tags dropped (no set carries them)').toBeTruthy();
         ctx.expect(html.includes('property="og:image" content="https://contract.test/assets/images/brand/social.png"'), 'og:image falls back to brand.images.social').toBeTruthy();
       },
     },
 
-    // ─── The minted set reaches every build ───
+    // ─── The brand image: own file, then the brand's brandmark ───
 
     {
-      name: 'the static phase bridges the shared MINT_BRIDGE list to the same four site paths',
-      run: (ctx) => {
-        const sitePaths = [
-          'assets/images/favicon',
-          'assets/images/brand/brandmark.svg',
-          'assets/images/brand/brandmark.png',
-          'assets/images/brand/social.png',
-        ];
-        ctx.expect(MINT_BRIDGE.map((entry) => entry.dest), 'the one list lives in @omega.js/config').toEqual(sitePaths);
-
-        const dirs = resolveStaticDirs({ brandRoot, assetsDir: path.join(brandRoot, 'consumer-assets') });
-        ctx.expect(dirs.filter((entry) => sitePaths.includes(entry.dest))).toEqual([
-          { src: path.join(brandRoot, '.omega', 'assets', 'favicon'), dest: 'assets/images/favicon' },
-          { src: path.join(brandRoot, '.omega', 'assets', 'logo', 'brandmark', 'color-x.svg'), dest: 'assets/images/brand/brandmark.svg' },
-          { src: path.join(brandRoot, '.omega', 'assets', 'logo', 'brandmark', 'color-512.png'), dest: 'assets/images/brand/brandmark.png' },
-          { src: path.join(brandRoot, '.omega', 'assets', 'social', 'brandmark', 'color-1024.png'), dest: 'assets/images/brand/social.png' },
-        ]);
-        for (const sitePath of sitePaths) {
-          ctx.expect(fs.existsSync(path.join(OUT, sitePath)), `${sitePath} shipped`).toBeTruthy();
-        }
-      },
-    },
-
-    {
-      name: 'a CI build of a brand with logo sources and no minted favicon set throws the one line',
-      run: (ctx) => {
-        const noMint = brandTree(['assets/logo/brandmark.svg']);
-        const logoOnly = brandTree(['assets/logo/brandmark.svg', '.omega/assets/logo/brandmark/color-512.png']);
-        // A favicon folder without site.webmanifest is not the set the page head needs
-        const noManifest = brandTree(['assets/logo/brandmark.svg', '.omega/assets/favicon/favicon.ico']);
-
-        for (const [root, env] of [
-          [noMint, { GITHUB_ACTIONS: 'true' }],
-          [noMint, { CI: 'true' }],
-          [logoOnly, { GITHUB_ACTIONS: 'true' }],
-          [noManifest, { GITHUB_ACTIONS: 'true' }],
-        ]) {
-          ctx.expect(() => assertMintedAssets({ brandRoot: root, env })).toThrow((error) => {
-            ctx.expect(error.message.includes(MINT_MESSAGE), `the message names the fix: ${error.message}`).toBeTruthy();
-            ctx.expect(!error.message.includes('\n'), 'one line').toBeTruthy();
-            return true;
-          });
-        }
-      },
-    },
-
-    {
-      name: 'a CI build with no logo sources, and a local build with no mint, are both clean',
-      run: (ctx) => {
-        const env = { GITHUB_ACTIONS: 'true' };
-        ctx.expect(() => assertMintedAssets({ brandRoot: brandTree(['assets/fonts/brand.ttf']), env }), 'no logo sources').not.toThrow();
-        ctx.expect(() => assertMintedAssets({ brandRoot: brandTree(['assets/logo/wordmark.svg']), env }), 'a wordmark is not the mint source').not.toThrow();
-        ctx.expect(() => assertMintedAssets({ brandRoot: brandTree(['assets/logo/brandmark.svg']), env: {} }), 'a local build').not.toThrow();
-        const minted = brandTree(['assets/logo/brandmark.svg', '.omega/assets/favicon/favicon.ico', '.omega/assets/favicon/site.webmanifest']);
-        ctx.expect(() => assertMintedAssets({ brandRoot: minted, env }), 'a CI build that has its minted set').not.toThrow();
-      },
-    },
-
-    {
-      name: 'the head carries the favicon and manifest links with a minted set, and neither without one',
+      name: 'a brandmark and no image files of the target\'s own: the build ships the favicon set, both brandmark files, the social image and /favicon.ico, and the head links them',
       run: async (ctx) => {
-        const minted = fs.readFileSync(path.join(OUT, 'about.html'), 'utf8');
-        ctx.expect(minted, 'favicon links').toMatch(/<link rel="icon"[^>]*href="[^"]*\/assets\/images\/favicon\//);
-        ctx.expect(minted, 'manifest link').toMatch(/<link rel="manifest"[^>]*href="[^"]*\/assets\/images\/favicon\/site\.webmanifest/);
+        const { dist } = await brandmarkOnlyBuild();
+        const favicons = path.join(dist, 'assets', 'images', 'favicon');
 
-        const bare = brandTree([]);
-        const outDir = path.join(PKG, '.omega', 'static-no-mint');
-        await buildFixture(outDir, resolveStaticDirs({ brandRoot: bare, assetsDir: path.join(bare, 'assets') }));
+        const set = fs.readdirSync(favicons).sort();
+        ctx.expect(set.includes('favicon.ico') && set.includes('site.webmanifest'), `the set carries favicon.ico and site.webmanifest (has ${set})`).toBeTruthy();
+        ctx.expect(set.filter((file) => file.endsWith('.png')).length, 'and five PNGs').toBe(5);
+        const ico = fs.readFileSync(path.join(favicons, 'favicon.ico'));
+        ctx.expect([...ico.subarray(0, 4)], 'a real ICO').toEqual([0, 0, 1, 0]);
+        ctx.expect(fs.readFileSync(path.join(dist, 'favicon.ico')).equals(ico), 'the root /favicon.ico is the set\'s').toBeTruthy();
 
-        const none = fs.readFileSync(path.join(outDir, 'about.html'), 'utf8');
-        ctx.expect(none, 'no favicon links').not.toMatch(/rel="(?:shortcut )?icon"|rel="apple-touch-icon"/);
-        ctx.expect(none, 'no manifest link').not.toMatch(/rel="manifest"/);
+        const brand = path.join(dist, 'assets', 'images', 'brand');
+        ctx.expect((await sharp(path.join(brand, 'brandmark.svg')).metadata()).format, 'brandmark.svg').toBe('svg');
+        for (const name of ['brandmark.png', 'social.png']) {
+          const meta = await sharp(path.join(brand, name)).metadata();
+          ctx.expect(meta.format, `${name} is a PNG`).toBe('png');
+          ctx.expect(meta.width, `${name} is square`).toBe(meta.height);
+        }
+
+        const links = faviconLinks(fs.readFileSync(path.join(dist, 'index.html'), 'utf8'));
+        ctx.expect(links.icons.length > 0, 'the head carries favicon links').toBeTruthy();
+        ctx.expect(links.manifest, 'and the manifest link').toEqual(['/assets/images/favicon/site.webmanifest']);
+        for (const sitePath of [...links.icons, ...links.manifest]) {
+          ctx.expect(fs.existsSync(path.join(dist, sitePath)), `${sitePath} is in the build`).toBeTruthy();
+        }
+
+        // The manifest's icon paths resolve against the manifest's own URL
+        const manifestUrl = `https://fixture.example.com${links.manifest[0]}`;
+        const manifest = JSON.parse(fs.readFileSync(path.join(dist, links.manifest[0]), 'utf8'));
+        ctx.expect(manifest.icons.length > 0, 'the manifest names its icons').toBeTruthy();
+        for (const icon of manifest.icons) {
+          const sitePath = new URL(icon.src, manifestUrl).pathname;
+          ctx.expect(fs.existsSync(path.join(dist, sitePath)), `manifest icon ${icon.src} (served at ${sitePath}) is in the build`).toBeTruthy();
+        }
+      },
+    },
+
+    {
+      name: 'the nav takes the brandmark svg the build derived',
+      run: async (ctx) => {
+        const { dist } = await brandmarkOnlyBuild();
+        const $ = cheerio.load(fs.readFileSync(path.join(dist, 'index.html'), 'utf8'));
+
+        const src = $('a.omega-nav__brand img').attr('src');
+        ctx.expect(src && src.split('?')[0], 'the nav logo is the vector').toBe('/assets/images/brand/brandmark.svg');
+      },
+    },
+
+    {
+      name: 'an unchanged brandmark built twice: the second run derives nothing new',
+      run: async (ctx) => {
+        const { brandRoot, target } = await brandmarkOnlyBuild();
+        const cache = path.join(brandRoot, '.omega', 'cache', 'brand-image');
+        const first = filesWithMtimes(cache);
+        ctx.expect(Object.keys(first).length > 0, 'the first run kept what it derived in the brand-image cache').toBeTruthy();
+
+        await buildIn(target);
+
+        ctx.expect(filesWithMtimes(cache), 'no file added, none rewritten').toEqual(first);
+      },
+    },
+
+    {
+      name: 'the brand-image cache removes a folder unused for a day, finished or temp, keeps a newer one, and refreshes the folder in use',
+      run: async (ctx) => {
+        const { brandRoot, target } = brandWithWeb(ctx, { brand: { 'assets/logo/brandmark.svg': BRANDMARK_SVG } });
+        const cache = path.join(brandRoot, '.omega', 'cache', 'brand-image');
+        await shipStatic(target);
+        const [inUse] = fs.readdirSync(cache);
+
+        const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+        for (const name of ['old-set', 'old-set.tmp-dead', 'other-target']) {
+          fs.mkdirSync(path.join(cache, name));
+        }
+        for (const name of [inUse, 'old-set', 'old-set.tmp-dead']) {
+          fs.utimesSync(path.join(cache, name), dayAgo, dayAgo);
+        }
+
+        await shipStatic(target);
+
+        ctx.expect(fs.readdirSync(cache).sort()).toEqual([inUse, 'other-target'].sort());
+        ctx.expect(Date.now() - fs.statSync(path.join(cache, inUse)).mtimeMs < 60 * 60 * 1000, 'the folder in use was refreshed').toBe(true);
+      },
+    },
+
+    {
+      name: 'the build writes or changes no file in the target\'s source tree',
+      run: async (ctx) => {
+        const { target, sourceBefore } = await brandmarkOnlyBuild();
+
+        ctx.expect(sourceState(target)).toEqual(sourceBefore);
+      },
+    },
+
+    {
+      name: 'a target\'s own favicon set ships unchanged and none is derived',
+      run: async (ctx) => {
+        const own = { 'favicon.ico': 'own-ico', 'favicon-32x32.png': 'own-32', 'site.webmanifest': '{"name":"Own"}' };
+        const { target } = brandWithWeb(ctx, {
+          brand: { 'assets/logo/brandmark.svg': BRANDMARK_SVG },
+          target: Object.fromEntries(Object.entries(own).map(([name, contents]) => [`src/assets/images/favicon/${name}`, contents])),
+        });
+
+        const { dist } = await shipStatic(target);
+
+        const favicons = path.join(dist, 'assets', 'images', 'favicon');
+        const shipped = Object.fromEntries(fs.readdirSync(favicons).map((name) => [name, fs.readFileSync(path.join(favicons, name), 'utf8')]));
+        ctx.expect(shipped, 'exactly the own set, byte for byte').toEqual(own);
+        ctx.expect(fs.readFileSync(path.join(dist, 'favicon.ico'), 'utf8'), 'the root copy is the own one').toBe('own-ico');
+      },
+    },
+
+    {
+      name: 'a target\'s own favicon.ico with no webmanifest: its bytes ship over the derived one, and the rest of the set is derived',
+      run: async (ctx) => {
+        const { target } = brandWithWeb(ctx, {
+          brand: { 'assets/logo/brandmark.svg': BRANDMARK_SVG },
+          target: { 'src/assets/images/favicon/favicon.ico': 'own-ico' },
+        });
+
+        const { dist } = await shipStatic(target);
+
+        const favicons = path.join(dist, 'assets', 'images', 'favicon');
+        ctx.expect(fs.readFileSync(path.join(favicons, 'favicon.ico'), 'utf8'), 'the own favicon.ico wins the collision').toBe('own-ico');
+        ctx.expect(fs.readFileSync(path.join(dist, 'favicon.ico'), 'utf8'), 'the root copy is the own one').toBe('own-ico');
+        const set = fs.readdirSync(favicons).sort();
+        ctx.expect(set.includes('site.webmanifest'), `the webmanifest derived (has ${set})`).toBeTruthy();
+        const pngs = set.filter((name) => name.endsWith('.png'));
+        ctx.expect(pngs.length, 'five derived PNGs').toBe(5);
+        for (const name of pngs) {
+          ctx.expect((await sharp(path.join(favicons, name)).metadata()).format, `${name} is a derived PNG`).toBe('png');
+        }
+      },
+    },
+
+    {
+      name: 'a target\'s own brand/brandmark.png alone ships, and the rest are derived',
+      run: async (ctx) => {
+        // A shape no derived brandmark has: derived ones are square
+        const ownPng = await sharp({ create: { width: 40, height: 24, channels: 4, background: '#00ff00' } }).png().toBuffer();
+        const { target } = brandWithWeb(ctx, {
+          brand: { 'assets/logo/brandmark.svg': BRANDMARK_SVG },
+          target: { 'src/assets/images/brand/brandmark.png': ownPng },
+        });
+
+        const { dist } = await shipStatic(target);
+
+        const brand = path.join(dist, 'assets', 'images', 'brand');
+        const shipped = await sharp(path.join(brand, 'brandmark.png')).metadata();
+        ctx.expect([shipped.width, shipped.height], 'the own brandmark.png').toEqual([40, 24]);
+        ctx.expect((await sharp(path.join(brand, 'brandmark.svg')).metadata()).format, 'brandmark.svg derived').toBe('svg');
+        ctx.expect((await sharp(path.join(brand, 'social.png')).metadata()).format, 'social.png derived').toBe('png');
+        const set = fs.readdirSync(path.join(dist, 'assets', 'images', 'favicon'));
+        ctx.expect(set.includes('site.webmanifest') && set.includes('favicon.ico'), `the favicon set derived (has ${set})`).toBeTruthy();
+      },
+    },
+
+    {
+      name: 'a brand with no brandmark and a target with no image files: the static copies pass and the head has no favicon set to link',
+      run: async (ctx) => {
+        const { target } = brandWithWeb(ctx);
+
+        const { staticDirs, dist, rootFavicon } = await shipStatic(target);
+
+        // The head links its favicons only when hasFaviconSet says a set ships
+        ctx.expect(hasFaviconSet(staticDirs), 'no favicon set to link').toBe(false);
+        ctx.expect(fs.existsSync(path.join(dist, 'assets', 'images', 'favicon')), 'none shipped').toBe(false);
+        ctx.expect(rootFavicon, 'no root /favicon.ico').toBe(false);
+      },
+    },
+
+    {
+      name: 'a web project with no brand root and no image files of its own: the static copies pass, with no favicon set to link',
+      run: async (ctx) => {
+        const project = tree(ctx, { 'config/omega.json5': BRAND_CONFIG, 'package.json': TARGET_PACKAGE });
+        ctx.expect(findBrandRoot(project), 'a framework used on its own').toBe(null);
+
+        const { staticDirs, dist, rootFavicon } = await shipStatic(project);
+
+        ctx.expect(hasFaviconSet(staticDirs), 'no favicon set to link').toBe(false);
+        ctx.expect(fs.existsSync(path.join(dist, 'assets', 'images', 'favicon')), 'none shipped').toBe(false);
+        ctx.expect(rootFavicon, 'no root /favicon.ico').toBe(false);
       },
     },
   ],

@@ -23,7 +23,6 @@ require('@omega.js/devkit/test/temp-home');
 const build = require('../src/commands/build.js');
 
 const PKG = path.resolve(__dirname, '..');
-const MINT_MESSAGE = 'No minted logo set for a brand that has logo sources. Run: npx omega manage --service=assets, then deploy again.';
 
 // A temp consumer whose config carries ONE retired key (payment.processors was
 // renamed to payment.providers in #428) — the rest of the tree is a valid
@@ -88,39 +87,6 @@ module.exports = defineCases({
         ctx.expect(output, 'the finding is printed').toMatch(/payment\.processors\.stripe is not a key the schema declares/);
         ctx.expect(run.status, 'CI and scripted callers must read the run as a failure').not.toBe(0);
         ctx.expect(fs.existsSync(path.join(root, 'dist')), 'a refused build writes no output').toBe(false);
-      },
-    },
-
-    // The minted-asset gate: on a CI runner, a brand with a brandmark source and
-    // no minted favicon set stops the real build command with one line.
-    {
-      name: 'build: a CI build with a brandmark source and no minted favicon set refuses with the one line',
-      run: async (ctx) => {
-        const root = consumer(ctx, {
-          'config/omega.json5': `{
-  brand: { id: 'fixture', name: 'Fixture', url: 'https://fixture.example.com' },
-  targets: { web: { type: 'web' } },
-}`,
-          'assets/logo/brandmark.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>',
-          'targets/web/package.json': JSON.stringify({ name: 'fixture-web', private: true, dependencies: { '@omega.js/web': '*' } }),
-        });
-        const previous = process.cwd();
-        process.chdir(path.join(root, 'targets', 'web'));
-        ctx.after(() => process.chdir(previous));
-
-        const saved = process.env.GITHUB_ACTIONS;
-        process.env.GITHUB_ACTIONS = 'true';
-        ctx.after(() => {
-          if (saved === undefined) delete process.env.GITHUB_ACTIONS;
-          else process.env.GITHUB_ACTIONS = saved;
-        });
-
-        await ctx.expect(build({ logFile: false })).rejects.toThrow((error) => {
-          ctx.expect(error.message.includes(MINT_MESSAGE), `the message names the fix: ${error.message}`).toBeTruthy();
-          ctx.expect(!error.message.includes('\n'), 'one line').toBeTruthy();
-          return true;
-        });
-        ctx.expect(fs.existsSync(path.join(root, 'targets', 'web', 'dist')), 'a refused build writes no output').toBe(false);
       },
     },
 

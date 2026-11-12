@@ -74,14 +74,14 @@ module.exports = defineCases({
 
     {
       name: 'the shipped portraits exist on disk and reach the built site',
-      run: (ctx) => {
+      run: async (ctx) => {
         for (const n of [1, 2, 3, 4]) {
           const file = path.join(PATHS.core, 'images', 'exit-popup', `subscriber-${n}.jpg`);
           ctx.expect(fs.existsSync(file), `${file} ships with the package`).toBeTruthy();
         }
 
         // The static channel carries core/images to the URL the include references
-        const core = resolveStaticDirs({ brandRoot: null, assetsDir: path.join(PATHS.core, 'nope') })
+        const core = (await resolveStaticDirs({ brandRoot: null, assetsDir: path.join(PATHS.core, 'nope') }))
           .find((entry) => entry.dest === 'assets/images/core');
         ctx.expect(core, 'core images are a static-copy entry').toBeTruthy();
         ctx.expect(core.src).toBe(path.join(PATHS.core, 'images'));

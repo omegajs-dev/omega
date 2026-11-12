@@ -39,6 +39,7 @@
  */
 
 const env = require('../libraries/env.js');
+const { User } = require('../helpers/account.js');
 
 // @omega.js/account is a private workspace package: in the monorepo the bare
 // specifier resolves via the workspace link (and the prepare-package vendor
@@ -79,6 +80,10 @@ class Usage {
     // The anonymous key this counter counts against, or null for the signed-in
     // user. Set ONLY by forKey(), never inferred from a request.
     this.key = null;
+
+    // The account uid this counter counts against, or null for the caller. Set
+    // ONLY by forUser().
+    this.uid = null;
 
     // The account (or the keyed counter document) the counters live on, resolved
     // on first use.
@@ -124,12 +129,52 @@ class Usage {
   forKey(key) {
     const self = this;
 
-    const keyed = new Usage(self.ctx);
+    const keyed = self.fork();
 
-    keyed.options = { ...self.options, whitelistKeys: [...self.options.whitelistKeys] };
     keyed.key = `${key || 'unknown'}`;
 
     return keyed;
+  }
+
+  /**
+   * A counter for ANOTHER account, `users/{uid}`: its plan, its overrides, its
+   * counters and its mirrors, inside a request made by someone else. The
+   * caller's roles are not checked; the route decides who may charge whom.
+   *
+   * Synchronous and I/O-free like forKey(): the account is read on the first
+   * consume/read, and a uid with no document throws a 404 there.
+   *
+   * @param {string} uid - The account to count against
+   * @returns {Usage} A new counter bound to that account
+   * @throws {Error} When uid is missing or not a string (a programmer error)
+   */
+  forUser(uid) {
+    const self = this;
+
+    if (typeof uid !== 'string' || !uid) {
+      throw new Error(`usage: forUser(uid) needs a uid string, got ${JSON.stringify(uid)}`);
+    }
+
+    const bound = self.fork();
+
+    bound.uid = uid;
+
+    return bound;
+  }
+
+  /**
+   * A new counter on the same request with this one's options copied, so a
+   * whitelist added to one never reaches the other.
+   * @returns {Usage} The new counter, bound to nothing yet
+   */
+  fork() {
+    const self = this;
+
+    const forked = new Usage(self.ctx);
+
+    forked.options = { ...self.options, whitelistKeys: [...self.options.whitelistKeys] };
+
+    return forked;
   }
 
   /**
@@ -175,6 +220,8 @@ class Usage {
 
     if (self.key) {
       self.user = { usage: await self.loadKeyed() };
+    } else if (self.uid) {
+      self.user = await self.loadAccount();
     } else {
       // authenticate() settles ONCE per request: when the pipeline already
       // authenticated it, this is that same answer, never a second token
@@ -202,6 +249,25 @@ class Usage {
     self.log(`Usage.resolve(): Resolved ${self.key || self.user?.auth?.uid || 'unauthenticated'}`, self.user?.usage);
 
     return self;
+  }
+
+  /**
+   * The account a forUser() counter counts on, read once. Never healed or
+   * created: a uid with no document is a 404, and nothing is written.
+   * @returns {Promise<User>} The account at users/{uid}
+   * @throws {Error} 404 when users/{uid} does not exist
+   */
+  async loadAccount() {
+    const self = this;
+
+    const snapshot = await self.ctx.omega.firebase.admin.firestore().doc(`users/${self.uid}`).get();
+    const data = snapshot.data();
+
+    if (!data) {
+      throw self.ctx.report(`usage: no account at users/${self.uid}`, { code: 404 });
+    }
+
+    return new User(data, { uid: self.uid });
   }
 
   /**

@@ -31,8 +31,8 @@ const DROPPED_JEKYLL_KEYS = [
 // answers them now needs no config at all), and `currency` MOVES to the
 // payment section every other surface reads it from.
 const RETIRED_WEB_SECTIONS = {
-  favicon: 'the favicon set is minted from the brand images and bridged to /assets/images/favicon; change the source image (`brand.images.favicon`), and the browser chrome color comes from `brand.color`',
-  manifest: 'nothing reads it: the web app manifest that ships is the minted set\'s own site.webmanifest',
+  favicon: 'the build ships the target\'s own src/assets/images/favicon/, else derives the set from the brand\'s assets/logo/brandmark.svg; change that source image, and the browser chrome color comes from `brand.color`',
+  manifest: 'nothing reads it: the web app manifest that ships is the favicon set\'s own site.webmanifest',
   icons: 'a link carries its own Font Awesome classes now (#619), e.g. `icon: \'fa-brands fa-github\'`, so there is no name-to-markup map',
 };
 

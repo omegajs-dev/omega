@@ -145,23 +145,47 @@ const { SkipError, waitFor, normalizeSpec, createContext, runCase, runSuite, err
     return { name: 'Error', message: String(e), stack: undefined };
   }
 
-  // A failing cleanup never fails what it cleans up after; it is said on stderr.
-  async function runCleanup(cleanup, ctx, label) {
-    if (typeof cleanup !== 'function') return;
+  // The one timer race every step runs under: settles as `step()` does, or
+  // rejects with `message` once `limit` ms pass. A step that never settles is left behind.
+  const timedOut = new WeakSet();
+  async function withinLimit(step, limit, message) {
+    let timer;
     try {
-      await cleanup(ctx);
+      return await Promise.race([
+        new Promise((resolve) => resolve(step())),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            const error = new Error(message);
+            timedOut.add(error);
+            reject(error);
+          }, limit);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // A failing cleanup never fails what it cleans up after; it is said on stderr.
+  // Resolves to the error of one that passed its limit, else null.
+  async function runCleanup(cleanup, ctx, label, limit) {
+    if (typeof cleanup !== 'function') return null;
+    try {
+      await withinLimit(() => cleanup(ctx), limit, `cleanup timed out after ${limit}ms`);
     } catch (e) {
       console.warn(`cleanup failed for ${label}: ${e && e.message ? e.message : e}`);
+      if (timedOut.has(e)) return e;
     }
+    return null;
   }
 
   // Run the functions a case registered through `ctx.after`, newest first, each
   // awaited; resolves to `{ error }` for the first one that throws, else null.
-  async function runAfters(afters) {
+  async function runAfters(afters, limit) {
     let failure = null;
     for (const fn of [...afters].reverse()) {
       try {
-        await fn();
+        await withinLimit(fn, limit, `after hook timed out after ${limit}ms`);
       } catch (e) {
         if (!failure) failure = { error: e };
       }
@@ -184,28 +208,22 @@ const { SkipError, waitFor, normalizeSpec, createContext, runCase, runSuite, err
     const caseCtx = { ...ctx, after(fn) { afters.push(fn); } };
     const limit = caseDef.timeout || timeout || DEFAULT_TIMEOUT;
     const start = Date.now();
-    let timer;
     let thrown = null;
     try {
-      await Promise.race([
-        new Promise((resolve) => resolve(caseDef.run(caseCtx))),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Test timeout')), limit); }),
-      ]);
+      await withinLimit(() => caseDef.run(caseCtx), limit, 'Test timeout');
     } catch (e) {
       thrown = { error: e, skip: Boolean(e && e.name === 'SkipError') };
-    } finally {
-      clearTimeout(timer);
     }
 
     // An `after` that throws fails a case that passed or skipped; a failed case keeps its own error.
-    const afterFailure = await runAfters(afters);
+    const afterFailure = await runAfters(afters, limit);
     const durationMs = Date.now() - start;
     const failed = (error) => ({ id: caseDef.id, name: caseDef.name, status: 'fail', durationMs, error: errorOf(error) });
     if (thrown && !thrown.skip) return failed(thrown.error);
     if (afterFailure) return failed(afterFailure.error);
     if (thrown) return { ...skipEvent(caseDef, thrown.error.message), durationMs };
 
-    await runCleanup(caseDef.cleanup, caseCtx, caseDef.name);
+    await runCleanup(caseDef.cleanup, caseCtx, caseDef.name, limit);
     return { id: caseDef.id, name: caseDef.name, status: 'pass', durationMs };
   }
 
@@ -224,24 +242,26 @@ const { SkipError, waitFor, normalizeSpec, createContext, runCase, runSuite, err
    * `{ ...case, suite }` (called with `{ suite }` alone for setup and cleanup).
    * @param {object} suite - From normalizeSpec.
    * @param {{ expect: Function, extras?: object|Function, defaultTimeout?: number, report: Function }} options
-   * @returns {Promise<void>}
+   * @returns {Promise<Error|null>} The error of a cleanup that passed its limit, which the caller fails the run with; else null.
    */
   async function runSuite(suite, { expect, extras, defaultTimeout, report }) {
     const resolveExtras = (info) => (typeof extras === 'function' ? extras(info) : extras);
 
     if (suite.skip) {
       for (const caseDef of suite.cases) await report(skipEvent(caseDef, skipReason(suite.skip)));
-      return;
+      return null;
     }
 
     const state = {};
     const stopOnFailure = suite.type === 'suite' && suite.stopOnFailure !== false;
+    const limit = suite.timeout || defaultTimeout || DEFAULT_TIMEOUT;
     let stopped = null;
     let setupFailed = false;
 
     if (typeof suite.setup === 'function') {
       try {
-        await suite.setup(createContext({ expect, state, layer: suite.layer, extras: await resolveExtras({ suite }) }));
+        const ctx = createContext({ expect, state, layer: suite.layer, extras: await resolveExtras({ suite }) });
+        await withinLimit(() => suite.setup(ctx), limit, `setup timed out after ${limit}ms`);
       } catch (e) {
         await settleAll(suite, report, e);
         setupFailed = true;
@@ -266,10 +286,9 @@ const { SkipError, waitFor, normalizeSpec, createContext, runCase, runSuite, err
       if (stopOnFailure && event.status === 'skip' && !caseDef.skip) stopped = event.reason;
     }
 
-    if (typeof suite.cleanup === 'function') {
-      const ctx = createContext({ expect, state, layer: suite.layer, extras: await resolveExtras({ suite }) });
-      await runCleanup(suite.cleanup, ctx, suite.description || suite.file);
-    }
+    if (typeof suite.cleanup !== 'function') return null;
+    const ctx = createContext({ expect, state, layer: suite.layer, extras: await resolveExtras({ suite }) });
+    return runCleanup(suite.cleanup, ctx, suite.description || suite.file, limit);
   }
 
   return { SkipError, waitFor, normalizeSpec, createContext, runCase, runSuite, errorOf };

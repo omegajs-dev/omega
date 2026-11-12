@@ -90,7 +90,6 @@
   "4657cf12b51e": "Windows 10 y posteriores",
   "dda50b864933": " Descargar para Windows ",
   "d7c9a01a949c": "Ubuntu 18.04+ y similares",
-  "9ad58e5ba8c6": " Paquete Debian ",
   "164229e9e890": "En movimiento",
   "25ce6dd72f64": "En tu ",
   "9488b1710a66": " también",
@@ -181,5 +180,7 @@
   "8fa3899e9b32": "Linkedin",
   "053bc65874ad": "Discord",
   "5abd720ef990": " AppImage ",
-  "bb0dae32bbb8": " Snap Store "
+  "bb0dae32bbb8": " Snap Store ",
+  "abeefbacabca": " Descargar para Linux ",
+  "924552d33b08": "Otros formatos"
 }

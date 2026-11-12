@@ -14,7 +14,7 @@
 const path    = require('path');
 const jetpack = require('fs-jetpack');
 const yaml    = require('js-yaml');
-const { deepMerge, FORMATS, enabledFormats, desktopArtifactName, sanitizeProductName, snapName, formatKeysSet, releasesRepo, repoMissing } = require('@omega.js/config');
+const { deepMerge, FORMATS, enabledFormats, desktopArtifactName, sanitizeProductName, snapName, formatKeysSet, releasesRepo, repoMissing, findBrandRoot } = require('@omega.js/config');
 const { PUBLISHING_WALK } = require('@omega.js/devkit/ship-plan');
 const build = require('../../build.js');
 const { desktopPlatform } = require('../../utils/platform.js');
@@ -39,9 +39,11 @@ module.exports = function buildConfig(done) {
     const entitlementsPath = writeMacEntitlements(distRoot, config.platforms?.mac?.entitlements);
     logger.log(`wrote ${entitlementsPath}`);
 
-    // 2. Resolve + copy icons (3-tier waterfall) into dist/config/icons/.
+    // 2. Resolve + copy icons into dist/config/icons/. The brand root (null for a
+    // framework used alone) lets the app slot fall to the brand's brandmark.
     const emDefaultsRoot = path.join(__dirname, '..', '..', 'defaults', 'config');
-    const icons = await resolveAndCopy({ config, projectRoot, distRoot, emDefaultsRoot });
+    const brandRoot = findBrandRoot(projectRoot);
+    const icons = await resolveAndCopy({ config, projectRoot, distRoot, emDefaultsRoot, brandRoot });
     logger.log(`resolved icons: mac=${Object.keys(icons.mac).length}, windows=${Object.keys(icons.windows).length}, linux=${Object.keys(icons.linux).length}`);
 
     // Build the full config object from @omega.js/desktop defaults + consumer overrides.

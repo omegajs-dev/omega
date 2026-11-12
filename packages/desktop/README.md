@@ -68,7 +68,7 @@ config/icons/
     tray.png
 ```
 
-Resolution per slot/platform (most specific wins): `<platform>/<slot>` → `global/<slot>` → (Linux only) `windows/<slot>` → @omega.js/desktop bundled default. Tray missing falls back to app icon.
+Resolution per slot/platform (most specific wins): `<platform>/<slot>` → `global/<slot>` → (Linux only) `windows/<slot>` → (app icon only, in a brand) the brand's `assets/logo/brandmark.svg`, rasterized to a 1024×1024 `icon.png` → @omega.js/desktop bundled default. Tray missing falls back to app icon.
 
 **Ship native (@2x) size only — @omega.js/desktop downscales the @1x sibling automatically.** macOS tray must be 32×32; macOS DMG must be 1080×760. @omega.js/desktop emits both `<slot>.png` and `<slot>@2x.png` into `dist/config/icons/<platform>/`. No `app.icons` config block — files are the source of truth.
 

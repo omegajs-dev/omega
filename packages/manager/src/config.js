@@ -313,16 +313,10 @@ const MANAGER_DEFAULTS = {
   // default; the service also needs `company: { id }` to name the relationship
   // (#677) and DIRECTORY_SERVICE_ACCOUNT in the brand .env.
 
-  // Derived visual collateral generated locally from the brand's logo
-  // sources (assets/logo/*.svg in the brand repo → .omega/assets/):
-  // wordmark/combomark from brand.font (omega-manager packaged the
-  // company's commercial fonts and defaulted every brand to CromaSans —
-  // the port has no packaged fonts, the brand owns its font choice), logo
-  // variants + PNG ladders, app icons, social icons, favicons. Every
-  // operation is mtime-diffed; no brandmark → the AI generation flow when
-  // MrLogo credentials are in the brand .env (MRLOGO_SERVICE_ACCOUNT /
-  // MRLOGO_API_KEY / LOGO_API_ID_TOKEN — zero config options), else a
-  // clean skip. Its switch (`assets.enabled`, on by default) is a schema default.
+  // Derived visual collateral, made locally and mtime-diffed from the brand's logo sources
+  // (assets/logo/*.svg → .omega/assets/): wordmark/combomark from brand.font, logo variants +
+  // PNG ladders, app icons, social icons; no brandmark → the AI flow when MrLogo credentials
+  // are in the brand .env. Its switch (`assets.enabled`, on by default) is a schema default.
 
   // Apple signing certificates, bundle IDs, and provisioning profiles for
   // brands with desktop/mobile targets, reconciled via the App Store
@@ -410,7 +404,7 @@ const SERVICE_ORDER = [
   'email',           // brand's Replyify email agent filter + knowledge + owner-account plan (Replyify operator only)
   'server',          // brand registry entry on the company server's Firestore (company-server operators only)
   'directory',       // brand's own entry pushed into the PARENT project's brands collection (opt-in; no cross-service deps)
-  'assets',          // derived logo variants, app icons, social icons, favicons (local, mtime-diffed)
+  'assets',          // derived logo variants, app icons, social icons (local, mtime-diffed)
   'certificates',    // Apple certs, bundle IDs, provisioning profiles (desktop/mobile targets only)
   'publishing',      // Every SHIP credential the brand's declared formats need: store keys + ids, Windows signing, the snap login (#867)
   'ai',              // AI provider keys asked into the brand .env — the ONE file every target's runtime env composes from

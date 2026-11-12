@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const jetpack = require('fs-jetpack');
 const yaml = require('js-yaml');
+const sharp = require('sharp');
 const defineCases = require('@omega.js/devkit/test/define-cases');
 const { toSiteGlobal } = require('@omega.js/config/site-global');
 const { copyDefaults } = require('../../../commands/lib/ensure-target.js');
@@ -727,6 +728,35 @@ module.exports = defineCases({
         const noDeb = baseConfig({});
         noDeb.linux.target = [{ target: 'AppImage', arch: ['x64'] }];
         assertLinuxPackageMetadata(noDeb);
+      },
+    },
+    {
+      name: 'the build-config task in a brand target with no app icon of its own ships the brand brandmark as the app icon',
+      run: async (ctx) => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-brand-icon-'));
+        const projectRoot = path.join(root, 'targets', 'desktop');
+        const brand = { id: 'acme-app', name: 'Acme', url: 'https://acme.example.com', contact: { email: 'support@acme.example.com' } };
+        jetpack.write(path.join(root, 'config', 'omega.json5'), JSON.stringify({ brand, targets: { desktop: { type: 'desktop' } } }, null, 2));
+        // Red edge to edge, where the bundled default icon is white at its centre
+        jetpack.write(path.join(root, 'assets', 'logo', 'brandmark.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="#ff0000"/></svg>');
+        jetpack.write(path.join(projectRoot, 'package.json'), '{ "name": "acme-desktop", "version": "1.0.0" }');
+
+        const env = { OMEGA_BUILD_OUTPUT: undefined, OMEGA_HOME: path.join(root, 'home') };
+        try {
+          const error = await inProcess({ platform: 'darwin', cwd: projectRoot, env }, () => new Promise((resolve) => {
+            require(path.join(TASKS, 'build-config.js'))((ended) => resolve(ended || null));
+          }));
+
+          ctx.expect(error).toBe(null);
+          for (const platform of ['mac', 'windows', 'linux']) {
+            const icon = path.join(projectRoot, 'dist', 'config', 'icons', platform, 'icon.png');
+            const { width, height } = await sharp(icon).metadata();
+            const centre = await sharp(icon).extract({ left: width / 2, top: height / 2, width: 1, height: 1 }).ensureAlpha().raw().toBuffer();
+            ctx.expect([...centre], `${platform} app icon is the red brandmark`).toEqual([255, 0, 0, 255]);
+          }
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
       },
     },
   ],

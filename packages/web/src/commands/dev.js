@@ -169,12 +169,10 @@ module.exports = async function (options) {
     only,
   });
 
-  // Static assets (minted brand identity + src/assets) resolve up front —
+  // Static assets (the derived brand image + src/assets) resolve up front:
   // the manifest's favicon flag depends on what will ship
-  const staticDirs = resolveStaticDirs({
-    brandRoot: findBrandRoot(paths.root),
-    assetsDir: paths.assets,
-  });
+  const brandRoot = findBrandRoot(paths.root);
+  const staticDirs = await resolveStaticDirs({ brandRoot, assetsDir: paths.assets, name: siteData.brand.name, log: (line) => logger.log(line) });
 
   const manifest = await build();
   manifest.favicons = hasFaviconSet(staticDirs);

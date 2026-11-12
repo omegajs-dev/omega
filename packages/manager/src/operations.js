@@ -93,7 +93,7 @@ const OPERATIONS = {
   campaigns: [
     { name: 'domain-auth', ensure: true },     // Domain authentication (DKIM CNAMEs via Cloudflare, one-pass validate)
     { name: 'link-branding', ensure: true },   // Link branding for emailurl.<domain> (create + validate, then the CNAME flips proxied)
-    { name: 'sender-identity', ensure: true }, // Verified sender for Single Sends (offers@{contact domain})
+    { name: 'sender-identity', ensure: true }, // One verified sender per @omega.js/backend SENDERS row, for Single Sends
     { name: 'list', ensure: true },            // The brand's marketing list (id written back to omega.json5)
     { name: 'unsubscribe-groups', ensure: true }, // The account's ASM groups, matched by name (ids written back to omega.json5)
     { name: 'custom-fields', ensure: true },   // @omega.js/backend custom fields (@omega.js/backend's marketing SSOT)
@@ -151,7 +151,6 @@ const OPERATIONS = {
     { name: 'templates', write: true },     // Brand PSDs seeded from the company + logo/text layers refreshed + PNG exports
     { name: 'icons', write: true },         // macOS .icns + Windows .ico app icons (composited icon.png when the templates op made one)
     { name: 'social-icons', write: true },  // Brandmark-on-white social profile icons
-    { name: 'favicons', write: true },      // Web favicon set + site.webmanifest
     { name: 'reconcile', write: true },     // Derived files the brand's current sources no longer name are deleted (#636)
   ],
 

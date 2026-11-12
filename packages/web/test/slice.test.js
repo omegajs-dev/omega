@@ -263,12 +263,12 @@ module.exports = defineCases({
           ctx.expect(home, 'default homepage exists at /').toBeTruthy();
           ctx.expect(home.content.includes('MiniCo'), 'homepage branded from site config').toBeTruthy();
           ctx.expect(home.content.includes('data-theme-id="classy"'), 'rides the active theme').toBeTruthy();
-          // No minted favicon set → the head renders zero dangling favicon links
+          // No favicon set → the head renders zero dangling favicon links
           ctx.expect(!home.content.includes('site.webmanifest'), 'no manifest link without a favicon set').toBeTruthy();
           ctx.expect(!home.content.includes('favicon-32x32'), 'no icon links without a favicon set').toBeTruthy();
           // …while the mini build (favicons: true) carries the full set
-          ctx.expect(pages.get('/').includes('site.webmanifest'), 'minted set renders the manifest link').toBeTruthy();
-          ctx.expect(pages.get('/').includes('favicon-32x32'), 'minted set renders the icon links').toBeTruthy();
+          ctx.expect(pages.get('/').includes('site.webmanifest'), 'a shipped set renders the manifest link').toBeTruthy();
+          ctx.expect(pages.get('/').includes('favicon-32x32'), 'a shipped set renders the icon links').toBeTruthy();
         } finally {
           fs.rmSync(bare, { recursive: true, force: true });
         }

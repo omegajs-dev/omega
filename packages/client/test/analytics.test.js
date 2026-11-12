@@ -714,11 +714,14 @@ module.exports = defineCases({
           ctx.expect(launch.events[0].name, 'the reopen fires its launch page_view').toBe('page_view');
           ctx.expect(launch.events[0].params.session_id, 'and it rides the SAME session id').toBe(firstId);
 
-          // 31 minutes idle: GA4's window has closed, so the next open is a new visit
-          store._ga_session_id = { ...store._ga_session_id, lastActive: Date.now() - (31 * 60 * 1000) };
+          // 31 minutes idle: GA4's window has closed, so the next open is a new visit.
+          // The idle session is as old as its silence: an id made this same
+          // millisecond would equal the rotated one and hide the rotation.
+          const idleSince = Date.now() - (31 * 60 * 1000);
+          store._ga_session_id = { id: `${idleSince}`, lastActive: idleSince };
 
           const third = await openPopup();
-          ctx.expect(third._getSessionId(), 'a session idle past 30 minutes rotates').not.toBe(firstId);
+          ctx.expect(third._getSessionId(), 'a session idle past 30 minutes rotates').not.toBe(`${idleSince}`);
         } finally {
           global.fetch = realFetch;
           global.sessionStorage.clear();

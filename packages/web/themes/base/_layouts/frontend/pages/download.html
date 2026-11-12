@@ -7,10 +7,10 @@ layout: frontend/core/base
 # detection JS; site.targets.desktop.downloads[platform][format] supplies the
 # desktop URLs (#610 — the curated targets view is the ONE home). Each is a
 # DIRECT download of a versionless asset (#620), so a button hands over the
-# file and a desktop release never touches this page. A desktop card's buttons
-# ARE that map's formats, in offer order, so a format the brand ships (the snap
-# included) gets a button and a dropped one gets none; `format_names` only
-# words them.
+# file and a desktop release never touches this page. A desktop card's links
+# ARE that map's formats, in offer order: the first is the main button, the
+# rest sit in its menu, so a format the brand ships (the snap included) gets a
+# link and a dropped one gets none; `format_names` only words them.
 # Mobile derives nothing while MAM is parked, so every mobile store stays on
 # the notify form.
 
@@ -38,15 +38,22 @@ downloads:
   not_available:
     headline: "Not available yet"
     description: "{{ resolved.config.brand.name }} is not currently available for this platform yet."
-  # The words on each desktop button, by format. WHICH buttons a card shows is
-  # never listed here: it is the formats the brand ships
-  # (site.targets.desktop.downloads).
+  # The main button's words, by platform: it is the platform's first format.
+  primary_names:
+    mac: "Download for macOS"
+    windows: "Download for Windows"
+    linux: "Download for Linux"
+  # Each format's words, by format: a menu item's label and the click report's
+  # name. WHICH formats a card offers is never listed here: it is the formats
+  # the brand ships (site.targets.desktop.downloads).
   format_names:
-    dmg: "Download for macOS"
-    nsis: "Download for Windows"
+    dmg: "Disk image"
+    nsis: "Installer"
     deb: "Debian package"
     appimage: "AppImage"
     snap: "Snap Store"
+  # The spoken name of a split button's arrow half
+  other_formats: "Other formats"
   platforms:
     - id: "mac"
       name: "macOS"
@@ -216,18 +223,42 @@ bands below keep the reveal lane. {% endcomment %}
             <h3 class="omega-dl-card__name">{{ platform.name }}</h3>
             <p class="omega-dl-card__req omega-quiet small">{{ platform.description }}</p>
 
-            <!-- Two artifacts (Linux ships .deb + AppImage) ride SIDE BY SIDE —
-                 a second full-width button under the first read as the primary
-                 download twice (Ian #14). -->
-            <div class="omega-dl-card__actions{% if download_count > 1 %} omega-dl-card__actions--split{% endif %}">
+            <!-- One row per card, so every main button sits on one line: the
+                 first format is the main link, and several formats add an arrow
+                 half whose menu holds the rest, in offer order. -->
+            <div class="omega-dl-card__actions">
               {% if download_count > 0 %}
-                {% for download in platform_downloads %}
-                  {% assign download_name = resolved.downloads.format_names[download[0]] | default: download[0] %}
-                  <a href="{{ download[1] }}" class="btn {% if forloop.first %}btn-adaptive{% else %}btn-outline-adaptive{% endif %}" data-download="true" data-download-name="{{ download_name }}" data-download-kind="{{ site.targets.desktop.downloadKinds[platform.id][download[0]] }}">
-                    <i class="fa-solid fa-download fa-sm me-2"></i>
-                    {{ download_name }}
-                  </a>
-                {% endfor %}
+                {% capture primary_link %}
+                  {% for download in platform_downloads %}
+                    {% assign download_name = resolved.downloads.format_names[download[0]] | default: download[0] %}
+                    <a href="{{ download[1] }}" class="btn btn-adaptive" data-download="true" data-download-name="{{ download_name }}" data-download-kind="{{ site.targets.desktop.downloadKinds[platform.id][download[0]] }}">
+                      <i class="fa-solid fa-download fa-sm me-2"></i>
+                      {{ resolved.downloads.primary_names[platform.id] }}
+                    </a>
+                    {% break %}
+                  {% endfor %}
+                {% endcapture %}
+                {% if download_count > 1 %}
+                  <div class="btn-group omega-dl-card__split">
+                    {{ primary_link }}
+                    <button type="button" class="btn btn-adaptive dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" aria-label="{{ resolved.downloads.other_formats }}"></button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      {% for download in platform_downloads %}
+                        {% if forloop.first %}{% continue %}{% endif %}
+                        {% assign download_name = resolved.downloads.format_names[download[0]] | default: download[0] %}
+                        {% assign download_kind = site.targets.desktop.downloadKinds[platform.id][download[0]] %}
+                        <li>
+                          <a href="{{ download[1] }}" class="dropdown-item" data-download="true" data-download-name="{{ download_name }}" data-download-kind="{{ download_kind }}">
+                            {{ download_name }}
+                            {% if download_kind == 'store' %}<i class="fa-solid fa-arrow-up-right-from-square fa-xs ms-2"></i>{% endif %}
+                          </a>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                {% else %}
+                  {{ primary_link }}
+                {% endif %}
               {% else %}
                 <span class="omega-status w-100 justify-content-center">
                   <span class="omega-dot"></span>
@@ -268,7 +299,7 @@ bands below keep the reveal lane. {% endcomment %}
               {% for type in platform.types %}
                 {% assign config_url = "" %}{% comment %}MAM is parked (#610): site.targets carries no mobile fact{% endcomment %}
                 {% iftruthy config_url %}
-                  <a href="{{ config_url }}" class="omega-dl-store__badge" data-download="true" aria-label="{{ platform.name }}: {{ type.name }}">
+                  <a href="{{ config_url }}" class="omega-dl-store__badge" data-download="true" data-download-name="{{ type.name }}" aria-label="{{ platform.name }}: {{ type.name }}">
                     {% omega_logo platform.store_badge, "brandmarks" %}
                     <span class="omega-dl-store__badge-text">
                       <span class="omega-dl-store__hint">Download on</span>

@@ -39,7 +39,7 @@ function resolveSectionImageFn(newsletterConfig) {
   return method === 'svg' ? generateSvgSection : generateImageSection;
 }
 const { renderMarkdown } = require('./lib/markdown-renderer.js');
-const { escapeHtml, safeUrl } = require('../constants.js');
+const { escapeHtml, safeUrl, senderFrom } = require('../constants.js');
 const { uploadAssets, USE_CDN_URLS, REPO_OWNER, REPO_NAME, RAW_BASE } = require('./lib/image-host.js');
 const { buildPublicConfig } = require('../../../routes/brand/get.js');
 const { writeArticle, publishArticle } = require('../../../libraries/content/ghostii.js');
@@ -579,7 +579,7 @@ async function sendReport(omega, ctx, args, post) {
     return;
   }
 
-  const alertsEmail = `alerts@${brandDomain}`;
+  const alertsEmail = senderFrom('internal', { brandName: omega.config.brand.name || '', domain: brandDomain }).email;
 
   try {
     const email = ctx.email;

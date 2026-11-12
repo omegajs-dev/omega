@@ -508,6 +508,10 @@ usage.addWhitelistKeys(['another-key']);
 // An anonymous key is EXPLICIT — a SEPARATE counter, so a key can never move a
 // signed-in user's own counters into the anonymous store
 await usage.forKey(ctx.request.geolocation.ip).consume('signups', 1, { limit: 5 });
+
+// Another account is EXPLICIT too: a SEPARATE counter on users/{uid}, so that
+// account's plan decides and the use counts against it, never the caller
+await usage.forUser(sellerUid).consume('reviews');
 ```
 
 A feature is defined ONCE in the top-level `features` catalog (name, icon, definition, and the `usage` block that meters it); each product names only its VALUE. Mirrors are declared there too — no call-site mirror API. Full reference: [docs/backend/usage-rate-limiting.md](../../docs/backend/usage-rate-limiting.md).

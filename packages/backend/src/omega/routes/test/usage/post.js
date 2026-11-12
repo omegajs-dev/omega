@@ -4,15 +4,20 @@
  * Signed-in callers count on their own account; anonymous callers count against
  * their IP, which is an EXPLICIT keyed counter
  * ([#647](https://github.com/Omega-JS-Stack/omega/issues/647))
+ * A `uid` counts against that account instead, through usage.forUser()
  */
 module.exports = async ({ ctx, user, data }) => {
   const amount = data.amount;
 
   // Anonymous callers are keyed EXPLICITLY — a key can never silently move a
   // signed-in user's own counters into the anonymous store
-  const usage = user.authenticated
+  let usage = user.authenticated
     ? ctx.usage
     : ctx.usage.forKey(ctx.request.geolocation.ip);
+
+  if (data.uid) {
+    usage = ctx.usage.forUser(data.uid);
+  }
 
   const before = await usage.read('requests');
 
@@ -23,6 +28,7 @@ module.exports = async ({ ctx, user, data }) => {
   ctx.log(`test/usage: Consumed ${amount} requests`, {
     authenticated: user.authenticated,
     key: usage.key,
+    uid: usage.uid,
     before: { used: before.used, left: before.left, day: before.day },
     after: after,
   });
@@ -32,6 +38,7 @@ module.exports = async ({ ctx, user, data }) => {
     amount,
     authenticated: user.authenticated,
     key: usage.key,
+    uid: usage.uid,
     limit: before.limit,
     dayLimit: before.day.limit,
     before: {

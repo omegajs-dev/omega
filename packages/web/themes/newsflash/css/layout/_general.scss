@@ -147,7 +147,7 @@ hr {
   border-top: 0; // the slab's own edge against the paper IS the rule
   color: var(--nf-panel-color);
 
-  // Masthead echo — wordmark-only oversized serif. The minted brandmark is
+  // Masthead echo — wordmark-only oversized serif. The shipped brandmark is
   // ink-on-transparent and would vanish on the slab, so it sits out.
   .omega-nav__brand {
     color: var(--nf-panel-color);

@@ -154,17 +154,10 @@ const tray = {
     };
   },
 
-  // Resolve the runtime tray icon path. Reads from `<projectRoot>/dist/config/icons/<platform>/`
-  // which is populated by `gulp/build-config` using its 3-tier waterfall (consumer config →
-  // consumer convention → @omega.js/desktop bundled). So at runtime we just consume what build-config
-  // already resolved — no need to re-walk the chain (and `__dirname` is unreliable inside
-  // esbuild-bundled main.bundle.js anyway).
-  //
-  // For consumers who skip the gulp build (rare — testing scenarios), we also fall back to
-  // the consumer convention `<projectRoot>/config/icons/<platform>/<file>` directly, matching
-  // tier 2 of the build-time resolver.
-  //
-  // Returns null if nothing is found (caller logs).
+  // The runtime tray icon: what gulp/build-config resolved into dist/config/icons/<platform>/
+  // (config/icons/<platform>/, then config/icons/global/, then the bundled default), so nothing
+  // re-walks that order here, where `__dirname` is unreliable in the bundle. A run that skipped
+  // the build falls back to config/icons/<platform>/<file>. Null when nothing is found.
   _defaultIconPath() {
     // The icon dirs are OMEGA's vocabulary (mac/windows/linux), so the OS is
     // read through the one translation point (#867). Electron runs nowhere else,

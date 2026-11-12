@@ -22,7 +22,7 @@ const BRAND = {
   id: 'acme',
   name: 'Acme',
   url: 'https://acme.test',
-  contact: { email: 'hello@acme.test' },
+  contact: { email: 'support@acme.test' },
   images: {},
 };
 
@@ -107,12 +107,28 @@ function memoryAdmin(seed = {}) {
 }
 
 /**
+ * The account's verified senders: one per SENDERS row, at the contact-email
+ * domain, built by the backend's own `senderFrom`.
+ */
+function rowSenders() {
+  const { SENDERS, senderFrom } = require('../../dist/omega/libraries/email/constants.js');
+  const domain = BRAND.contact.email.split('@')[1];
+
+  return Object.keys(SENDERS).map((key, index) => ({
+    id: 9 + index,
+    from_email: senderFrom(key, { brandName: BRAND.name, domain }).email,
+    verified: true,
+  }));
+}
+
+/**
  * A fake of the two provider APIs. `sendgridSegments` is the account's
  * segment list, `{ key: { id, query } }` (a null query is a segment with no
  * query_dsl); `beehiivSegments` is the publication's, `{ key: id }`. A null
  * list is a listing outage: the call fails with no code, as a 503 does.
+ * `verifiedSenders` is the account's sender list, the row-built one unless given.
  */
-function fakeProviderApi({ sendgridSegments = {}, beehiivSegments = {} } = {}) {
+function fakeProviderApi({ sendgridSegments = {}, beehiivSegments = {}, verifiedSenders = rowSenders() } = {}) {
   const calls = [];
   let nextId = 0;
 
@@ -147,14 +163,7 @@ function fakeProviderApi({ sendgridSegments = {}, beehiivSegments = {} } = {}) {
     }],
     ['POST', /api\.sendgrid\.com\/v3\/marketing\/segments\/2\.0$/, () => ({ id: `seg_temp_${++nextId}` })],
     ['DELETE', /api\.sendgrid\.com\/v3\/marketing\/segments\/2\.0\/[^/?]+$/, () => ({})],
-    // A verified sender for every address the brand sends campaigns from
-    ['GET', /api\.sendgrid\.com\/v3\/verified_senders/, () => ({
-      results: ['offers', 'hello', 'marketing', 'newsletter'].map((local, index) => ({
-        id: 9 + index,
-        from_email: `${local}@${new URL(BRAND.url).hostname}`,
-        verified: true,
-      })),
-    })],
+    ['GET', /api\.sendgrid\.com\/v3\/verified_senders/, () => ({ results: structuredClone(verifiedSenders) })],
     ['POST', /api\.sendgrid\.com\/v3\/marketing\/singlesends$/, () => ({ id: `ss_${++nextId}` })],
     ['PUT', /api\.sendgrid\.com\/v3\/marketing\/singlesends\/[^/]+\/schedule$/, () => ({ send_at: 'now', status: 'scheduled' })],
     ['GET', /api\.beehiiv\.com\/v2\/publications\/[^/]+\/segments/, (url) => listing(beehiivSegments, url, (entries) => ({
@@ -363,6 +372,7 @@ module.exports = {
   BRAND,
   brandConfig,
   memoryAdmin,
+  rowSenders,
   fakeProviderApi,
   withProviderApi,
   campaignCtx,

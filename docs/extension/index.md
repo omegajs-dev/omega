@@ -299,7 +299,7 @@ API references for each subsystem live in `docs/extension/`, beside this guide:
 - [docs/extension/templating.md](templating.md) — `{{ }}` token replacement, available vars, page template
 - [docs/extension/css.md](css.md) — SCSS load paths, framework + theme + project resolution
 - [docs/extension/themes.md](themes.md) — bootstrap / classy / `_template`, variable overrides, dark mode
-- [docs/shared/icons.md](icons.md) — one source icon → all generated sizes, manifest wiring
+- [docs/shared/icons.md](icons.md): one source icon (`config/icon.*`, else the brand's brandmark) → all generated sizes, manifest wiring
 - [docs/extension/defaults.md](defaults.md) — `src/defaults/` system, `FILE_MAP` rules
 - [docs/extension/hooks.md](hooks.md) — `build:pre` / `build:post` lifecycle hooks
 - [docs/extension/translations.md](translations.md) — auto-translate to the configured `translation.languages`

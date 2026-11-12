@@ -105,11 +105,10 @@ module.exports = defineCases({
       },
     },
 
-    // #850: the four schema-less web sections retire. Two of them had readers in
-    // this shared Liquid: `favicon.path` overrode the minted set's folder and
-    // `favicon.theme-color` fed the browser-chrome meta. The minted set is the ONE
-    // favicon source now, and the chrome paints `brand.color`, the one place a
-    // brand states its hex.
+    // Two retired web sections had readers in this shared Liquid: `favicon.path`
+    // overrode the favicon set's folder, `favicon.theme-color` fed the chrome meta.
+    // The shipped set is the ONE favicon source, and the chrome paints
+    // `brand.color`, the one place a brand states its hex.
     {
       name: '#850: theme-color paints brand.color, and no favicon path override survives',
       run: async (ctx) => {

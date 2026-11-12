@@ -256,12 +256,12 @@ const RETIRED_PATHS = {
   },
 
   'targets.web.favicon': {
-    replacement: 'nothing for the path; brand.images.favicon for the source image',
-    why: 'the favicon set is MINTED from the brand images (#850): the manager assets service mints it and the web build bridges it to /assets/images/favicon, so a path override pointed the whole site at an unminted folder; theme-color comes from `brand.color` now, the one place a brand states its hex',
+    replacement: 'nothing for the path; the brand\'s assets/logo/brandmark.svg is the source image',
+    why: 'the web build ships the favicon set at /assets/images/favicon (#850): the target\'s own `src/assets/images/favicon/`, else a set it derives from the brand\'s assets/logo/brandmark.svg, so a path override pointed the whole site at a folder nothing fills; theme-color comes from `brand.color` now, the one place a brand states its hex',
   },
   'targets.web.manifest': {
-    replacement: 'nothing: the minted set ships site.webmanifest',
-    why: 'no reader anywhere in @omega.js/web (#850): the web app manifest that ships is the minted set\'s own site.webmanifest, so every key under this block was a value nothing consulted',
+    replacement: 'nothing: the favicon set ships site.webmanifest',
+    why: 'no reader anywhere in @omega.js/web (#850): the web app manifest that ships is the favicon set\'s own site.webmanifest, so every key under this block was a value nothing consulted',
   },
   'targets.web.icons': {
     replacement: 'the `icon` on the link itself, as Font Awesome classes',

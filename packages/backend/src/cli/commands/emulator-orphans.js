@@ -34,21 +34,11 @@
 // Libraries
 const powertools = require('node-powertools');
 const { isPortFree } = require('@omega.js/config');
+// ONE snapshot of every process on the machine, read once: two `ps` calls describe
+// two moments. STOP_GRACE_MS lives in devkit's process-tree, where the emulator command reads it too,
+// so both grant SIGTERM the same grace.
+const { readProcessTableText, parseProcessTable, STOP_GRACE_MS } = require('@omega.js/devkit/process-tree');
 
-// ONE snapshot of every process on the machine, in the four fields the verdict
-// needs. Read once: two `ps` calls describe two moments, and a number that
-// changed hands between them reads as one process that never existed
-// ([#730](https://github.com/Omega-JS-Stack/omega/issues/730)).
-const PROCESS_TABLE_COMMAND = 'ps -A -o pid=,ppid=,uid=,command=';
-
-// A busy machine prints a few hundred KB of table, and a command line can be
-// long; the default 1MB buffer is a limit this must never bump into.
-const PROCESS_TABLE_MAX_BUFFER = 16 * 1024 * 1024;
-const PROCESS_READ_TIMEOUT_MS = 5000;
-
-// The settle windows, here alone: the emulator command requires this module and
-// reads them, so its stop path and this sweep grant SIGTERM the same grace.
-const STOP_GRACE_MS = 2000;
 const DEFAULT_PORT_RELEASE_TIMEOUT_MS = 5000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
 
@@ -149,27 +139,6 @@ const FAMILY_SHAPES = [
 ];
 
 /**
- * Rows from one `ps -A -o pid=,ppid=,uid=,command=` snapshot.
- *
- * A line that does not read as three numbers and a command is dropped rather
- * than guessed at: a half-parsed row would be a kill order built on nothing.
- * @param {string} text - The raw ps output.
- * @returns {Array<{pid: number, ppid: number, uid: number, command: string}>}
- */
-function parseProcessTable(text) {
-  return String(text || '')
-    .split('\n')
-    .map((line) => /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/.exec(line))
-    .filter((match) => !!match)
-    .map((match) => ({
-      pid: Number(match[1]),
-      ppid: Number(match[2]),
-      uid: Number(match[3]),
-      command: match[4],
-    }));
-}
-
-/**
  * The short name for a family member's command line, for the boot's one line.
  * @param {string} command - Full command line from ps.
  * @returns {string|null} The label, or null when the command is not family.
@@ -231,27 +200,6 @@ function isOrphanedEmulatorFamily(row, uid) {
  */
 function publishedPorts(command) {
   return [...String(command || '').matchAll(/--[\w-]*port[=\s](\d+)/g)].map((match) => Number(match[1]));
-}
-
-/**
- * One `ps -A` snapshot of the whole machine.
- *
- * A failed read answers with NOTHING, never with a partial table: no rows means
- * no candidates, and a boot that cannot see the machine must not send signals.
- * @returns {string} The raw ps output, or '' when it could not be read.
- */
-function readProcessTable() {
-  const { execSync } = require('child_process');
-
-  try {
-    return execSync(PROCESS_TABLE_COMMAND, {
-      encoding: 'utf8',
-      maxBuffer: PROCESS_TABLE_MAX_BUFFER,
-      timeout: PROCESS_READ_TIMEOUT_MS,
-    });
-  } catch (error) {
-    return '';
-  }
 }
 
 /**
@@ -370,7 +318,7 @@ async function reapMachineOrphans({
   // which is the right answer on the one platform these emulators do not
   // reparent to PID 1 on.
   uid = typeof process.getuid === 'function' ? process.getuid() : undefined,
-  readTable = readProcessTable,
+  readTable = readProcessTableText,
   readProcess = readProcessRow,
   kill = process.kill,
   isFree = isPortFree,
@@ -438,8 +386,7 @@ module.exports = {
   describeFamilyMember: describeFamilyMember,
   reapMachineOrphans: reapMachineOrphans,
   waitForPortsReleased: waitForPortsReleased,
-  readProcessTable: readProcessTable,
+  readProcessTableText: readProcessTableText,
   readProcessRow: readProcessRow,
   DEFAULT_POLL_INTERVAL_MS: DEFAULT_POLL_INTERVAL_MS,
-  STOP_GRACE_MS: STOP_GRACE_MS,
 };

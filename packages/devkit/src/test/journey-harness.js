@@ -17,11 +17,12 @@ const path = require('node:path');
 const http = require('node:http');
 const https = require('node:https');
 const { isDeepStrictEqual } = require('node:util');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const { afterExit } = require('./boot-child.js');
 const { scrubCredentialEnv } = require('./credential-scrub.js');
 const { targetOfType } = require('./target-of-type.js');
 const { resolvePackageRealDir } = require('../local.js');
+const processTree = require('../process-tree.js');
 const { missingMachineTools, machineToolLine } = require('../machine-tools.js');
 const { ENV_FILE } = require('../env-file.js');
 const { TARGET_TYPE_TWIN } = require('../verbs.js');
@@ -594,15 +595,12 @@ async function stopGroup(child, graceMs = 20000) {
  * where `ps` is unavailable, and the caller skips the check.
  */
 function emulatorOrphans() {
-  const ps = spawnSync('ps', ['ax', '-o', 'pid=,ppid=,command='], { encoding: 'utf8' });
-  if (ps.error || ps.status !== 0) return null;
-  return ps.stdout.split('\n').reduce((orphans, line) => {
-    const match = line.match(/^\s*(\d+)\s+1\s+(.*)$/);
-    if (match && /firebase emulators:start|cloud-firestore-emulator|pubsub-emulator/.test(match[2])) {
-      orphans.push({ pid: Number(match[1]), command: match[2] });
-    }
-    return orphans;
-  }, []);
+  // A machine always has processes, so an empty read is one that failed.
+  const text = processTree.readProcessTableText();
+  if (!text) return null;
+  return processTree.parseProcessTable(text)
+    .filter((row) => row.ppid === 1 && /firebase emulators:start|cloud-firestore-emulator|pubsub-emulator/.test(row.command))
+    .map((row) => ({ pid: row.pid, command: row.command }));
 }
 
 module.exports = { JourneyRun, TIMEOUTS, checkPreconditions, latestRunFile, discoverBrandTargets };

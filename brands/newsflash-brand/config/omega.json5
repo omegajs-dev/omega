@@ -38,8 +38,8 @@
       country: "United States",
     },
     images: {
-      // Served by the web build's static channel: the minted set under
-      // .omega/assets is bridged to /assets/images/{favicon,brand} at build.
+      // Served by the web build's static channel: the target's own files, else
+      // derived from assets/logo/brandmark.svg at build.
       brandmark: "/assets/images/brand/brandmark.png",
       social: "/assets/images/brand/social.png",
     },

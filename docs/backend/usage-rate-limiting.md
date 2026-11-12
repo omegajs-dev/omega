@@ -75,6 +75,7 @@ Pacing by day is the **default**. `usage: { pace: false }` on the catalog entry 
 | `consume(feature, amount = 1, options?)` | async — check, count, write. Throws a 429 over limit; returns `{ used, left, day: { used, left } }` |
 | `read(feature)` | async — the same numbers plus `limit`, `planLimit`, `override`, `day.limit`, without counting |
 | `forKey(key)` | A SEPARATE counter for an anonymous key (see below) |
+| `forUser(uid)` | A SEPARATE counter for another account, `users/{uid}` (see below) |
 | `limits()` / `counters()` | What the counter already KNOWS — the `omega-properties` header's `usage.limits` / `usage.current`; empty until it has resolved |
 | `getProduct(id?)` | The account's resolved product |
 | `addWhitelistKeys(keys)` | API keys that never get refused (they still count) |
@@ -94,6 +95,21 @@ await ctx.usage.forKey(ctx.request.geolocation.ip).consume('marketing-subscribe'
 Keyed counters are **day-only in practice**: the cron wipes the whole anonymous store daily, so an anonymous monthly limit cannot exist.
 
 **`ctx.usage` refuses a signed-out caller.** `consume`/`read` on a request with no uid throws `usage: no signed-in account to count against; use usage.forKey(<key>) for anonymous callers`. It does not fall back to the anonymous store: routing there silently would be the very bug `forKey` exists to remove, and counting on the user doc would write `users/null` — one document every anonymous caller on earth would share.
+
+## Counting against another account
+
+```js
+await ctx.usage.forUser(sellerUid).consume('reviews');   // the seller's plan, the seller's month
+```
+
+- `forUser(uid)` is for a paid feature that runs for one account inside a request made by another: a buyer submits a post and the seller's AI reviewer reads it, so the seller's plan decides whether it runs and the use counts against the seller.
+- It returns a **separate** counter bound to `users/{uid}`, and everything above works on it the same way: that account's plan, its per-user override, the month and day checks, its mirrors.
+- The whitelist is checked against that account's own API key, so a whitelisted caller gets no free uses on someone else's counter.
+- Like `forKey`, the call is synchronous and does no I/O; the account is read once, on the first `consume`/`read`. A missing or non-string uid throws at once.
+- A uid with no document throws a **404**, `usage: no account at users/<uid>`, and writes nothing: the counter never heals or creates an account. A route that wants to skip a missing account catches it.
+- **The caller's roles are not checked.** The call works for any caller, a signed-out one included, so the route decides who may charge whom.
+- **Take the uid from a record the route trusts** (the post's seller, the team's owner), never from the request body: `forUser` lets its caller spend that account's quota.
+- The `omega-properties` header and analytics keep reporting the caller's own counter (`ctx.usage`), never a `forUser` one.
 
 ## Mirrors are declared in the catalog
 

@@ -1,18 +1,13 @@
 /**
- * The responsive image matrix (src/imagemin.js) — the UJM imagemin
- * successor, pinned against REAL encoded images:
+ * The responsive image matrix (src/imagemin.js), against REAL encoded images:
  *   - 8 outputs per jpg/jpeg/png (320/640/1024/original × source-format +
  *     webp), quality 80, upscaling allowed so every variant name exists
- *   - gif/svg (and the minted favicon dir) ship verbatim, byte-identical
+ *   - gif/svg (and the favicon dir) ship verbatim, byte-identical
  *   - uppercase extensions lowercase safely on case-insensitive filesystems
- *   - content-addressed cache: byte-identical outputs on a warm rerun,
- *     stale entries prune when sources disappear
- *   - a file sharp can't decode warns and stays verbatim — never a failed build
- *   - devImageFallback: dev-server middleware rewrites missing variant URLs
- *     to the verbatim original (build-time markup works in dev)
- *
- * The no-imagemin path (buildSite without the option) is pinned by
- * static.test.js — its fake text-byte "pngs" would fail any decode.
+ *   - content-addressed cache: byte-identical on a warm rerun, stale entries pruned
+ *   - a file sharp can't decode warns and stays verbatim, never a failed build
+ *   - devImageFallback: dev rewrites missing variant URLs to the original
+ * The no-imagemin path is pinned by static.test.js (its text-byte "pngs" never decode).
  */
 const fs = require('node:fs');
 const os = require('node:os');
@@ -123,7 +118,7 @@ module.exports = defineCases({
     },
 
     {
-      name: 'imagemin: gif/svg and the minted favicon dir ship verbatim, byte-identical',
+      name: 'imagemin: gif/svg and the favicon dir ship verbatim, byte-identical',
       run: (ctx) => {
         for (const rel of ['anim.gif', 'icon.svg', path.join('favicon', 'favicon-32x32.png')]) {
           ctx.expect(jetpack.read(path.join(imagesDir, rel), 'buffer'), `${rel} untouched`).toEqual(jetpack.read(path.join(sourceDir, rel), 'buffer'));
@@ -205,7 +200,7 @@ module.exports = defineCases({
           outDir,
           clientEntry: path.join(PKG, '..', 'client', 'src', 'index.js'),
           skipPurge: true,
-          staticDirs: resolveStaticDirs({ brandRoot: null, assetsDir: consumerAssets }),
+          staticDirs: await resolveStaticDirs({ brandRoot: null, assetsDir: consumerAssets }),
           imagemin: { cacheDir: path.join(base, 'cache') },
         });
 

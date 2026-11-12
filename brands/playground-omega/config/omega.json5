@@ -27,8 +27,8 @@
     url: "https://playground.omegajs.dev",
     contact: {
       // Playground subdomain (never the real omegajs.dev): the sendgrid
-      // sender derives offers@<this domain> and auto-verifies off the
-      // subdomain's own domain authentication.
+      // senders, one per backend sender (hello@, offers@, ...), sit at this
+      // domain and auto-verify off the subdomain's own domain authentication.
       email: "support@playground.omegajs.dev",
     },
     // PLACEHOLDER address (CAN-SPAM footer) — Ian's real business address at launch.
@@ -41,8 +41,8 @@
       country: "United States",
     },
     images: {
-      // Served by the web build's static channel: the minted set under
-      // .omega/assets is bridged to /assets/images/{favicon,brand} at build.
+      // Served by the web build's static channel: the target's own files, else
+      // derived from assets/logo/brandmark.svg at build.
       // SITE-RELATIVE on purpose — each surface absolutizes per environment
       // (dev = localhost, prod = brand.url; emails/external always brand.url)
       brandmark: "/assets/images/brand/brandmark.png",

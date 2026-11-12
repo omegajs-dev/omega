@@ -44,14 +44,14 @@ const PROCESSING_RULES = {
 };
 
 /**
- * Social profile icons — square brandmark on a white background for
- * profile pictures (YouTube, Twitter, …).
+ * Social profile icons: the square brandmark on a white background for
+ * profile pictures. The padding and the white are the shared recipe's
+ * (`makeSocialSquare`); `svgSize` is the wrapped SVG's canvas.
  */
 const SOCIAL_ICON_CONFIG = {
   outputDir: 'social/brandmark',
   sizes: [512, 1024, 2048],
-  padding: 0.15, // 15% padding on each side
-  background: { r: 255, g: 255, b: 255, alpha: 1 },
+  svgSize: 1024,
 };
 
 /**
@@ -153,18 +153,4 @@ const ICON_PLATFORMS = {
   windows: { format: 'ico' },
 };
 
-/**
- * Web favicon set.
- */
-const FAVICON_CONFIG = {
-  outputDir: 'favicon',
-  files: [
-    { name: 'favicon-16x16.png', size: 16 },
-    { name: 'favicon-32x32.png', size: 32 },
-    { name: 'apple-touch-icon.png', size: 180 },
-    { name: 'android-chrome-192x192.png', size: 192 },
-    { name: 'android-chrome-512x512.png', size: 512 },
-  ],
-};
-
-module.exports = { PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG, ICON_PLATFORMS, FAVICON_CONFIG };
+module.exports = { PROCESSING_RULES, SOCIAL_ICON_CONFIG, TEMPLATE_CONFIG, ICON_PLATFORMS };

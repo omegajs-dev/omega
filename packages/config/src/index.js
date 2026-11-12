@@ -34,7 +34,7 @@ const { ENV_SCHEMA, ENV_GROUPS, DELIVERY_MODES, envFileGroups, envSchemaEntry, e
 const { WORKFLOW_OWNED_KEYS, deliveredKeys, workflowSecretKeys, envFileKeys, artifactEnvValues, bakeKeys, publishSecretKeys, renderSecretsBlock, renderEnvFileKeys } = require('./env-delivery.js');
 const { ENV_VERBS, SHIP_SERVICE, missingEnvKeys, baseMissingKeys, missingConfigKeys, serviceAskedKeys } = require('./env-needs.js');
 const { resolveCompany, recordBrand, readRegistry, registryFile, COMPANY_DIR, COMPANY_RESOLVED_FILE, COMPANY_SELF } = require('./company.js');
-const { MINT_ROOT, LOGO_SOURCES_DIR, BRANDMARK_SOURCE, MINT_BRIDGE, FAVICON_DEST, BRANDMARK_SVG_DEST, BRANDMARK_PNG_DEST, mintBridgeSources, hasLogoSources } = require('./mint-bridge.js');
+const { MINT_ROOT, LOGO_SOURCES_DIR, BRANDMARK_SOURCE, FAVICON_DEST, BRANDMARK_SVG_DEST, BRANDMARK_PNG_DEST, SOCIAL_PNG_DEST, hasLogoSources } = require('./mint-bridge.js');
 const { applyConfigEdits, writeConfigValues, writeConfigFileValues, applyConfigRemovals, removeConfigValues, removeConfigFileValues, getAtPath } = require('./edit.js');
 const { schemaDefaults, missingDefaults, defaultComments, planMerge, setAtPath } = require('./defaults.js');
 const { applyCanonicalOrder, CANONICAL_TOP_LEVEL_ORDER } = require('./order.js');
@@ -166,17 +166,15 @@ module.exports = {
   // company tree to resolve from
   COMPANY_RESOLVED_FILE,
 
-  // The ONE list of minted identity files a site ships: the web build copies
-  // it and the deploy snapshot carries it, so the runner builds what the
-  // laptop built
+  // The brand's logo names: the committed sources, the manager's mint root,
+  // and the site paths a web build ships the brand image at
   MINT_ROOT,
   LOGO_SOURCES_DIR,
   BRANDMARK_SOURCE,
-  MINT_BRIDGE,
   FAVICON_DEST,
   BRANDMARK_SVG_DEST,
   BRANDMARK_PNG_DEST,
-  mintBridgeSources,
+  SOCIAL_PNG_DEST,
   hasLogoSources,
 
   // Writeback (comment-preserving edits + canonical top-level key order)

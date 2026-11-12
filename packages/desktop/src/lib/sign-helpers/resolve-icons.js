@@ -1,31 +1,25 @@
-// Resolve icon paths via a convention-only waterfall, copy resolved files into
-// dist/config/icons/, and return the paths electron-builder.yml needs.
-//
-// Resolution order per slot, per platform (most specific wins):
-//   1. <projectRoot>/config/icons/<platform>/<file>       — platform-specific override
-//   2. <projectRoot>/config/icons/global/<file>           — universal fallback (shared by all platforms)
-//   3. <projectRoot>/config/icons/windows/<file>          — Linux-only extra: legacy Linux→Windows fallback
-//   4. <@omega.js/desktop>/dist/config/icons/<platform>/<file>           — @omega.js/desktop bundled default
-//
-// Note the DMG slot is macOS-only by definition. Its lookup chain skips step 3
-// entirely and step 2 only checks `global/` for the DMG file specifically (which
-// almost never exists — a "global DMG background" makes no sense).
-//
-// Retina (@2x) variants are DERIVED. Consumers ship ONE file at the @2x (native) size.
-// @omega.js/desktop downscales it to write the @1x sibling. So `tray.png` is the 32x32 native retina
-// source (consumer-facing input name), and @omega.js/desktop emits both `trayTemplate.png` (16x16)
-// and `trayTemplate@2x.png` (32x32) into `dist/config/icons/mac/`. The output name
-// diverges from the input on macOS because the `Template` suffix is a system magic
-// marker that triggers auto-inversion in dark mode. Same retina derivation for
-// `dmg.png` (1080x760 native → emits 540x380 + 1080x760, no name change).
-//
-// Special fallbacks:
-//   - Windows tray slot falls back to the Windows app icon if no tray source resolves.
-//   - Linux uses the Windows resolved paths if its own chain produces nothing.
+/**
+ * Resolve every icon slot per platform, copy (or derive) the winner into
+ * dist/config/icons/, and return the paths electron-builder.yml needs.
+ *
+ * The order is devkit's resolveBrandImage: config/icons/<platform>/, then
+ * config/icons/global/, then (Linux only) config/icons/windows/; the app slot
+ * then takes the brand's assets/logo/brandmark.svg, rasterized; then the bundled
+ * default. Retina slots take the @2x source and derive the @1x sibling, and the
+ * mac tray is written as trayTemplate.png for dark-mode inversion. A missing
+ * Windows tray takes the Windows app icon; Linux takes the Windows paths.
+ * The full contract: docs/desktop/icons.md.
+ */
 
 const path    = require('path');
 const jetpack = require('fs-jetpack');
 const sharp   = require('sharp');
+const { resolveBrandImage } = require('@omega.js/devkit/brand-image');
+const { rasterizeBrandmark } = require('@omega.js/devkit/brand-image-raster');
+
+// The one slot the brand's brandmark can fill, and the side it is rasterized to.
+const BRANDMARK_SLOT = 'app';
+const BRANDMARK_ICON_SIZE = 1024;
 
 // Slot defs: per platform, a list of { slot, file, outFile, retina } entries.
 //   slot    = key under resolved[platform] (e.g. 'app' → resolved.mac.app)
@@ -63,41 +57,23 @@ function retinaSibling(p) {
   return path.join(dir, `${base}@2x${ext}`);
 }
 
-// Find the source file for a slot on a platform via the convention waterfall.
-// Most-specific-wins: platform-specific override beats global fallback beats
-// bundled default. Linux gets an extra step: it falls back to the Windows
-// consumer dir before going to bundled defaults (legacy compat — Linux apps
-// historically reuse Windows assets).
-function findSource({ slot, file }, platform, opts) {
-  const { projectRoot, emDefaultsRoot } = opts;
+// Resolve a slot on a platform through the shared brand-image order: the
+// consumer's own files (platform, then global, then on Linux the Windows dir),
+// then the brand's brandmark for the app slot, then the bundled default (Linux
+// trying the Windows default too). Answers resolveBrandImage's { path, from }.
+function resolveSource({ slot, file }, platform, opts) {
+  const { projectRoot, emDefaultsRoot, brandRoot = null } = opts;
+  const iconsDir = path.join(projectRoot, 'config', 'icons');
+  const dirs = platform === 'linux' ? [platform, 'windows'] : [platform];
 
-  // 1. Platform-specific override.
-  const platformPath = path.join(projectRoot, 'config', 'icons', platform, file);
-  if (jetpack.exists(platformPath)) return platformPath;
+  const own = [path.join(iconsDir, platform, file), path.join(iconsDir, 'global', file)];
+  if (platform === 'linux') own.push(path.join(iconsDir, 'windows', file));
 
-  // 2. Universal fallback (shared by all platforms). Skip for macOS-only slots
-  // like `dmg` where a global file makes no sense — but we still allow it (if
-  // someone REALLY wants a global dmg.png, fine; we don't enforce semantics).
-  const globalPath = path.join(projectRoot, 'config', 'icons', 'global', file);
-  if (jetpack.exists(globalPath)) return globalPath;
+  const fallback = dirs
+    .map((dir) => path.join(emDefaultsRoot, 'icons', dir, file))
+    .find((candidate) => jetpack.exists(candidate) === 'file') || null;
 
-  // 3. Linux-only: legacy fallback through Windows consumer dir.
-  if (platform === 'linux') {
-    const winFallback = path.join(projectRoot, 'config', 'icons', 'windows', file);
-    if (jetpack.exists(winFallback)) return winFallback;
-  }
-
-  // 4. @omega.js/desktop bundled default.
-  const bundled = path.join(emDefaultsRoot, 'icons', platform, file);
-  if (jetpack.exists(bundled)) return bundled;
-
-  // Linux gets one more shot at bundled defaults via the Windows chain.
-  if (platform === 'linux') {
-    const bundledWin = path.join(emDefaultsRoot, 'icons', 'windows', file);
-    if (jetpack.exists(bundledWin)) return bundledWin;
-  }
-
-  return null;
+  return resolveBrandImage({ own, brandRoot: slot === BRANDMARK_SLOT ? brandRoot : null, fallback });
 }
 
 // Downscale an @2x source to its @1x sibling. Source is written as the @2x output,
@@ -121,7 +97,8 @@ async function emitRetinaPair(src, dest) {
 
 // Resolve all icons, copy into dist/config/icons/, return the wiring object that
 // build-config consumes.
-async function resolveAndCopy({ config, projectRoot, distRoot, emDefaultsRoot }) {
+// `brandRoot` is null for a framework used alone, which skips the brandmark step.
+async function resolveAndCopy({ config, projectRoot, distRoot, emDefaultsRoot, brandRoot = null }) {
   const distIconsRoot = path.join(distRoot, 'config', 'icons');
   jetpack.dir(distIconsRoot);
 
@@ -131,14 +108,17 @@ async function resolveAndCopy({ config, projectRoot, distRoot, emDefaultsRoot })
   // @2x; @omega.js/desktop emits both <slot>.png (downscaled) and <slot>@2x.png (the source) into dist.
   for (const platform of Object.keys(SLOTS)) {
     for (const def of SLOTS[platform]) {
-      const src = findSource(def, platform, { projectRoot, emDefaultsRoot });
+      const { path: src, from } = resolveSource(def, platform, { projectRoot, emDefaultsRoot, brandRoot });
       if (!src) continue;
 
       const outFile = def.outFile || def.file;
       const dest = path.join(distIconsRoot, platform, outFile);
       jetpack.dir(path.dirname(dest));
 
-      if (def.retina) {
+      if (from === 'brand') {
+        await rasterizeBrandmark({ source: src, outFile: dest, size: BRANDMARK_ICON_SIZE });
+        resolved[platform][def.slot] = dest;
+      } else if (def.retina) {
         const { ref1x, ref2x } = await emitRetinaPair(src, dest);
         resolved[platform][def.slot]            = ref1x;
         resolved[platform][`${def.slot}2x`]     = ref2x;
@@ -167,7 +147,6 @@ async function resolveAndCopy({ config, projectRoot, distRoot, emDefaultsRoot })
 module.exports = {
   SLOTS,
   retinaSibling,
-  findSource,
   emitRetinaPair,
   resolveAndCopy,
 };

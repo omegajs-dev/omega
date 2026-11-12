@@ -1,18 +1,15 @@
 /**
- * @omega.js/backend's marketing SSOT — the FIELDS + SEGMENTS dictionaries that
- * define every custom field and segment @omega.js/backend expects in the marketing
- * providers (SendGrid, Beehiiv), plus GROUP_KEYS, the unsubscribe groups its
- * send path names. Required straight from the @omega.js/backend
- * workspace package so the definitions can never drift from the code that
- * consumes them at runtime (omega-manager climbed the filesystem into the
- * sibling repo for the same reason — this is the same SSOT, resolved
- * properly through the workspace).
- *
- * omega-manager also carried an OMEGA-owned `import_batch` field here; its
- * only writer is the legacy-contact import script, which hasn't ported —
- * the field rides that port.
+ * @omega.js/backend's marketing SSOT: the FIELDS + SEGMENTS dictionaries that
+ * define every custom field and segment the backend expects in the marketing
+ * providers (SendGrid, Beehiiv), GROUP_KEYS (the unsubscribe groups its send
+ * path names) and SENDERS (the senders it sends from). Required straight from
+ * the @omega.js/backend workspace package, so the definitions can never drift
+ * from the code that consumes them at runtime.
  */
-const { FIELDS, SEGMENTS, GROUP_KEYS, fieldsForProvider } = require('@omega.js/backend/lib/email-constants');
+const { FIELDS, SEGMENTS, GROUP_KEYS, SENDERS, senderFrom, fieldsForProvider } = require('@omega.js/backend/lib/email-constants');
+
+// The sender keys, one per SENDERS row; senderFrom(key, { brandName, domain }) answers each one's address and name
+const BACKEND_SENDERS = Object.keys(SENDERS);
 
 // Array shapes for handlers that iterate
 const BACKEND_FIELDS = Object.entries(FIELDS).map(([name, field]) => ({
@@ -45,4 +42,4 @@ function segmentsFor(provider) {
   return BACKEND_SEGMENTS.filter((segment) => !segment.skip.includes(provider));
 }
 
-module.exports = { BACKEND_FIELDS_MAP: FIELDS, BACKEND_FIELDS, BACKEND_SEGMENTS, BACKEND_GROUP_KEYS: GROUP_KEYS, fieldsFor, segmentsFor };
+module.exports = { BACKEND_FIELDS_MAP: FIELDS, BACKEND_FIELDS, BACKEND_SEGMENTS, BACKEND_GROUP_KEYS: GROUP_KEYS, BACKEND_SENDERS, senderFrom, fieldsFor, segmentsFor };

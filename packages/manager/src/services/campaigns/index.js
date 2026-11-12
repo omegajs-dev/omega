@@ -1,20 +1,14 @@
 /**
- * Campaigns service (SendGrid provider) — the brand's email-marketing infrastructure: domain
- * authentication (DKIM/SPF CNAMEs written via Cloudflare), link branding for
- * the emailurl host (validated, then the CNAME flips proxied), a verified sender
- * for Single Sends, the brand's marketing list, the unsubscribe groups
- * @omega.js/backend sends through, @omega.js/backend's custom fields and
- * segments (from @omega.js/backend's SSOT), and the account-global Event
- * Webhook pointed at the parent @omega.js/backend's forwarder.
+ * Campaigns service (SendGrid provider): the brand's email-marketing infrastructure. Domain
+ * authentication (DKIM/SPF CNAMEs via Cloudflare), link branding for the emailurl host
+ * (validated, then the CNAME flips proxied), a verified sender per backend sender for Single
+ * Sends, the marketing list, and @omega.js/backend's unsubscribe groups, custom fields and
+ * segments (from its SSOT) and account-global Event Webhook (at the parent backend's forwarder).
  *
- * Runs after cloudflare (the zone must exist for the DKIM records). The
- * whole service reconciles one SendGrid account per brand-or-company — the
- * groups/fields/segments/webhook operations converge to the same result when
- * sibling brands share the account.
- *
- * Auth: SENDGRID_API_KEY in the brand .env; the event-webhook operation
- * additionally needs OMEGA_WEBHOOK_KEY, which the setup MINTS through the
- * shared contract (it is OMEGA's own key, #635). No API key → clean skip.
+ * Runs after cloudflare (the zone must exist for the DKIM records). One SendGrid account per
+ * brand-or-company: groups, fields, segments and webhook converge when sibling brands share it.
+ * Auth: SENDGRID_API_KEY in the brand .env; the webhook also needs OMEGA_WEBHOOK_KEY, OMEGA's own
+ * key, which the setup MINTS through the shared contract. No API key: a clean skip.
  */
 const { chosenProvider, defaultAddressReason, emailProviderForRole } = require('@omega.js/config');
 

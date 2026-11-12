@@ -31,8 +31,9 @@ const MAX_FILES_SHOWN = 10;
 // mounts its routes under /omega (packages/backend route prefix)
 const API_HEALTH_PATH = '/omega/health';
 
-// The identity files a deployed site serves from the brand's minted set: the
-// root favicon browsers probe with no link tag, and the bridged raster brandmark.
+// The identity files a deployed site serves, the target's own or derived by
+// its build from the brand's brandmark: the root favicon browsers probe with no
+// link tag, and the raster brandmark.
 const BRAND_ASSET_PATHS = ['/favicon.ico', `/${BRANDMARK_PNG_DEST}`];
 
 const FETCH_HEADERS = {
@@ -338,10 +339,10 @@ async function checkHomepage(recorder, entry, ctx) {
 }
 
 /**
- * Brand-asset check: a deployed site whose brand has logo sources serves its
- * minted identity, so a snapshot that left the set behind fails here naming the
- * URL instead of shipping a site with no logo. Runs once the homepage is live;
- * a dry run lists the probes.
+ * Brand-asset check: a deployed site whose brand has a brandmark serves the
+ * favicon and raster brandmark (its own, or derived from it), so a build that left
+ * them out fails here naming the URL instead of shipping a site with no logo.
+ * Runs once the homepage is live; a dry run lists the probes.
  */
 async function checkBrandAssets(recorder, entry, ctx) {
   if (!hasLogoSources(ctx.brandRoot)) return;

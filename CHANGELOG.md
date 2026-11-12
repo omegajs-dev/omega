@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - [#212](../../issues/212) - `npx omega test --lane=stripe-live`: an opt-in lane running the payment pipeline against REAL Stripe test-mode events, forwarded by `stripe listen`. Opens only for an `sk_test_` secret resolved through the one env reader, else prints one skip line. Idempotent, tagged product/price fixtures.
 - [#212](../../issues/212) - A test dispute provider, so a chargeback is provable end to end: an alert matches by amount and card against the emulator's records, then issues the cancel as the `customer.subscription.deleted` event Stripe's own cancel produces. Refuses in production.
 - [#212](../../issues/212) - `POST /payments/intent` takes `simulate: 'abandon'` - the session is created and no webhook is fired, which is what an abandoned checkout IS. Test-provider only, never persisted.
+- [#1114](../../issues/1114) - `ctx.usage.forUser(uid)` counts a feature against another account: its plan, override, monthly and daily checks and mirrors, inside a request made by someone else. A uid with no account throws a 404 and writes nothing. The caller's roles are not checked; the route decides.
 
 ### Changed
 - [#1011](../../issues/1011) - Each email provider's facts live in one frozen row in config (`email-providers.js`): its role, env key, native fields and operations. Callers reach a provider through its role (`campaigns`, `newsletter`), the per-field `skip` lists are gone, and an unknown role word in `providers` fails by name.
@@ -23,12 +24,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - [#1147](../../issues/1147) - Before each deploy the snapshot chain is re-rooted on GitHub's side through the git data API: the deploy ref's tip becomes a parentless copy of its own tree and the new snapshot chains on it, so the ref holds one root, the latest snapshot and any admin publish since.
 - [#830](../../issues/830) - Jekyll-era template filters take `omega_*` names (`omega_slugify`, `omega_date_xmlschema`, `omega_where` and the rest). An old name fails the build naming its replacement, the `compat-filters` rule of `omega migrate` rewrites them, and `omega_jsonify` is compact by default (pass an indent for pretty output).
 - [#1084](../../issues/1084) - The `omega:init` skill ends on one commit holding the scaffold, made once the local site answers and before any port or feature work, so every brand has a clean starting point.
+- [#1168](../../issues/1168) - Each download card keeps one button row: a platform with several formats shows a split button whose main half downloads the first format and whose arrow half opens a menu of the rest. The click report names the format, not the button's words.
+- [#1066](../../issues/1066) - A target lacking its own brand image takes the brand's `assets/logo/brandmark.svg`: web derives its favicon set, brandmark and social image (cached by hash), desktop its app icon, extension its icon sizes. The mint bridge, its CI gate, the snapshot's mint files and the manager's `favicons` operation are gone.
 - [#609](../../issues/609) - The playground carries four `_alternatives` fixtures so /alternatives and its comparison pages are checkable, and drops both its hand-written `download` map (derived) and its `translation.exclude` list (framework-owned).
 
 ### Fixed
 - [#947](../../issues/947) - A desktop app that quits inside its `second-instance` handler no longer strands the next launch: the quit waits for the forwarded launch to exit (5 second limit), and a boot that stalls for 60 seconds logs its last step and exits.
 - [#1161](../../issues/1161) - One newsletter run creates one Beehiiv post: `sendCampaign` owns the publish, and the generator returns `contentTags` and a `report` instead of posting itself.
 - [#1162](../../issues/1162) - The monthly re-engagement email carries its text and goes only to the campaigns provider, which holds the engagement segments.
+- [#1167](../../issues/1167) - The manager makes one verified SendGrid sender per backend sender, nicknamed `{brand name} ({key})`, so a campaign can send from `hello@`, `newsletter@` or any sender the backend names. One function, `senderFrom`, builds each sender's address and name for both sides.
 - [#1163](../../issues/1163) - A campaign whose segment key resolves to nothing, or whose audience resolves to nobody, fails with a coded 400 naming the key, and nothing is sent. A multi-line segment query is read whole.
 - [#1149](../../issues/1149) - The manager's edge email-ask suite reads an answered prompt by either tick glyph the prompt library draws, so its seven cases pass under a plain `TERM=linux` terminal as well as under `xterm-256color`.
 - [#1169](../../issues/1169) - A DNS server failure (`ESERVFAIL`) no longer blocks an email address: the `dns` check is skipped for it, like any other network error. A missing domain or missing mail records still block.
@@ -36,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - [#769](../../issues/769) - Windows hosts get answers, not crashes: one cross-platform PATH probe (`where`/`which`) behind every mkcert, nodemon and Stripe-CLI check, mkcert and openjdk install hints that branch per platform instead of always saying `brew`, every shelled-out child through the host's own shell, and no `sleep` or `lsof` assumed.
 - [#212](../../issues/212) - The trial-lapse sweep re-reads and writes in ONE transaction, and counts a same-second webhook write as newer. A provider's own trial-end event landing in the sweep's window, or inside its read's own second, was silently written over.
 - [#212](../../issues/212) - The four test processors write `metadata.created`/`completed` like the webhook route, not `received`/`processed`. Their synthetic events handed the pipeline's staleness clock nothing and rode a now-fallback as if freshly arrived.
+- [#1122](../../issues/1122) - A test file whose process never exits no longer holds its lane: past `fileTimeout` (ten minutes) the runner ends it and every process under it, and fails it as `file deadline`. A suite's `setup`, `cleanup` and each `after` step time out like a case; a timed-out `cleanup` fails the run.
+- [#1066](../../issues/1066) - The web app manifest's icon paths are written relative to the manifest, so they name the shipped icons. They pointed at the site root, where no file ships.
 
 ## [0.57.0] - 2026-11-04
 

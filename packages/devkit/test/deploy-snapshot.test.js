@@ -196,13 +196,6 @@ function treeOf(bare, ref) {
   return run('git', ['ls-tree', '-r', '--name-only', ref], bare).trim().split('\n').sort();
 }
 
-// ─── The minted favicon and logo set ───
-
-/** The paths a ref's tree carries under .omega/, sorted. */
-function mintedIn(bare, ref) {
-  return treeOf(bare, ref).filter((file) => file.startsWith('.omega/'));
-}
-
 // ─── The staged set rides by force ───
 
 /** Push the fixture brand with the staged set a linked deploy requires. */
@@ -766,24 +759,20 @@ module.exports = defineCases({
     },
 
     {
-      name: 'the minted favicon folder and the three bridged files ride, nothing else under .omega/ (#1027)',
+      name: 'the pushed tree holds the tracked brandmark and no path under .omega/, a full manager mint on disk included',
       run: async (ctx) => {
         const { repo, brandRoot, bare } = buildFixture();
-        const status = () => run('git', ['status', '--porcelain'], repo);
-        const before = status();
+        jetpack.write(path.join(brandRoot, 'assets', 'logo', 'brandmark.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>\n');
+        run('git', ['add', '-A'], repo);
+        run('git', ['commit', '-qm', 'brandmark'], repo);
 
+        // What the manager's assets service leaves in the ignored folder; none of it is a build input
         for (const relative of [
           'assets/favicon/favicon.ico',
-          'assets/favicon/favicon-32x32.png',
           'assets/favicon/site.webmanifest',
           'assets/logo/brandmark/color-x.svg',
           'assets/logo/brandmark/color-512.png',
           'assets/social/brandmark/color-1024.png',
-          // The rest of the mint stays home: the ladders, the app icons, the state file
-          'assets/logo/brandmark/color-256.png',
-          'assets/logo/brandmark/black-x.svg',
-          'assets/social/brandmark/color-512.png',
-          'assets/icons/icon.icns',
           'state.json',
         ]) {
           jetpack.write(path.join(brandRoot, '.omega', relative), 'minted\n');
@@ -791,29 +780,9 @@ module.exports = defineCases({
 
         await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []), fetchFn: mirrorApi(bare).fetchFn });
 
-        ctx.expect(mintedIn(bare, 'omega-deploy')).toEqual([
-          '.omega/assets/favicon/favicon-32x32.png',
-          '.omega/assets/favicon/favicon.ico',
-          '.omega/assets/favicon/site.webmanifest',
-          '.omega/assets/logo/brandmark/color-512.png',
-          '.omega/assets/logo/brandmark/color-x.svg',
-          '.omega/assets/social/brandmark/color-1024.png',
-        ]);
-        ctx.expect(treeOf(bare, 'omega-deploy').includes('src/app.js'), 'the brand tree rides beside them').toBeTruthy();
-        ctx.expect(status(), 'the forced adds stayed in the temporary index').toBe(before);
-      },
-    },
-
-    {
-      name: 'a brand with no minted set pushes clean, with no .omega path in the tree (#1027)',
-      run: async (ctx) => {
-        const { brandRoot, bare } = buildFixture();
-        jetpack.write(path.join(brandRoot, '.omega', 'state.json'), '{}\n');
-
-        const sha = await pushSnapshot({ brandRoot, owner: 'acme', repo: 'acme-omega', ref: 'omega-deploy', token: TOKEN, execFn: localRemote(bare, []), fetchFn: mirrorApi(bare).fetchFn });
-
-        ctx.expect(run('git', ['rev-parse', 'omega-deploy'], bare).trim(), 'the push landed').toBe(sha);
-        ctx.expect(mintedIn(bare, 'omega-deploy')).toEqual([]);
+        const tree = treeOf(bare, 'omega-deploy');
+        ctx.expect(tree.includes('assets/logo/brandmark.svg'), 'the brandmark rides as a tracked file').toBeTruthy();
+        ctx.expect(tree.filter((file) => file.startsWith('.omega/'))).toEqual([]);
       },
     },
 

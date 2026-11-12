@@ -121,7 +121,7 @@ function createCallGate(cases) {
  * A session that runs one suite on the host through `runSuite`.
  * @param {object} suite - A normalized suite, its `layer` set.
  * @param {{expect: Function, defaultTimeout?: number, extrasFrom?: Function}} options - `extrasFrom()` resolves the ctx extras when the session starts.
- * @returns {{wait: Function, report: Function, finished: Function, end: Function}} The session; `end()` settles the cases node:test never called and resolves once the suite has run.
+ * @returns {{wait: Function, report: Function, finished: Function, end: Function}} The session; `end()` settles the cases node:test never called and resolves once the suite has run, or rejects with the error of a cleanup that passed its limit.
  */
 function hostSession(suite, { expect, defaultTimeout, extrasFrom }) {
   const gate = createCallGate(suite.cases);
@@ -134,12 +134,13 @@ function hostSession(suite, { expect, defaultTimeout, extrasFrom }) {
     },
   }));
 
+  let lateCleanup = null;
   const session = createCaseSession({
     cases: suite.cases,
     endedMessage: `the ${suite.layer} layer ended before this case reported`,
     start: async (report) => {
       const extras = extrasFrom ? await extrasFrom() : undefined;
-      await runSuite({ ...suite, cases }, { expect, extras, defaultTimeout, report });
+      lateCleanup = await runSuite({ ...suite, cases }, { expect, extras, defaultTimeout, report });
     },
   });
 
@@ -149,9 +150,11 @@ function hostSession(suite, { expect, defaultTimeout, extrasFrom }) {
       gate.called(id);
       return session.wait(id);
     },
-    end() {
+    // A cleanup past its limit rejects the end, so the run records it as a failure.
+    async end() {
       gate.end();
-      return session.finished();
+      await session.finished();
+      if (lateCleanup) throw lateCleanup;
     },
   };
 }

@@ -1,7 +1,7 @@
 # The campaigns service — the brand's email marketing (SendGrid)
 
 The `campaigns` service reconciles the brand's email-marketing infrastructure on SendGrid:
-domain authentication, link branding, a verified sender for Single Sends, the brand's marketing
+domain authentication, link branding, the verified senders for Single Sends, the brand's marketing
 list, the unsubscribe groups the backend sends through, `@omega.js/backend`'s custom fields and
 segments, and the account-global Event Webhook. It runs after `edge`, because the DKIM records
 are written into the Cloudflare zone.
@@ -16,7 +16,7 @@ share the account.
 |---|---|
 | `domain-auth` | SendGrid domain authentication for `brand.url`'s domain. Missing → authenticate (`automatic_security` returns three CNAMEs under `emailauth.`), diff-sync those records into the Cloudflare apex zone, then validate — an interactive run polls until DNS propagates and SendGrid confirms. |
 | `link-branding` | SendGrid link branding for `brand.url`'s domain — the `emailurl.` host every transactional link is rewritten through. Missing → brand the links (`POST /v3/whitelabel/links` with subdomain `emailurl`), diff-sync both returned CNAMEs into the Cloudflare apex zone UNPROXIED, then validate — an interactive run polls until SendGrid confirms. On valid, the `emailurl` CNAME is PATCHed to proxied ([#693](https://github.com/Omega-JS-Stack/omega/issues/693)). Skipped on a subdomain project: the apex records belong to the parent brand's walk. |
-| `sender-identity` | The verified sender Single Sends require: `offers@{contact domain}` with the brand's name. It auto-verifies because `domain-auth` ran first. |
+| `sender-identity` | The verified senders Single Sends require, one per row of `@omega.js/backend`'s `SENDERS` (below). They auto-verify because `domain-auth` ran first. |
 | `list` | The brand's marketing list, resolved config id → exact-name lookup → create, with the id written back to `marketing.campaigns.providers.sendgrid.listId`. |
 | `unsubscribe-groups` | The account's ASM groups (below). |
 | `custom-fields` | `@omega.js/backend`'s custom fields, from its marketing SSOT, less the provider row's `nativeFields` (SendGrid has first/last name built in): ONE derivation (`fieldsForProvider()`), the same one the backend's contact sync writes through, so a native field is neither provisioned here nor sent there. A type mismatch cannot be patched in SendGrid, so the field is deleted and recreated. |
@@ -24,6 +24,18 @@ share the account.
 | `event-webhook` | The account-global Event Webhook pointed at the PARENT backend's forwarder, with the consent toggles (`bounce`, `dropped`, `spam_report`, `unsubscribe`, `group_unsubscribe`) enabled and drift patched by minimum diff. |
 
 Fields and segments `@omega.js/backend` does not own are never touched.
+
+## Verified senders
+
+- A Single Send names a verified sender id, which the backend resolves from the sender's address at send time, so every address a campaign can send from needs one.
+- The `sender-identity` operation walks `@omega.js/backend`'s `SENDERS` (read through `lib/backend-marketing.js` as `BACKEND_SENDERS`) and makes one verified sender per row.
+- A row's address and from name are the backend's own `senderFrom(key, { brandName, domain })` at the contact-email domain: the function its send path builds the envelope with.
+- The nickname is `{brand name} ({key})`, because SendGrid wants one nickname per sender in an account; the reply-to is `brand.contact.email`.
+- A sender already verified at a row's address is kept whatever its nickname; an unverified one is deleted and made again.
+- A sender holding a row's nickname at another address (the contact domain changed) is deleted when unverified, and warns for that row alone when verified.
+- The brand address is asked for once per run, before any sender is made; with none, the operation warns once and makes nothing.
+- A dry run plans one action per row and writes nothing, and a finished brand's rerun makes no change.
+- The output is `senderIdentities`, keyed by sender key; the operation is warned when any row is.
 
 ## Unsubscribe groups ([#649](https://github.com/Omega-JS-Stack/omega/issues/649))
 
@@ -96,8 +108,8 @@ read it even when this service runs before the workspace one did.
   validate) through the same writer `domain-auth` uses. Edge still stays the RECONCILER: its
   next live read sees `valid: true` and desires the record proxied, so both services agree
   ([#693](https://github.com/Omega-JS-Stack/omega/issues/693)).
-- **The sender's identity needs human input** where config has none: the address prompt is a
-  genuine ask, not a wait, so a headless run legitimately warns.
+- **The senders need human input** where config has none: the address prompt is a genuine ask,
+  not a wait, so a headless run legitimately warns.
 - **Changing the query builder re-syncs every segment.** The generated SQL is compared against
   the live segments for staleness, so any edit to the DSL translation is a fleet-wide re-sync
   on the next run.

@@ -48,7 +48,7 @@ Both transactional and marketing paths share the same preparation layer:
 | Function | Purpose |
 |---|---|
 | `resolveBrand(omega)` | Clones brand config, sanitizes images (SVG→PNG via CDN naming) |
-| `resolveSender({ sender, from, group }, brand, brandDomain, omega)` | Resolves sender from/display-name by category key, and the ASM group id from config (`marketing.campaigns.providers.sendgrid.groups.<key>`); see [Unsubscribe groups](#unsubscribe-groups) |
+| `resolveSender({ sender, from, group }, brand, brandDomain, omega)` | Resolves sender from/display-name by category key (through `senderFrom`), and the ASM group id from config (`marketing.campaigns.providers.sendgrid.groups.<key>`); see [Unsubscribe groups](#unsubscribe-groups) |
 | `renderContent({ content, html, trusted }, utmOptions)` | Markdown→HTML via markdown-it, applies UTM link tagging. Raw HTML in `content` is DISABLED unless `trusted` is set — see [Content trust](#content-trust) |
 | `resolveSignoff(signoff)` | The caller's signoff, passed through untouched; none is the team signoff (`{ type: 'team' }`). Nothing is filled from config |
 | `buildCategories(type, brandId, extra)` | Builds categories array: `['transactional', brandId, ...extra]` |
@@ -366,13 +366,16 @@ Defined in `constants.js` → `SENDERS`. Each category auto-resolves a from addr
 
 | Category | From | Display Name | Group key |
 |---|---|---|---|
-| `orders` | `orders@{domain}` | Orders at {Brand} | `orders` |
+| `orders` | `orders@{domain}` | {Brand} Orders | `orders` |
 | `hello` | `hello@{domain}` | {Brand} | `hello` |
 | `account` | `account@{domain}` | {Brand} Account | `account` |
-| `marketing` | `marketing@{domain}` | {Brand} | `marketing` |
+| `marketing` | `offers@{domain}` | {Brand} | `marketing` |
 | `security` | `security@{domain}` | {Brand} Security | `security` |
-| `newsletter` | `newsletter@{domain}` | {Brand} Newsletter | `newsletter` |
+| `newsletter` | `newsletter@{domain}` | {Brand} | `newsletter` |
 | `internal` | `alerts@{domain}` | {Brand} Alerts | `internal` |
+
+- `senderFrom(key, { brandName, domain })` in `constants.js` is the one place a row becomes a from address and name (`{ email, name }`, null for an unknown key); `prepare.resolveSender()` calls it.
+- The manager's campaigns service calls the same function to make one verified SendGrid sender per row, so a campaign can send from any category ([manager/campaigns.md](../manager/campaigns.md)).
 
 ## Unsubscribe groups
 

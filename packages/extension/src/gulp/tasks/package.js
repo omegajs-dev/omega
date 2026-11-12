@@ -291,10 +291,11 @@ async function compileManifest(outputDir, target) {
     // ═══════════════════════════════════════════════════════════════════════════
     // STEP 3: Clean up (shared across all targets)
     // ═══════════════════════════════════════════════════════════════════════════
+
     // Declare only icons the build actually produced. The defaults name the
-    // full size ladder, but the icons task mints nothing without a
-    // `config/icon.{png,svg}` — and Chrome REFUSES to load an extension whose
-    // manifest points at an icon that isn't there, silently (#46).
+    // full size ladder, but the icons task makes nothing without a
+    // `config/icon.{svg,png}` or the brand's brandmark, and Chrome REFUSES to
+    // load an extension whose manifest points at an icon that isn't there, silently.
     const iconMissing = (relative) => !jetpack.exists(path.join('dist', relative));
     const prunedIcons = [];
 
@@ -329,7 +330,7 @@ async function compileManifest(outputDir, target) {
     }
 
     if (prunedIcons.length > 0) {
-      logger.warn(`[${target}] Dropped ${prunedIcons.length} missing icon reference(s) from the manifest — add config/icon.png to ship icons`);
+      logger.warn(`[${target}] Dropped ${prunedIcons.length} missing icon reference(s) from the manifest: add config/icon.png, or the brand's assets/logo/brandmark.svg, to ship icons`);
     }
 
     // Remove empty arrays and objects from manifest

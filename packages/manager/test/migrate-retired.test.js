@@ -178,7 +178,7 @@ module.exports = defineCases({
           },
         };
 
-        const named = { favicon: 'brand.images.favicon', manifest: 'site.webmanifest', icons: 'Font Awesome', currency: 'payment.currency' };
+        const named = { favicon: 'assets/logo/brandmark.svg', manifest: 'site.webmanifest', icons: 'Font Awesome', currency: 'payment.currency' };
         for (const [key, replacement] of Object.entries(named)) {
           ctx.expect(fired(config, `targets.web.${key}`, replacement), `${key} names what answers it now: ${lines(config).join(' | ')}`).toBeTruthy();
         }

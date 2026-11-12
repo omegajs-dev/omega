@@ -121,7 +121,7 @@ On web a page is a file under `src/pages/` and on backend a route is a file unde
 
 ### Icons
 
-Convention-only. Drop PNGs at `config/icons/<platform>/<slot>.png` (`mac`, `windows`, `linux`: the one vocabulary, #867) or `config/icons/global/<slot>.png` (universal fallback). Resolution per slot: platform → global → (Linux only) windows → bundled default. Ship @2x native size only; @omega.js/desktop downscales the @1x sibling via sharp. macOS tray input is `tray.png` (consumer-friendly); @omega.js/desktop renames the dist output to `trayTemplate.png` for OS dark-mode auto-inversion. No `app.icons` config block. See [docs/shared/icons.md](icons.md).
+Convention-only. Drop PNGs at `config/icons/<platform>/<slot>.png` (`mac`, `windows`, `linux`: the one vocabulary, #867) or `config/icons/global/<slot>.png` (universal fallback). Resolution per slot: platform → global → (Linux only) windows → bundled default. The app slot tries the brand's `assets/logo/brandmark.svg` before the bundled default, rasterized into `dist/config/icons/`, never into the target; the tray and dmg slots never take it. Ship @2x native size only; @omega.js/desktop downscales the @1x sibling via sharp. macOS tray input is `tray.png` (consumer-friendly); @omega.js/desktop renames the dist output to `trayTemplate.png` for OS dark-mode auto-inversion. No `app.icons` config block. See [docs/shared/icons.md](icons.md).
 
 ### Build system
 

@@ -128,6 +128,27 @@ function failureOf(scenario) {
   return { failed, text };
 }
 
+// Whether a pid names a live process; EPERM means one we may not signal, still alive.
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === 'EPERM';
+  }
+}
+
+// Force-end each pid a case started that is still alive, so no run outlives its case.
+function endAlive(pids) {
+  for (const pid of pids.filter(alive)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch (e) {
+      if (e.code !== 'ESRCH') throw e;
+    }
+  }
+}
+
 function basenames(json) {
   return [...new Set(json.tests.map((t) => path.basename(t.file)))].sort();
 }
@@ -147,6 +168,8 @@ module.exports = {
   runNode,
   runScenario,
   failureOf,
+  alive,
+  endAlive,
   basenames,
   names,
 };

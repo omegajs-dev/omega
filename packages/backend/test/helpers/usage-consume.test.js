@@ -51,8 +51,23 @@ const PRODUCTS = [
   { id: 'premium', name: 'Premium', features: { saves: -1, exports: 500, support: true } },
 ];
 
-function makeOmega(options) {
+// `options.docs` is the Firestore the counter can read, by path; every path
+// asked for lands in `state.reads`, and a path not in the map does not exist.
+function makeOmega(options, state) {
   options = options || {};
+
+  const docs = options.docs || {};
+  const firestore = {
+    doc: (path) => ({
+      get: async () => {
+        state.reads.push(path);
+
+        const data = docs[path];
+
+        return { id: path.split('/').pop(), exists: data !== undefined, data: () => (data === undefined ? undefined : JSON.parse(JSON.stringify(data))) };
+      },
+    }),
+  };
 
   return {
     config: {
@@ -60,7 +75,7 @@ function makeOmega(options) {
       payment: { products: PRODUCTS },
     },
     storage: () => ({ get: () => ({ value: () => ({}) }), set: () => ({ write: () => {} }) }),
-    firebase: {},
+    firebase: { admin: { firestore: () => firestore } },
   };
 }
 
@@ -70,11 +85,11 @@ function makeOmega(options) {
 function makeCtx(account, options) {
   options = options || {};
 
-  const state = { authenticated: 0, lines: [] };
+  const state = { authenticated: 0, reads: [], lines: [] };
   const record = (...args) => state.lines.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
 
   return {
-    omega: makeOmega(options),
+    omega: makeOmega(options, state),
     state: state,
     log: record,
     warn: record,
@@ -102,18 +117,39 @@ function attach(account, options) {
   const ctx = makeCtx(account, options);
   const usage = new Usage(ctx).configure({ log: false, today: options.today || IN_MARCH });
 
+  return { usage, ctx, writes: recordWrites(usage) };
+}
+
+// The recorder `attach` installs, for a counter `forUser` hands back: `uid` is
+// the account whose document `write()` targets.
+function recordWrites(usage) {
   const writes = [];
+
   usage.write = async function (feature) {
-    writes.push({ feature: feature, paths: this.mirrorPaths(feature), patch: this.countersPatch(feature) });
+    writes.push({ feature: feature, uid: this.user.auth.uid, paths: this.mirrorPaths(feature), patch: this.countersPatch(feature) });
   };
 
-  return { usage, ctx, writes };
+  return writes;
 }
 
 function account(overrides) {
   return {
     auth: { uid: 'user-647', email: 'user@test.dev' },
     api: { clientId: 'client-647', privateKey: 'sk_test_fake' },
+    subscription: { product: { id: 'basic' }, status: 'active' },
+    usage: {},
+    ...overrides,
+  };
+}
+
+// Another account, as its document sits in Firestore: the one a forUser()
+// counter is bound to while the request's caller is someone else.
+const SELLER_UID = 'seller-uid';
+
+function seller(overrides) {
+  return {
+    auth: { uid: SELLER_UID, email: 'seller@test.dev' },
+    api: { clientId: 'client-seller', privateKey: 'sk_test_seller' },
     subscription: { product: { id: 'basic' }, status: 'active' },
     usage: {},
     ...overrides,
@@ -448,6 +484,175 @@ module.exports = defineCases({
         await usage.read('saves');
 
         expect(usage.limits(), JSON.stringify(usage.limits())).toEqual({ saves: 250, exports: 20 });
+      },
+    },
+
+    {
+      name: 'forUser refuses a missing or non-string uid at the call, before any I/O',
+
+      async run() {
+        const { usage, ctx } = attach(account());
+
+        for (const uid of [undefined, null, 42, { uid: SELLER_UID }]) {
+          let thrown = null;
+
+          try {
+            usage.forUser(uid);
+          } catch (e) {
+            thrown = e;
+          }
+
+          expect(thrown instanceof Error, `forUser(${JSON.stringify(uid)}) must throw synchronously`).toBeTruthy();
+        }
+
+        expect(usage.forUser(SELLER_UID), 'a string uid builds a counter').toBeTruthy();
+        expect(ctx.state.reads, 'building a counter reads nothing').toEqual([]);
+      },
+    },
+
+    {
+      name: 'forUser(uid).read() reports the OTHER account\'s plan and counters, not the caller\'s',
+
+      async run() {
+        // The caller is on basic (exports 20) with 3 used; the seller is on
+        // premium (exports 500) with 12 used
+        const { usage, ctx } = attach(account({ usage: { exports: { monthly: 3, daily: 3 } } }), {
+          docs: { [`users/${SELLER_UID}`]: seller({ subscription: { product: { id: 'premium' }, status: 'active' }, usage: { exports: { monthly: 12, daily: 2 } } }) },
+        });
+
+        const state = await usage.forUser(SELLER_UID).read('exports');
+
+        expect(state.limit, JSON.stringify(state)).toBe(500);
+        expect(state.used, JSON.stringify(state)).toBe(12);
+        expect(state.left, JSON.stringify(state)).toBe(488);
+        expect(ctx.state.reads, 'the account is read from its own document').toEqual([`users/${SELLER_UID}`]);
+      },
+    },
+
+    {
+      name: 'forUser(uid).consume() writes the other account and its mirrors, and never the caller',
+
+      async run() {
+        const { usage, writes } = attach(account({ owns: { teams: ['team-caller'] } }), {
+          docs: { [`users/${SELLER_UID}`]: seller({ owns: { teams: ['team-seller'] }, usage: { saves: { monthly: 3, daily: 0 } } }) },
+        });
+
+        const other = usage.forUser(SELLER_UID);
+        const otherWrites = recordWrites(other);
+
+        const left = await other.consume('saves');
+
+        expect(left.used, JSON.stringify(left)).toBe(4);
+        expect(otherWrites.length, 'one write per consume').toBe(1);
+        expect(otherWrites[0].uid, 'the write targets the other account\'s document').toBe(SELLER_UID);
+        expect(otherWrites[0].paths, JSON.stringify(otherWrites[0].paths)).toEqual(['teams/team-seller']);
+        expect(otherWrites[0].patch.usage.saves.monthly).toBe(4);
+        expect(writes, 'the caller\'s own counter must write nothing').toEqual([]);
+      },
+    },
+
+    {
+      name: 'forUser(uid).consume() refuses past the other account\'s month, however rich the caller',
+
+      async run() {
+        // The caller's premium saves are unlimited; the seller's basic month is spent
+        const { usage } = attach(account({ subscription: { product: { id: 'premium' }, status: 'active' } }), {
+          docs: { [`users/${SELLER_UID}`]: seller({ usage: { saves: { monthly: 100, daily: 0 } } }) },
+        });
+
+        const other = usage.forUser(SELLER_UID);
+        const otherWrites = recordWrites(other);
+
+        const error = await other.consume('saves').catch((e) => e);
+
+        expect(error instanceof Error, 'over the other account\'s month must refuse').toBeTruthy();
+        expect(error.code, error.message).toBe(429);
+        expect(otherWrites, 'a refusal writes nothing').toEqual([]);
+      },
+    },
+
+    {
+      name: 'a whitelisted caller key buys no free uses on another account',
+
+      async run() {
+        const { usage } = attach(account(), {
+          docs: { [`users/${SELLER_UID}`]: seller({ usage: { saves: { monthly: 100, daily: 0 } } }) },
+        });
+
+        usage.addWhitelistKeys('sk_test_fake');
+
+        const other = usage.forUser(SELLER_UID);
+
+        recordWrites(other);
+
+        const error = await other.consume('saves').catch((e) => e);
+
+        expect(error instanceof Error, 'the caller\'s whitelist must not stand the other account\'s gate down').toBeTruthy();
+        expect(error.code, error.message).toBe(429);
+      },
+    },
+
+    {
+      name: 'a uid with no account document is a 404 naming the uid, and nothing is written',
+
+      async run() {
+        const { usage, writes } = attach(account(), { docs: {} });
+
+        const other = usage.forUser('ghost-uid');
+        const otherWrites = recordWrites(other);
+
+        const resolved = await Promise.resolve().then(() => other.resolve()).catch((e) => e);
+
+        expect(resolved instanceof Error, 'resolve() must refuse a missing account').toBeTruthy();
+        expect(resolved.code, resolved.message).toBe(404);
+        expect(resolved.message, resolved.message).toContain('ghost-uid');
+
+        const consumed = await other.consume('saves').catch((e) => e);
+
+        expect(consumed instanceof Error, 'consume() must refuse a missing account').toBeTruthy();
+        expect(consumed.code, consumed.message).toBe(404);
+        expect(otherWrites, 'a missing account is never created').toEqual([]);
+        expect(writes, 'and the caller is never charged instead').toEqual([]);
+      },
+    },
+
+    {
+      name: 'a signed-OUT caller can count against another account: authenticate() is never called',
+
+      async run() {
+        const { usage, ctx } = attach(null, {
+          docs: { [`users/${SELLER_UID}`]: seller({ usage: { saves: { monthly: 30, daily: 1 } } }) },
+        });
+
+        const other = usage.forUser(SELLER_UID);
+
+        recordWrites(other);
+
+        const state = await other.read('saves');
+        const left = await other.consume('saves');
+
+        expect(state.used, JSON.stringify(state)).toBe(30);
+        expect(left.used, JSON.stringify(left)).toBe(31);
+        expect(ctx.state.authenticated, 'the caller\'s identity is never asked for').toBe(0);
+      },
+    },
+
+    {
+      name: 'an account document with no auth.uid still counts under users/{uid}',
+
+      async run() {
+        const { usage } = attach(account(), {
+          docs: { [`users/${SELLER_UID}`]: seller({ auth: {}, usage: { saves: { monthly: 3, daily: 0 } } }) },
+        });
+
+        const other = usage.forUser(SELLER_UID);
+        const otherWrites = recordWrites(other);
+
+        const left = await other.consume('saves');
+
+        expect(left.used, JSON.stringify(left)).toBe(4);
+        expect(otherWrites.length, 'one write per consume').toBe(1);
+        expect(otherWrites[0].uid, 'the uid the counter was bound to fills the document\'s missing one').toBe(SELLER_UID);
       },
     },
   ],

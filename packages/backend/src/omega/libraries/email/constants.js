@@ -67,6 +67,30 @@ const SENDERS = {
   },
 };
 
+/**
+ * A SENDERS row's from address and from name for one brand: the one place a
+ * row becomes an envelope, read by prepare.js's resolveSender and by the
+ * manager's sender-identity step, which makes one verified sender per row.
+ *
+ * @param {string} key - A SENDERS key ('orders', 'hello', 'marketing', ...)
+ * @param {object} brand
+ * @param {string} brand.brandName - The brand's name, filling `{brand}` in the display name
+ * @param {string} brand.domain - The brand's email domain (its contact email's)
+ * @returns {{ email: string, name: string }|null} null for a key SENDERS does not hold
+ */
+function senderFrom(key, { brandName, domain }) {
+  if (!Object.hasOwn(SENDERS, key)) {
+    return null;
+  }
+
+  const row = SENDERS[key];
+
+  return {
+    email: `${row.localPart}@${domain}`,
+    name: row.displayName.replace('{brand}', brandName),
+  };
+}
+
 
 // SendGrid limit for scheduled emails (72 hours, but use 71 for buffer)
 const SEND_AT_LIMIT = 71;
@@ -483,6 +507,7 @@ module.exports = {
   GROUP_KEYS,
   DEFAULT_GROUP_KEY,
   SENDERS,
+  senderFrom,
   FIELDS,
   SEGMENTS,
   SEND_AT_LIMIT,

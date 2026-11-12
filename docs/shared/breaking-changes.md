@@ -30,6 +30,20 @@ gap tables, not this file. Converter TOOLING is
 input, not its implementation. The legacy repos stay read-only reference
 (AGENTS.md HARD RULE 1): nothing here asks you to change them.
 
+## 2026-11-11: the web build derives the brand image from the brandmark ([#1066](https://github.com/Omega-JS-Stack/omega/issues/1066))
+
+- No by-hand step: no file moves and no URL changes, and a target's own files keep winning. A fresh deploy is the whole migration.
+
+| Contract | Old form | New form | Manual migration step |
+|---|---|---|---|
+| The web favicon set, `brand/brandmark.svg`, `brand/brandmark.png`, `brand/social.png` | Minted by the manager into `.omega/assets/`, bridged by `MINT_BRIDGE` | The target's own file under `src/assets/images/`, else derived by the build from `assets/logo/brandmark.svg`, each checked on its own | None |
+| The desktop app icon (`config/icons/<platform>/icon.png`) | Platform folder, then `global/`, then (Linux) `windows/`, then the bundled default | The same, with the brand's `assets/logo/brandmark.svg`, rasterized to 1024×1024, before the bundled default; the tray and dmg slots are unchanged | None |
+| The extension icon (`config/icon.*`) | Every `config/icon.{png,svg}` was processed, and the svg's output landed last, so the svg shipped | `config/icon.svg`, then `config/icon.png`, then the brand's `assets/logo/brandmark.svg`, made into square icons; a target with both own files still ships the svg | None |
+| `MINT_BRIDGE`, `mintBridgeSources` (`@omega.js/config`) | Exported | Gone | Drop any import of your own |
+| The CI gate on a missing minted set | A CI build with a brandmark and no set failed | Gone: the build makes the set | None |
+| The manager's `favicons` operation and `.omega/assets/favicon/` | Ran in the assets service | Gone; a leftover folder is unused cache | Delete the folder if you like |
+| The deploy snapshot | Force-added the bridged files under `.omega/assets/` | Nothing under `.omega/` rides | None |
+
 ## 2026-11-11: a campaign's `providers` names roles only, and the newsletter generator publishes nothing itself
 
 | Contract | Old form | New form | Manual migration step |
@@ -1126,9 +1140,9 @@ drops the three and moves the currency, with a note each.
 
 | Contract | Old form | New form | Manual migration step |
 |---|---|---|---|
-| The favicon folder | `targets.web.favicon.path` pointed the head's icon links at a folder of your own | The MINTED set only: the manager's assets service mints it from the brand images and the build bridges it to `/assets/images/favicon` (plus a root `favicon.ico`) | Delete the key. Put your source image at `brand.images.favicon` if the mint should start from a different one; there is no path to override |
+| The favicon folder | `targets.web.favicon.path` pointed the head's icon links at a folder of your own | The shipped set only: the target's own `src/assets/images/favicon/`, else the set the build derives from the brand's `assets/logo/brandmark.svg`, at `/assets/images/favicon` (plus a root `favicon.ico`) | Delete the key. Change the brand's brandmark, or put your own set in the target's favicon folder; there is no path to override |
 | The browser chrome color | `targets.web.favicon.theme-color` fed the `theme-color` meta | **`brand.color`**, the one place a brand states its hex (the accent ramps derive from it too, [theming.md](theming.md)) | Delete the key. Set `brand.color` if it is not set already; a brand with no color emits no `theme-color` meta at all |
-| The web app manifest block | `targets.web.manifest` | Nothing: no reader exists, and the manifest that ships is the minted set's own `site.webmanifest` | Delete the key. Every value under it was already being ignored |
+| The web app manifest block | `targets.web.manifest` | Nothing: no reader exists, and the manifest that ships is the favicon set's own `site.webmanifest` | Delete the key. Every value under it was already being ignored |
 | The footer link icons | `targets.web.icons`, a name-to-markup map the footer looked each `link.icon` up in | The `icon` on the link itself, as Font Awesome classes: `icon: 'fa-brands fa-github'` ([#619](https://github.com/Omega-JS-Stack/omega/issues/619), [icons.md](icons.md)) | Delete the key and spell each link's icon as its own `fa-*` classes in your `src/_includes/frontend/sections/footer.json`. The legacy block only ever held a `style`, which the lookup could never resolve, so those icons were rendering empty already |
 | The price currency | `targets.web.currency` (or a root `currency`), read by the pricing JSON-LD | **`payment.currency`**, beside the providers that charge in it | Move the value. `omega migrate` does it for you; by hand it is one key |
 

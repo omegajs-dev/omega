@@ -592,15 +592,18 @@ source format AND webp, quality 80, metadata stripped, upscaling allowed so
 every variant name always exists (`hero.jpg` → `hero-320px.jpg`,
 `hero-320px.webp`, … `hero.webp` — `@srcset` markup never 404s). The original
 NAME survives (re-encoded, so URL contracts hold), svg/gif/webp pass through
-verbatim, the minted `favicon/` dir is exempt (exact-name mint contract), and
+verbatim, the `favicon/` dir is exempt (its file names are the contract), and
 an undecodable file warns and ships verbatim — never a failed build.
 `targets.web.imagemin.enabled: false` opts a brand out.
 
 Outputs are reproducible binaries and NEVER commit: the content-addressed
 cache lives at the brand's `.omega/cache/imagemin` (source or settings
 changes re-process exactly what changed; stale entries prune every run), and
-CI restores it via `actions/cache` in the scaffolded build workflow — the
-`cache-uj-imagemin` branch successor. Dev never processes: `omega dev`
+CI restores it via `actions/cache` in the scaffolded build workflow, the
+`cache-uj-imagemin` branch successor. The same workflow restores the brand
+images derived from the brandmark (`.omega/cache/brand-image`) in a step of
+their own, keyed per commit, so a changed brandmark is derived once, not on
+every run. Dev never processes: `omega dev`
 middleware rewrites missing `-NNNpx`/`.webp` variant URLs to the verbatim
 original, so build-time markup resolves in dev too.
 

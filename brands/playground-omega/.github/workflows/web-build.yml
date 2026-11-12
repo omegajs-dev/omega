@@ -88,10 +88,10 @@ jobs:
           echo "NPM: $(npm -v)"
           echo "Omega: $(node "${{ github.workspace }}/node_modules/@omega.js/web/bin/omega" version)"
 
-      # Optimized-image cache, never committed: the build writes it under the
-      # BRAND root's .omega, which on the runner is the workspace root, so the
-      # path names that root. An exact key hit skips all image processing; a
-      # prefix hit re-processes only changed images.
+      # Optimized-image cache, never committed: the build writes it under the BRAND
+      # root's .omega, which on the runner is the workspace root, so the path names
+      # that root. An exact key hit skips all image processing; a prefix hit
+      # re-processes only changed images.
       - name: Restore optimized-image cache
         uses: actions/cache@v6
         with:
@@ -99,6 +99,17 @@ jobs:
           key: omega-imagemin-${{ hashFiles('targets/web/src/assets/images/**') }}
           restore-keys: |
             omega-imagemin-
+
+      # Brand images derived from the brandmark, cached beside it. The key is per
+      # commit, so each run saves what it derived and the next restores the newest
+      # by prefix: an unchanged brandmark derives nothing, a changed one is derived anew.
+      - name: Restore brand-image cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.omega/cache/brand-image
+          key: omega-brand-image-${{ github.sha }}
+          restore-keys: |
+            omega-brand-image-
 
       # Base path (#358): a Pages PROJECT site serves under `/<repo>/`, a
       # custom domain (the target url → CNAME) at the domain root, and

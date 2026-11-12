@@ -51,18 +51,23 @@ omega dev --target=web --port=3001 --no-https  # any other flag rides each leg's
 
 ## What refreshes when — the redistribution contract
 
-Brand-level sources are not read by the targets directly; most of them are **redistributed** by the manage cycle, and target watchers only watch their own dir. So:
+- Most brand-level sources are **redistributed** by the manage cycle, not read by the targets directly.
+- The brandmark is read directly: the web, extension and desktop builds each read `assets/logo/brandmark.svg` themselves, for the brand images their target lacks.
+- Target watchers only watch their own dir. So:
 
 | You edited | What moves it | When it lands |
 |---|---|---|
 | `assets/logo/*.svg`, `assets/templates/*.psd` | assets service → derived variants in the gitignored `.omega/assets/`, mtime-diffed (only stale outputs regenerate) | a manage cycle: restart `omega dev`, or run `npm run manage` in the brand |
-| `.omega/assets/*` (the derived set) | the web build's static channel copies them into the site as `assets/images/brand/*` + `assets/images/favicon`, and mirrors the shipped `favicon.ico` to the site root so the browser's `/favicon.ico` probe resolves (`packages/web/src/static-assets.js`) | the web build's `static` phase — the dev server copies at BOOT, no watcher, so a restart picks them up |
+| `assets/logo/brandmark.svg` | the web build derives what the target lacks into the gitignored `.omega/cache/brand-image/`, ships it at `assets/images/brand/*` + `assets/images/favicon`, and mirrors `favicon.ico` to the site root (`static-assets.js`) | the web build's `static` phase; the dev server derives at BOOT, no watcher, so a restart picks it up |
 | signing certs | disperse service → each target's gitignored certs dir | the delivery lane: a boot, a `npm run manage`, or a brand-root `omega deploy` |
 | brand `.env` | nothing copies it — every verb composes its target's runtime env (the backend's staged `dist/.env`) from the cascade, filtered by the env schema ([#678](https://github.com/Omega-JS-Stack/omega/issues/678)) | the next build; **the dev watchers reload the env cascade on change** — the backend restages `dist/.env`, and the web + extension dev lanes reload it into `process.env` for the next rebuild ([#681](https://github.com/Omega-JS-Stack/omega/issues/681)). A **NEW** key and an **EDITED** value both land on that rebuild, and a key dropped from the file is dropped from the process — the reload drops what a file layer owns and re-reads the cascade ([#724](https://github.com/Omega-JS-Stack/omega/issues/724)); a **shell**-set value still wins over every file. One limit worth knowing: **desktop is pre-wired only** (its dev pipeline builds once, and the electron child snapshots env at spawn, so nothing there consumes a reload yet) |
 | `config/omega.json5` (brand or local) | nothing — targets read it directly, there is no mirror to disperse | the reading process's own reload (a running backend restages on it; a dev-server restart is always enough) |
 | a target's own `src/` | that target's watcher | live |
 
-The short version: **anything under the brand root that isn't inside a target needs the manage cycle**, and `omega dev` now runs one at boot ([#44](https://github.com/Omega-JS-Stack/omega/issues/44)) — so the loop for a brandmark edit is *edit the svg → restart `omega dev`*. Mid-session, `npm run manage` (or `npx omega manage --service=assets`) does the same without stopping the stack, then restart the web leg to pick up the copies.
+The short version:
+
+- **Anything under the brand root that isn't inside a target, and that no target reads directly, needs the manage cycle**, and `omega dev` runs one at boot ([#44](https://github.com/Omega-JS-Stack/omega/issues/44)). Mid-session, `npm run manage` (or `npx omega manage --service=assets` for the asset sources) does the same without stopping the stack.
+- **A brandmark edit needs only a restart**: the web build reads `assets/logo/brandmark.svg` itself and derives at boot, so the loop is *edit the svg → restart `omega dev`*.
 
 ## One-command consumer sessions: `omega dev --local`
 

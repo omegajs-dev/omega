@@ -14,10 +14,9 @@
   {% assign page-keywords = resolved.meta.keywords | omega_liquify %}
 {%- endiftruthy -%}
 
-{% comment %} The minted set is the ONE favicon source (#850): the manager's assets
-  service mints it from the brand images and the static-assets channel bridges it
-  here, so there is no path override to honor. A brand changes the icon by
-  changing the source image. {% endcomment %}
+{% comment %} The shipped set is the ONE favicon source: the target's own
+  src/assets/images/favicon/, else the set the build derives from the brand's
+  brandmark. There is no path override to honor. {% endcomment %}
 {% assign favicon-path = resolved.config.url | append: "/assets/images/favicon" %}
 
 <!-- The index posture (#564): `meta.index` is the ONE decision, resolved once
@@ -298,8 +297,8 @@
 <!-- Keywords -->
 <meta name="keywords" content="{{ page-keywords }}"/>
 
-<!-- Web app manifest (part of the minted favicon set — static-assets channel;
-     no minted set → no link, a virgin brand serves zero dangling refs) -->
+<!-- Web app manifest (part of the favicon set the static-assets channel ships;
+     no set means no link, so a brand with no image serves no dangling refs) -->
 {% if assetManifest.favicons %}
   <link rel="manifest" href="{{ favicon-path | append: '/site.webmanifest' | omega_cachebreak }}"/>
 {% endif %}
@@ -348,8 +347,8 @@
 <link rel="alternate" href="{{ resolved.config.url }}{{ page.url }}" hreflang="x-default"/>
 <link rel="alternate" href="{{ resolved.config.url }}{{ page.url }}" hreflang="{{ page-translation-default }}"/>
 
-<!-- Favicon — exactly the minted set (manager assets service → .omega/assets/favicon,
-     bridged to /assets/images/favicon by the static-assets channel) -->
+<!-- Favicon: exactly the set the static-assets channel ships at /assets/images/favicon
+     (the target's own, else derived by the build from the brand's brandmark) -->
 {% if assetManifest.favicons %}
   <link rel="apple-touch-icon" sizes="180x180" href="{{ favicon-path | append: '/apple-touch-icon.png' | omega_cachebreak }}"/>
   <link rel="icon" type="image/png" sizes="32x32" href="{{ favicon-path | append: '/favicon-32x32.png' | omega_cachebreak }}"/>

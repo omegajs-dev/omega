@@ -1,7 +1,8 @@
 /**
- * /download — the #14 batch: prominent platform marks, side-by-side artifacts,
- * ONE mobile notify form, and an onboarding modal that speaks the current
- * design language (tokens + classy vocabulary, not Bootstrap-era alert boxes).
+ * /download, the #14 batch: prominent platform marks, ONE mobile notify form,
+ * and an onboarding modal that speaks the current design language (tokens +
+ * classy vocabulary, not Bootstrap-era alert boxes). A platform with several
+ * formats shows one split button: the first format, then a menu of the rest.
  *
  * Detection itself is NOT tested here: both the download and the extension page
  * call the shared client logic (omega.utilities.getPlatform/getBrowser): the
@@ -9,10 +10,17 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const cheerio = require('cheerio');
+const esbuild = require('esbuild');
+const { clientConfig } = require('@omega.js/config');
 const defineCases = require('@omega.js/devkit/test/define-cases');
 const expect = require('@omega.js/devkit/test/expect');
 
 const { buildWith: sharedBuildWith, miniData, PKG } = require('./lib/build.js');
+
+const CORE_DIR = path.join(PKG, 'core');
+const PAGE_MODULE = path.join(CORE_DIR, 'js', 'pages', 'download', 'index.js');
 
 const buildWith = (siteData, overrides) => sharedBuildWith(siteData, overrides, 'download-test');
 
@@ -38,16 +46,236 @@ const sectionOf = (html, id) => {
   return html.slice(start, end > -1 ? end : html.length);
 };
 
-// The Linux card, up to the next card or row that carries data-download-card
-const linuxCardOf = (html) => {
-  const start = html.indexOf('data-download-card data-platform="linux"');
-  expect(start > -1, 'the Linux card is on the page').toBeTruthy();
-  const end = html.indexOf('data-download-card', start + 1);
-  return html.slice(start, end > -1 ? end : html.length);
+// One platform's card on the built page
+const cardOf = ($, platform) => {
+  const card = $(`[data-download-card][data-platform="${platform}"]`);
+  expect(card.length, `the ${platform} card is on the page`).toBe(1);
+  return card;
 };
 
-// Every anchor that points at the Snap Store
-const snapStoreLinks = (html) => html.match(/<a\b[^>]*href="https:\/\/snapcraft\.io\/[^"]*"[^>]*>/g) || [];
+// The arrow half: the framework's dropdown toggle, inside the card's split button
+const arrowsOf = (card) => card.find('.omega-dl-card__split [data-bs-toggle="dropdown"]');
+
+// The page module bundled the way the page bundle takes it, with the runtime
+// the boot would hand it supplied by the case instead
+let bundling = null;
+function pageModuleSource() {
+  bundling ||= esbuild.build({
+    entryPoints: [PAGE_MODULE],
+    bundle: true,
+    write: false,
+    format: 'cjs',
+    platform: 'browser',
+    logLevel: 'silent',
+    plugins: [{
+      name: 'harness-aliases',
+      setup(build) {
+        build.onResolve({ filter: /^__main_assets__\// }, (args) => {
+          return { path: path.join(CORE_DIR, args.path.slice('__main_assets__/'.length)) };
+        });
+        build.onResolve({ filter: /^@omega\.js\/web\/runtime$/ }, () => {
+          return { path: 'runtime', namespace: 'omega-runtime-stub' };
+        });
+        build.onLoad({ filter: /.*/, namespace: 'omega-runtime-stub' }, () => {
+          return { contents: 'export default globalThis.omega;' };
+        });
+      },
+    }],
+  }).then((result) => result.outputFiles[0].text);
+
+  return bundling;
+}
+
+/** An element of the built page, as much of the DOM as the page module touches */
+class PageElement {
+  constructor(node, wrap, $) {
+    this.node = node;
+    this.wrap = wrap;
+    this.$node = $(node);
+    this.listeners = {};
+    this.style = {};
+  }
+
+  get tagName() { return this.node.name.toUpperCase(); }
+  get id() { return this.getAttribute('id') || ''; }
+  get href() { return this.getAttribute('href') || ''; }
+  get hidden() { return this.hasAttribute('hidden'); }
+  set hidden(on) { if (on) { this.setAttribute('hidden', ''); } else { this.removeAttribute('hidden'); } }
+  get textContent() { return this.$node.text(); }
+  set textContent(text) { this.$node.text(String(text)); }
+  get innerHTML() { return this.$node.html(); }
+  set innerHTML(markup) { this.$node.html(String(markup)); }
+
+  get parentElement() {
+    const parent = this.node.parent;
+    return parent && parent.type === 'tag' ? this.wrap(parent) : null;
+  }
+
+  get dataset() {
+    const attr = (key) => `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+    return new Proxy({}, {
+      get: (_, key) => (typeof key === 'string' ? this.$node.attr(attr(key)) : undefined),
+      set: (_, key, value) => { this.$node.attr(attr(key), String(value)); return true; },
+      has: (_, key) => this.$node.attr(attr(key)) !== undefined,
+    });
+  }
+
+  get classList() {
+    const $node = this.$node;
+    return {
+      add: (...names) => { $node.addClass(names.join(' ')); },
+      remove: (...names) => { $node.removeClass(names.join(' ')); },
+      contains: (name) => $node.hasClass(name),
+      toggle: (name, force) => {
+        const on = force === undefined ? !$node.hasClass(name) : Boolean(force);
+        $node.toggleClass(name, on);
+        return on;
+      },
+    };
+  }
+
+  getAttribute(name) { return this.$node.attr(name) ?? null; }
+  setAttribute(name, value) { this.$node.attr(name, String(value)); }
+  removeAttribute(name) { this.$node.removeAttr(name); }
+  hasAttribute(name) { return this.$node.attr(name) !== undefined; }
+  matches(selector) { return this.$node.is(selector); }
+  closest(selector) { return this.wrap(this.$node.closest(selector)[0]); }
+  querySelector(selector) { return this.wrap(this.$node.find(selector)[0]); }
+  querySelectorAll(selector) { return this.$node.find(selector).toArray().map(this.wrap); }
+  appendChild(child) { this.$node.append(child.node); return child; }
+  append(...children) { children.forEach((child) => this.appendChild(child)); }
+  remove() { this.$node.remove(); }
+  addEventListener(type, handler) { (this.listeners[type] ||= []).push(handler); }
+  removeEventListener(type, handler) { this.listeners[type] = (this.listeners[type] || []).filter((each) => each !== handler); }
+}
+
+// The tracking-consent record the banner writes, granting every category
+const CONSENTED = { analytics: true, marketing: true, region: 'opt-out', version: 1 };
+
+// A runtime member the cases do not read (the notify form's request, say)
+// answers as an inert callable, so the page's other wiring stands up quietly
+const inert = () => new Proxy(function inertMember() {}, {
+  get: (_, key) => (key === 'then' || typeof key === 'symbol' ? undefined : inert()),
+  apply: () => inert(),
+});
+const withInert = (members) => new Proxy(members, {
+  get: (target, key) => (key in target || typeof key === 'symbol' || key === 'then' ? target[key] : inert()),
+});
+
+/**
+ * Run the REAL page module over the BUILT page in a vm sandbox standing in for
+ * the browser (node has no DOM and web pulls in no jsdom): the GA4 pixel records
+ * the click reports the real analytics module hands it, and Bootstrap's Modal
+ * records the walkthroughs opened.
+ *
+ * @param {string} html - the built /download page
+ * @param {string} platform - what the shared detector answers
+ * @returns {Promise<{ $: Function, click: Function, reports: Array, opened: Array, stop: Function }>}
+ */
+async function standPage(html, platform) {
+  const $ = cheerio.load(html);
+  const wrapped = new Map();
+  const wrap = (node) => {
+    if (!node) {
+      return null;
+    }
+    if (!wrapped.has(node)) {
+      wrapped.set(node, new PageElement(node, wrap, $));
+    }
+    return wrapped.get(node);
+  };
+
+  const reports = [];
+  const opened = [];
+  const timers = [];
+  const listen = (target) => {
+    target.listeners = {};
+    target.addEventListener = PageElement.prototype.addEventListener;
+    target.removeEventListener = PageElement.prototype.removeEventListener;
+    return target;
+  };
+
+  class Modal {
+    constructor(el) { this.el = el; }
+    static getOrCreateInstance(el) { return new Modal(el); }
+    static getInstance(el) { return new Modal(el); }
+    show() { opened.push(this.el); }
+    hide() {}
+  }
+
+  const document = listen({
+    readyState: 'complete',
+    get body() { return wrap($('body')[0]); },
+    get documentElement() { return wrap($('html')[0]); },
+    getElementById: (id) => wrap($(`[id="${id}"]`)[0]),
+    createElement: (tag) => wrap($(`<${tag}></${tag}>`)[0]),
+    querySelector: (selector) => wrap($(selector)[0]),
+    querySelectorAll: (selector) => $(selector).toArray().map(wrap),
+  });
+  const window = listen({
+    document,
+    console,
+    URL,
+    URLSearchParams,
+    location: { href: 'http://localhost/download', origin: 'http://localhost', pathname: '/download', search: '', hash: '' },
+    bootstrap: { Modal },
+    // The GA4 pixel the real analytics transport hands each report to
+    gtag: (command, name, params) => { if (command === 'event') { reports.push({ name, params }); } },
+    omega: withInert({
+      config: clientConfig({ analytics: { providers: { google: { id: 'G-TEST' } } } }),
+      storage: { get: (key, fallback) => (key === 'trackingConsent' ? CONSENTED : fallback), set: () => {} },
+      dom: { ready: () => Promise.resolve() },
+      utilities: { getPlatform: () => platform },
+    }),
+    setTimeout: (fn, ms, ...args) => { const id = setTimeout(fn, ms, ...args); timers.push(id); return id; },
+    clearTimeout,
+    setInterval: (fn, ms, ...args) => { const id = setInterval(fn, ms, ...args); timers.push(id); return id; },
+    clearInterval,
+    queueMicrotask,
+    module: { exports: {} },
+  });
+  window.window = window;
+
+  vm.createContext(window);
+  vm.runInContext(await pageModuleSource(), window, { filename: PAGE_MODULE });
+  const page = window.module.exports.default || window.module.exports;
+  await page({ omega: window.omega, options: {} });
+
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  const fire = (target, event) => {
+    event.currentTarget = target;
+    for (const handler of [...(target.listeners[event.type] || [])]) {
+      handler.call(target, event);
+    }
+  };
+  const click = async (node) => {
+    const target = wrap(node);
+    const event = {
+      type: 'click',
+      target,
+      button: 0,
+      defaultPrevented: false,
+      stopped: false,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() { this.stopped = true; },
+      stopImmediatePropagation() { this.stopped = true; },
+    };
+    const chain = [];
+    for (let at = target; at; at = at.parentElement) {
+      chain.push(at);
+    }
+    for (const at of [...chain, document, window]) {
+      fire(at, event);
+      if (event.stopped) {
+        break;
+      }
+    }
+    await settle();
+  };
+
+  await settle();
+  return { $, click, reports, opened, stop: () => timers.forEach((id) => { clearTimeout(id); clearInterval(id); }) };
+}
 
 module.exports = defineCases({
   type: 'group',
@@ -67,19 +295,108 @@ module.exports = defineCases({
     },
 
     {
-      name: '#14: two artifacts ride side by side — one does not',
+      name: 'a platform with one format: its card holds one download link and no arrow half',
       run: async (ctx) => {
-        const pages = await buildWith(withDownloads);
-        const download = pages.get('/download');
+        const $ = cheerio.load((await buildWith(withDownloads)).get('/download'));
 
-        const splits = download.match(/omega-dl-card__actions omega-dl-card__actions--split/g) || [];
-        ctx.expect(splits.length, 'only Linux (.deb + AppImage) splits its action row').toBe(1);
-        ctx.expect(download.includes('Debian package') && download.includes('AppImage'), 'both Linux artifacts render').toBeTruthy();
-        for (const asset of ['mac-dmg.dmg', 'windows-nsis.exe', 'linux-deb.deb', 'linux-appimage.AppImage']) {
-          ctx.expect(download.includes(`href="${DL(asset)}"`), `${asset} is a direct download, not the releases page`).toBeTruthy();
+        for (const [platform, asset] of [['mac', 'mac-dmg.dmg'], ['windows', 'windows-nsis.exe']]) {
+          const card = cardOf($, platform);
+          const links = card.find('a[data-download]').toArray().map((link) => $(link).attr('href'));
+          ctx.expect(links, `${platform} hands over its one file directly`).toEqual([DL(asset)]);
+          ctx.expect(card.find('[data-bs-toggle="dropdown"]').length, `${platform} has no arrow half`).toBe(0);
         }
-        ctx.expect(!download.includes(`href="${RELEASES}"`), 'no button lands on GitHub').toBeTruthy();
-        ctx.expect(!download.includes('btn-adaptive w-100'), 'action width is the flex row\'s job now').toBeTruthy();
+      },
+    },
+
+    {
+      name: 'Linux with three formats: one main link for the first, one arrow half, one menu item per other format in offer order',
+      run: async (ctx) => {
+        const $ = cheerio.load((await buildWith(withDownloads)).get('/download'));
+        const linux = cardOf($, 'linux');
+
+        const main = linux.find('a[data-download]').not('.dropdown-menu a');
+        ctx.expect(main.toArray().map((link) => $(link).attr('href')), 'one main link, the .deb').toEqual([DL('linux-deb.deb')]);
+        ctx.expect(main.closest('.omega-dl-card__split').length, 'the main link is the split button\'s main half').toBe(1);
+        ctx.expect(arrowsOf(linux).length, 'one arrow half').toBe(1);
+
+        const items = linux.find('.omega-dl-card__split .dropdown-menu a[data-download]');
+        ctx.expect(items.toArray().map((link) => $(link).attr('href')), 'the other formats, in offer order')
+          .toEqual([DL('linux-appimage.AppImage'), 'https://snapcraft.io/mini']);
+        ctx.expect(!$.html().includes(`href="${RELEASES}"`), 'no link lands on the GitHub releases page').toBeTruthy();
+      },
+    },
+
+    {
+      name: 'every card: the first a[data-download] is the first format\'s link, and the arrow half carries no data-download',
+      run: async (ctx) => {
+        const $ = cheerio.load((await buildWith(withDownloads)).get('/download'));
+
+        for (const [platform, asset] of [['mac', 'mac-dmg.dmg'], ['windows', 'windows-nsis.exe'], ['linux', 'linux-deb.deb']]) {
+          const first = cardOf($, platform).find('a[data-download]').first();
+          ctx.expect(first.attr('href'), `${platform}'s first download link`).toBe(DL(asset));
+        }
+
+        const arrows = $('[data-download-card] [data-bs-toggle="dropdown"]');
+        ctx.expect(arrows.length, 'Linux, the one card with several formats, has the one arrow half').toBe(1);
+        ctx.expect(arrows[0].name, 'the arrow half is a button').toBe('button');
+        ctx.expect((arrows.attr('aria-label') || '').trim().length > 0, 'the arrow half has a spoken name').toBe(true);
+        for (const attr of ['data-download', 'data-download-name', 'data-download-kind']) {
+          ctx.expect(arrows.attr(attr), `the arrow half carries no ${attr}`).toBe(undefined);
+        }
+      },
+    },
+
+    {
+      name: 'given a click on the Linux main half, the click report names the first format',
+      run: async (ctx) => {
+        const page = await standPage((await buildWith(withDownloads)).get('/download'), 'linux');
+        ctx.after(page.stop);
+
+        const main = cardOf(page.$, 'linux').find('.omega-dl-card__split a[data-download]').not('.dropdown-menu a');
+        ctx.expect(main.length, 'the Linux card has a split button main half').toBe(1);
+        await page.click(main[0]);
+
+        const downloads = page.reports.filter((report) => report.name === 'file_download');
+        ctx.expect(downloads.length, 'one file_download report').toBe(1);
+        ctx.expect(downloads[0].params.download_name).toBe('Debian package');
+      },
+    },
+
+    {
+      name: 'given a click on a store item no walkthrough opens; on an asset item the platform\'s walkthrough opens',
+      run: async (ctx) => {
+        const html = (await buildWith(withDownloads)).get('/download');
+        const itemOf = (page, href) => {
+          const item = cardOf(page.$, 'linux').find(`.dropdown-menu a[href="${href}"]`);
+          ctx.expect(item.length, `the Linux menu holds ${href}`).toBe(1);
+          return item[0];
+        };
+
+        const store = await standPage(html, 'linux');
+        ctx.after(store.stop);
+        await store.click(itemOf(store, 'https://snapcraft.io/mini'));
+        ctx.expect(store.opened.length, 'the Snap Store item opens no walkthrough').toBe(0);
+
+        const asset = await standPage(html, 'linux');
+        ctx.after(asset.stop);
+        await asset.click(itemOf(asset, DL('linux-appimage.AppImage')));
+        ctx.expect(asset.opened.length, 'the AppImage item opens a walkthrough').toBe(1);
+        const linuxSteps = asset.opened[0].querySelector('.platform-instructions[data-platform="linux"]');
+        ctx.expect(linuxSteps && !linuxSteps.hidden, 'the walkthrough shows the Linux steps').toBe(true);
+      },
+    },
+
+    {
+      name: 'the hero\'s words are the detected platform card\'s main link words, translated with it',
+      run: async (ctx) => {
+        // A translated page carries the frontmatter's words in its own language
+        const built = (await buildWith(withDownloads)).get('/download');
+        ctx.expect(built.split('Download for Linux').length - 1, 'the Linux main link carries the frontmatter words once').toBe(1);
+        const page = await standPage(built.replace('Download for Linux', 'Télécharger pour Linux'), 'linux');
+        ctx.after(page.stop);
+
+        ctx.expect(page.$('#download-hero [data-hero-label]').text(), 'the hero reads the Linux main link\'s words')
+          .toBe('Télécharger pour Linux');
       },
     },
 
@@ -216,22 +533,14 @@ module.exports = defineCases({
     },
 
     {
-      name: 'a brand that ships the snap gets a plain Snap Store link on the Linux card, and dropping the snap drops it',
+      name: 'the snap item is a store link with data-download-kind="store", inside the Linux card',
       run: async (ctx) => {
-        const shipped = (await buildWith(withDownloads)).get('/download');
-        const links = snapStoreLinks(linuxCardOf(shipped));
+        const $ = cheerio.load((await buildWith(withDownloads)).get('/download'));
 
-        ctx.expect(links.length, 'one Snap Store link on the Linux card').toBe(1);
-        ctx.expect(links[0]).toContain('href="https://snapcraft.io/mini"');
-        // The page script opens the install modal for a card's [data-download] links, except a store kind's
-        const opensModal = /\sdata-download(?=[\s=>])/.test(links[0]) && !links[0].includes('data-download-kind="store"');
-        ctx.expect(opensModal, `a plain link to the store: ${links[0]}`).toBe(false);
-
-        const dropped = (await buildWith({
-          ...withDownloads,
-          targets: { ...withDownloads.targets, desktop: { type: 'desktop', releases: {}, platforms: { linux: { formats: { snap: false } } } } },
-        })).get('/download');
-        ctx.expect(snapStoreLinks(dropped)).toEqual([]);
+        const snaps = $('a[href^="https://snapcraft.io/"]');
+        ctx.expect(snaps.toArray().map((link) => $(link).attr('href')), 'one Snap Store link on the page').toEqual(['https://snapcraft.io/mini']);
+        ctx.expect(snaps.closest('[data-download-card]').attr('data-platform'), 'it sits on the Linux card').toBe('linux');
+        ctx.expect(snaps.attr('data-download-kind')).toBe('store');
       },
     },
 

@@ -68,7 +68,8 @@ let _senderIdCache = null;
 
 /**
  * Fetch sender identities from SendGrid and build a from_email → id map.
- * Sender identities are created by OMEGA's sendgrid/ensure/sender-identity handler.
+ * Sender identities are made by the manager's `campaigns` service (its
+ * `sender-identity` operation), one per row of `SENDERS`.
  * Cached in memory for the lifetime of the process.
  *
  * @returns {object} Map of from_email → sender ID (integer)
@@ -347,17 +348,13 @@ async function removeContact(email) {
 }
 
 /**
- * Get this brand's SendGrid Marketing list ID.
+ * Get this brand's SendGrid Marketing list ID, read from
+ * `marketing.campaigns.providers.sendgrid.listId`, which the manager's
+ * `campaigns` service writes at onboarding (as Beehiiv's `publicationId`).
  *
- * Reads `omega.config.marketing.campaigns.providers.sendgrid.listId` (#425) —
- * populated by OMEGA's `campaigns/ensure/list.js` at brand-onboarding time, same
- * as how Beehiiv's `publicationId` works. No runtime API call, no fuzzy-match
- * fragility.
- *
- * If the brand hasn't been onboarded yet (listId missing/empty), logs a
- * warning and returns null — the marketing sync will still succeed, but the
- * contact lands in SendGrid's global pool instead of the brand's list. Fix:
- * run OMEGA's sendgrid service to populate the config.
+ * A brand not yet onboarded logs a warning and gets null: the sync still
+ * succeeds, but the contact lands in SendGrid's global pool, not the brand's
+ * list. Fix: run the manager's `campaigns` service to populate the config.
  *
  * @returns {string|null} List ID or null if not configured
  */
@@ -477,7 +474,7 @@ async function createSingleSend({ name, subject, htmlContent, from, sendTo, excl
       } else {
         return {
           success: false,
-          error: `No SendGrid Sender Identity found for "${from.email}". Run OMEGA sendgrid service to create one.`,
+          error: `No SendGrid Sender Identity found for "${from.email}". Run \`npm run manage -- --service=campaigns\` to create one.`,
         };
       }
     }
